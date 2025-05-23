@@ -500,6 +500,281 @@ function inicializarEventosPrincipais() {
         });
     }
     
+    // BOTÕES DE LOG DE IMPORTAÇÃO
+    const btnLimparLog = document.getElementById('btn-limpar-log');
+    if (btnLimparLog) {
+        btnLimparLog.addEventListener('click', limparLogImportacao);
+    }
+    
+    const btnExportarLog = document.getElementById('btn-exportar-log');
+    if (btnExportarLog) {
+        btnExportarLog.addEventListener('click', exportarLogImportacao);
+    }
+    
+    // FILTROS DE LOG
+    const filtros = ['filtro-info', 'filtro-warning', 'filtro-error', 'filtro-success'];
+    filtros.forEach(id => {
+        const checkbox = document.getElementById(id);
+        if (checkbox) {
+            checkbox.addEventListener('change', aplicarFiltrosLog);
+        }
+    });
+    
+    // BOTÃO DE DETALHES DA IMPORTAÇÃO
+    const btnDetalhes = document.getElementById('btn-detalhes-importacao');
+    if (btnDetalhes) {
+        btnDetalhes.addEventListener('click', exibirDetalhesImportacao);
+    }
+
+    /**
+     * Limpa o log de importação
+     */
+    function limparLogImportacao() {
+        const logArea = document.getElementById('import-log');
+        if (logArea) {
+            logArea.innerHTML = '<p class="text-muted">Log limpo pelo usuário.</p>';
+        }
+
+        // Resetar estatísticas
+        const stats = ['stat-total', 'stat-success', 'stat-warnings', 'stat-errors'];
+        stats.forEach(id => {
+            const element = document.getElementById(id);
+            if (element) element.textContent = '0';
+        });
+
+        // Ocultar estatísticas
+        const logStats = document.getElementById('log-statistics');
+        if (logStats) {
+            logStats.style.display = 'none';
+        }
+
+        console.log('LOG-IMPORT: Log de importação limpo');
+    }
+
+    /**
+     * Exporta o log de importação para arquivo de texto
+     */
+    function exportarLogImportacao() {
+        const logArea = document.getElementById('import-log');
+        if (!logArea) {
+            alert('Nenhum log disponível para exportação.');
+            return;
+        }
+
+        const logContent = logArea.innerText || logArea.textContent;
+
+        if (!logContent || logContent.trim() === 'Log limpo pelo usuário.' || 
+            logContent.includes('Selecione os arquivos SPED')) {
+            alert('Nenhum log de importação disponível para exportação.');
+            return;
+        }
+
+        // Criar conteúdo do arquivo
+        const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+        const header = `Log de Importação SPED - ${timestamp}\n` +
+                      `Sistema: Simulador Split Payment\n` +
+                      `Versão: 1.0.0\n` +
+                      `${'='.repeat(50)}\n\n`;
+
+        const fullContent = header + logContent;
+
+        // Criar e baixar arquivo
+        const blob = new Blob([fullContent], { type: 'text/plain;charset=utf-8' });
+        const url = window.URL.createObjectURL(blob);
+
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `log-importacao-sped-${timestamp}.txt`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+
+        console.log('LOG-IMPORT: Log exportado com sucesso');
+    }
+
+    /**
+     * Aplica filtros de visualização no log
+     */
+    function aplicarFiltrosLog() {
+        const logArea = document.getElementById('import-log');
+        if (!logArea) return;
+
+        const filtros = {
+            'filtro-info': document.getElementById('filtro-info')?.checked || false,
+            'filtro-warning': document.getElementById('filtro-warning')?.checked || false,
+            'filtro-error': document.getElementById('filtro-error')?.checked || false,
+            'filtro-success': document.getElementById('filtro-success')?.checked || false
+        };
+
+        // Se todos estão desmarcados, mostrar tudo
+        const algumFiltroAtivo = Object.values(filtros).some(ativo => ativo);
+        if (!algumFiltroAtivo) {
+            // Mostrar todas as entradas
+            const todasEntradas = logArea.querySelectorAll('.log-entry');
+            todasEntradas.forEach(entrada => {
+                entrada.style.display = 'block';
+            });
+            return;
+        }
+
+        // Aplicar filtros específicos
+        const entradas = logArea.querySelectorAll('.log-entry');
+        entradas.forEach(entrada => {
+            const classes = entrada.className;
+            let mostrar = false;
+
+            if (filtros['filtro-info'] && classes.includes('text-info')) mostrar = true;
+            if (filtros['filtro-warning'] && classes.includes('text-warning')) mostrar = true;
+            if (filtros['filtro-error'] && classes.includes('text-danger')) mostrar = true;
+            if (filtros['filtro-success'] && classes.includes('text-success')) mostrar = true;
+
+            entrada.style.display = mostrar ? 'block' : 'none';
+        });
+    }
+
+    /**
+     * Exibe detalhes completos da importação
+     */
+    function exibirDetalhesImportacao() {
+        if (!window.dadosImportadosSped) {
+            alert('Nenhum dado SPED foi importado ainda.');
+            return;
+        }
+
+        const dados = window.dadosImportadosSped;
+
+        // Criar modal com detalhes
+        const modal = document.createElement('div');
+        modal.className = 'modal-backdrop';
+        modal.style.cssText = `
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(0,0,0,0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 10000;
+        `;
+
+        const modalContent = document.createElement('div');
+        modalContent.className = 'modal-detalhes';
+        modalContent.style.cssText = `
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            max-width: 800px;
+            max-height: 80vh;
+            overflow-y: auto;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        `;
+
+        modalContent.innerHTML = `
+            <div class="modal-header" style="margin-bottom: 20px; border-bottom: 1px solid #eee; padding-bottom: 15px;">
+                <h3 style="margin: 0; color: #333;">📊 Detalhes da Importação SPED</h3>
+                <button type="button" class="btn-close" style="float: right; background: none; border: none; font-size: 24px; cursor: pointer;">&times;</button>
+            </div>
+
+            <div class="detalhes-content">
+                <div class="secao-detalhes">
+                    <h4>🏢 Dados da Empresa</h4>
+                    <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+                        <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Razão Social:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${dados.empresa?.nome || 'N/A'}</td></tr>
+                        <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>CNPJ:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${dados.empresa?.cnpj || 'N/A'}</td></tr>
+                        <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Faturamento Mensal:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${window.DataManager?.formatarMoeda(dados.empresa?.faturamento || 0) || 'N/A'}</td></tr>
+                        <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Margem Operacional:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${((dados.empresa?.margem || 0) * 100).toFixed(2)}%</td></tr>
+                    </table>
+                </div>
+
+                <div class="secao-detalhes">
+                    <h4>💼 Composição Tributária</h4>
+                    <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+                        <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Alíquota Efetiva Total:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${((dados.parametrosFiscais?.aliquota || 0) * 100).toFixed(2)}%</td></tr>
+                        <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>PIS (Créditos):</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${window.DataManager?.formatarMoeda(dados.parametrosFiscais?.creditos?.pis || 0) || 'N/A'}</td></tr>
+                        <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>COFINS (Créditos):</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${window.DataManager?.formatarMoeda(dados.parametrosFiscais?.creditos?.cofins || 0) || 'N/A'}</td></tr>
+                        <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>ICMS (Créditos):</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${window.DataManager?.formatarMoeda(dados.parametrosFiscais?.creditos?.icms || 0) || 'N/A'}</td></tr>
+                    </table>
+                </div>
+
+                <div class="secao-detalhes">
+                    <h4>⏱️ Ciclo Financeiro</h4>
+                    <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+                        <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>PMR (dias):</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${dados.cicloFinanceiro?.pmr || 'N/A'}</td></tr>
+                        <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>PME (dias):</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${dados.cicloFinanceiro?.pme || 'N/A'}</td></tr>
+                        <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>PMP (dias):</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${dados.cicloFinanceiro?.pmp || 'N/A'}</td></tr>
+                    </table>
+                </div>
+
+                <div class="secao-detalhes">
+                    <h4>ℹ️ Metadados</h4>
+                    <table style="width: 100%; border-collapse: collapse;">
+                        <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Fonte dos Dados:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${dados.metadados?.fonteDados || 'Manual'}</td></tr>
+                        <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Data de Importação:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${dados.metadados?.timestampImportacao ? new Date(dados.metadados.timestampImportacao).toLocaleString('pt-BR') : 'N/A'}</td></tr>
+                        <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Precisão dos Cálculos:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${dados.metadados?.precisaoCalculos || 'Padrão'}</td></tr>
+                    </table>
+                </div>
+            </div>
+
+            <div class="modal-footer" style="margin-top: 20px; text-align: center; border-top: 1px solid #eee; padding-top: 15px;">
+                <button type="button" class="btn btn-secondary btn-fechar">Fechar</button>
+            </div>
+        `;
+
+        modal.appendChild(modalContent);
+        document.body.appendChild(modal);
+
+        // Event listeners para fechar modal
+        const btnClose = modalContent.querySelector('.btn-close');
+        const btnFechar = modalContent.querySelector('.btn-fechar');
+
+        const fecharModal = () => {
+            document.body.removeChild(modal);
+        };
+
+        btnClose.addEventListener('click', fecharModal);
+        btnFechar.addEventListener('click', fecharModal);
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) fecharModal();
+        });
+    }
+
+    /**
+     * Atualiza estatísticas do log em tempo real
+     */
+    function atualizarEstatisticasLog() {
+        const logArea = document.getElementById('import-log');
+        const logStats = document.getElementById('log-statistics');
+
+        if (!logArea || !logStats) return;
+
+        const entradas = logArea.querySelectorAll('.log-entry');
+        const stats = {
+            total: entradas.length,
+            success: logArea.querySelectorAll('.text-success').length,
+            warnings: logArea.querySelectorAll('.text-warning').length,
+            errors: logArea.querySelectorAll('.text-danger').length
+        };
+
+        // Atualizar elementos de estatísticas
+        const elementos = {
+            'stat-total': stats.total,
+            'stat-success': stats.success,
+            'stat-warnings': stats.warnings,
+            'stat-errors': stats.errors
+        };
+
+        Object.entries(elementos).forEach(([id, valor]) => {
+            const elemento = document.getElementById(id);
+            if (elemento) elemento.textContent = valor;
+        });
+
+        // Mostrar estatísticas se houver entradas
+        if (stats.total > 0) {
+            logStats.style.display = 'block';
+        }
+    }
+    
     // No final da função inicializarEventosPrincipais() no main.js
     // Adicionar:
     if (window.CurrencyFormatter) {

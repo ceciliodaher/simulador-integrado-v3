@@ -907,3 +907,328 @@ button:hover {
         grid-template-columns: repeat(2, 1fr);
     }
 }
+
+/* Adicionar ao arquivo CSS principal - Correções para dados SPED */
+
+/* Indicador de dados SPED */
+.sped-data-indicator {
+    background: linear-gradient(135deg, #28a745, #20c997);
+    border: none;
+    color: white;
+    margin-bottom: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(40, 167, 69, 0.3);
+}
+
+.sped-data-indicator strong {
+    font-weight: 600;
+}
+
+.sped-data-indicator .btn {
+    background: rgba(255, 255, 255, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: white;
+    font-size: 12px;
+    padding: 4px 12px;
+}
+
+.sped-data-indicator .btn:hover {
+    background: rgba(255, 255, 255, 0.3);
+    border-color: rgba(255, 255, 255, 0.5);
+}
+
+/* Campos preenchidos com dados SPED */
+.sped-data {
+    background: linear-gradient(135deg, #f8f9ff, #e8f5e8);
+    border-color: #28a745;
+    color: #155724;
+    font-weight: 500;
+}
+
+.sped-data:focus {
+    box-shadow: 0 0 0 0.2rem rgba(40, 167, 69, 0.25);
+    border-color: #28a745;
+}
+
+/* Etiquetas de origem dos dados */
+.origem-tag {
+    font-size: 10px !important;
+    background: #28a745 !important;
+    color: white !important;
+    padding: 2px 6px !important;
+    border-radius: 3px !important;
+    position: absolute !important;
+    top: -8px !important;
+    right: 0 !important;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    z-index: 10;
+}
+
+/* Container de dados financeiros */
+.dados-financeiros-container {
+    background: #f8f9fa;
+    border-radius: 8px;
+    padding: 15px;
+    margin: 15px 0;
+    border: 1px solid #dee2e6;
+}
+
+.dados-financeiros-container h4 {
+    color: #495057;
+    margin-bottom: 15px;
+    font-size: 16px;
+    font-weight: 600;
+}
+
+/* Ocultar duplicações */
+.form-group.duplicado {
+    display: none !important;
+}
+
+/* Melhorar visualização de campos financeiros */
+.financial-data-group {
+    background: #fff;
+    border: 1px solid #e9ecef;
+    border-radius: 6px;
+    padding: 15px;
+    margin-bottom: 15px;
+}
+
+.financial-data-group h5 {
+    color: #6c757d;
+    font-size: 14px;
+    margin-bottom: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* Log de importação */
+.log-area {
+    background: #1e1e1e;
+    color: #ffffff;
+    font-family: 'Courier New', monospace;
+    padding: 15px;
+    border-radius: 6px;
+    max-height: 400px;
+    overflow-y: auto;
+    line-height: 1.4;
+}
+
+.log-entry {
+    margin-bottom: 8px;
+    padding: 4px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.log-entry:last-child {
+    border-bottom: none;
+}
+
+.timestamp {
+    color: #6c757d;
+    font-size: 11px;
+    margin-right: 10px;
+}
+
+.text-success {
+    color: #28a745 !important;
+}
+
+.text-info {
+    color: #17a2b8 !important;
+}
+
+.text-warning {
+    color: #ffc107 !important;
+}
+
+.text-danger {
+    color: #dc3545 !important;
+}
+
+/* Controles de log */
+.log-controls {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+    padding: 10px 0;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.log-filters {
+    display: flex;
+    gap: 20px;
+}
+
+.log-filters label {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 14px;
+    cursor: pointer;
+}
+
+.log-filters input[type="checkbox"] {
+    margin: 0;
+}
+
+/* Estatísticas do log */
+.log-statistics {
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    padding: 15px;
+    margin-top: 15px;
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 15px;
+}
+
+.stat-item {
+    text-align: center;
+}
+
+.stat-label {
+    display: block;
+    font-size: 12px;
+    color: #6c757d;
+    margin-bottom: 5px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.stat-value {
+    display: block;
+    font-size: 24px;
+    font-weight: 700;
+    color: #495057;
+}
+
+.stat-value.success {
+    color: #28a745;
+}
+
+.stat-value.warning {
+    color: #ffc107;
+}
+
+.stat-value.error {
+    color: #dc3545;
+}
+
+/* Modal de detalhes */
+.modal-detalhes table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 20px;
+}
+
+.modal-detalhes th,
+.modal-detalhes td {
+    padding: 12px;
+    text-align: left;
+    border: 1px solid #dee2e6;
+}
+
+.modal-detalhes th {
+    background-color: #f8f9fa;
+    font-weight: 600;
+    color: #495057;
+}
+
+.modal-detalhes tbody tr:nth-child(even) {
+    background-color: #f8f9fa;
+}
+
+.secao-detalhes {
+    margin-bottom: 30px;
+}
+
+.secao-detalhes h4 {
+    color: #495057;
+    margin-bottom: 15px;
+    padding-bottom: 8px;
+    border-bottom: 2px solid #e9ecef;
+}
+
+/* Responsividade */
+@media (max-width: 768px) {
+    .stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    
+    .log-controls {
+        flex-direction: column;
+        gap: 15px;
+        align-items: stretch;
+    }
+    
+    .log-filters {
+        justify-content: space-around;
+    }
+    
+    .origem-tag {
+        position: static !important;
+        display: inline-block;
+        margin-left: 10px;
+    }
+}
+
+/* Animações */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.sped-data-indicator {
+    animation: fadeIn 0.5s ease-out;
+}
+
+.log-entry {
+    animation: fadeIn 0.3s ease-out;
+}
+
+/* Melhorar contraste em campos desabilitados */
+.sped-data[readonly] {
+    background: linear-gradient(135deg, #e8f5e8, #f0f8f0);
+    opacity: 1;
+}
+
+/* Ícones indicativos */
+.sped-icon {
+    margin-left: 8px;
+    color: #28a745;
+    font-size: 14px;
+}
+
+/* Correção de layout para evitar sobreposições */
+.form-group {
+    position: relative;
+    margin-bottom: 20px;
+}
+
+.form-group input[readonly].sped-data {
+    padding-right: 80px; /* Espaço para etiqueta */
+}
+
+/* Melhorar aparência dos totais */
+#total-debitos,
+#total-creditos,
+#aliquota-efetiva-total {
+    font-weight: 700;
+    font-size: 16px;
+    background: linear-gradient(135deg, #e3f2fd, #f3e5f5);
+    border: 2px solid #1976d2;
+}

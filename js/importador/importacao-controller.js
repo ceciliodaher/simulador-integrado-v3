@@ -376,8 +376,8 @@ window.ImportacaoController = (function() {
     }
 
     /**
-     * Integra dados consolidados com o simulador
-     * @param {Object} dadosConsolidados - Dados consolidados dos SPEDs
+     * Função corrigida para integrar dados consolidados com o simulador
+     * Corrige o mapeamento de dados financeiros e tributários
      */
     async function integrarComSimulador(dadosConsolidados) {
         if (!window.DataManager) {
@@ -396,93 +396,194 @@ window.ImportacaoController = (function() {
             dadosEstruturados.empresa.cnpj = empresa.cnpj || '';
             dadosEstruturados.empresa.inscricaoEstadual = empresa.inscricaoEstadual || '';
             dadosEstruturados.empresa.uf = empresa.uf || '';
-            
+
+            // Atualizar campo de empresa na interface
+            const campoEmpresa = document.getElementById('empresa');
+            if (campoEmpresa) {
+                campoEmpresa.value = empresa.razaoSocial || '';
+                campoEmpresa.classList.add('sped-data');
+            }
+
             adicionarLogImportacao(`✓ Dados da empresa mapeados: ${empresa.razaoSocial}`, 'info');
         }
 
-        // Mapear composição tributária
+        // Mapear composição tributária COM CRÉDITOS
         if (dadosConsolidados.composicaoTributaria) {
             const composicao = dadosConsolidados.composicaoTributaria;
-            
-            // Definir faturamento baseado nos dados reais
-            dadosEstruturados.empresa.faturamento = composicao.faturamentoTotal || 0;
-            
-            // Mapear créditos tributários
-            dadosEstruturados.parametrosFiscais.creditos = {
-                pis: composicao.creditos.pis || 0,
-                cofins: composicao.creditos.cofins || 0,
-                icms: composicao.creditos.icms || 0,
-                ipi: composicao.creditos.ipi || 0,
-                cbs: 0,
-                ibs: 0
-            };
 
-            // Calcular alíquota efetiva total
-            dadosEstruturados.parametrosFiscais.aliquota = (composicao.aliquotasEfetivas.total || 0) / 100;
-            
+            // Faturamento
+            dadosEstruturados.empresa.faturamento = composicao.faturamentoTotal || 0;
+            preencherCampoInterface('faturamento', composicao.faturamentoTotal);
+
+            // DÉBITOS TRIBUTÁRIOS
+            preencherCampoInterface('debito-pis', composicao.debitos.pis, 'SPED');
+            preencherCampoInterface('debito-cofins', composicao.debitos.cofins, 'SPED');
+            preencherCampoInterface('debito-icms', composicao.debitos.icms, 'SPED');
+            preencherCampoInterface('debito-ipi', composicao.debitos.ipi, 'SPED');
+            preencherCampoInterface('debito-iss', composicao.debitos.iss, 'SPED');
+
+            // CRÉDITOS TRIBUTÁRIOS (CORREÇÃO PRINCIPAL)
+            preencherCampoInterface('credito-pis', composicao.creditos.pis, 'SPED');
+            preencherCampoInterface('credito-cofins', composicao.creditos.cofins, 'SPED');
+            preencherCampoInterface('credito-icms', composicao.creditos.icms, 'SPED');
+            preencherCampoInterface('credito-ipi', composicao.creditos.ipi, 'SPED');
+            preencherCampoInterface('credito-iss', composicao.creditos.iss, 'SPED');
+
+            // ALÍQUOTAS EFETIVAS
+            preencherCampoInterface('aliquota-efetiva-pis', composicao.aliquotasEfetivas.pis);
+            preencherCampoInterface('aliquota-efetiva-cofins', composicao.aliquotasEfetivas.cofins);
+            preencherCampoInterface('aliquota-efetiva-icms', composicao.aliquotasEfetivas.icms);
+            preencherCampoInterface('aliquota-efetiva-ipi', composicao.aliquotasEfetivas.ipi);
+            preencherCampoInterface('aliquota-efetiva-iss', composicao.aliquotasEfetivas.iss);
+            preencherCampoInterface('aliquota-efetiva-total', composicao.aliquotasEfetivas.total);
+
+            // TOTAIS
+            preencherCampoInterface('total-debitos', composicao.impostosLiquidos.total);
+            preencherCampoInterface('total-creditos', 
+                composicao.creditos.pis + composicao.creditos.cofins + 
+                composicao.creditos.icms + composicao.creditos.ipi + composicao.creditos.iss
+            );
+
             adicionarLogImportacao(`✓ Composição tributária mapeada - Alíquota efetiva: ${composicao.aliquotasEfetivas.total.toFixed(2)}%`, 'info');
         }
 
-        // Mapear dados financeiros
+        // Mapear dados financeiros (CORREÇÃO PARA EXIBIR NA INTERFACE)
         if (dadosConsolidados.dadosFinanceiros) {
             const financeiro = dadosConsolidados.dadosFinanceiros;
-            
-            // Calcular margem operacional real
+
+            // Receitas
+            preencherCampoInterface('receita-bruta', financeiro.receitas.receitaBruta);
+            preencherCampoInterface('receita-liquida', financeiro.receitas.receitaLiquida);
+
+            // Custos e despesas
+            preencherCampoInterface('custo-total', financeiro.custos.custoTotal);
+            preencherCampoInterface('despesas-operacionais', financeiro.despesas.despesasOperacionais);
+
+            // Resultados
+            preencherCampoInterface('lucro-operacional', financeiro.resultado.lucroOperacional);
+
+            // Margem operacional real (CORREÇÃO DA DUPLICAÇÃO)
             if (financeiro.resultado.margemOperacional > 0) {
                 dadosEstruturados.empresa.margem = financeiro.resultado.margemOperacional / 100;
+                preencherCampoInterface('margem', financeiro.resultado.margemOperacional);
+                preencherCampoInterface('margem-operacional-calc', financeiro.resultado.margemOperacional);
+
                 adicionarLogImportacao(`✓ Margem operacional real: ${financeiro.resultado.margemOperacional.toFixed(2)}%`, 'info');
             }
-            
-            // Adicionar dados de custos e receitas
-            dadosEstruturados.empresa.receitas = {
-                receitaBruta: financeiro.receitas.receitaBruta || 0,
-                receitaLiquida: financeiro.receitas.receitaLiquida || 0
-            };
-            
-            dadosEstruturados.empresa.custos = {
-                custoTotal: financeiro.custos.custoTotal || 0,
-                despesasOperacionais: financeiro.despesas.despesasOperacionais || 0
-            };
-            
-            dadosEstruturados.empresa.resultado = {
-                lucroOperacional: financeiro.resultado.lucroOperacional || 0,
-                lucroLiquido: financeiro.resultado.lucroLiquido || 0
-            };
+
+            // Habilitar checkbox de dados financeiros
+            const checkboxDadosFinanceiros = document.getElementById('usar-dados-financeiros');
+            if (checkboxDadosFinanceiros) {
+                checkboxDadosFinanceiros.checked = true;
+                toggleDadosFinanceiros(); // Ativar campos
+            }
+
+            adicionarLogImportacao(`✓ Dados financeiros detalhados importados e exibidos`, 'success');
         }
 
-        // Mapear ciclo financeiro
+        // Mapear ciclo financeiro (CORREÇÃO DO CÁLCULO)
         if (dadosConsolidados.cicloFinanceiro) {
             const ciclo = dadosConsolidados.cicloFinanceiro;
-            
+
+            preencherCampoInterface('pmr', ciclo.pmr || 30);
+            preencherCampoInterface('pme', ciclo.pme || 30);
+            preencherCampoInterface('pmp', ciclo.pmp || 30);
+            preencherCampoInterface('ciclo-financeiro', ciclo.cicloFinanceiroLiquido || 30);
+
             dadosEstruturados.cicloFinanceiro.pmr = ciclo.pmr || 30;
             dadosEstruturados.cicloFinanceiro.pme = ciclo.pme || 30;
             dadosEstruturados.cicloFinanceiro.pmp = ciclo.pmp || 30;
-            
+
             adicionarLogImportacao(`✓ Ciclo financeiro mapeado - PMR: ${ciclo.pmr}, PME: ${ciclo.pme}, PMP: ${ciclo.pmp}`, 'info');
         }
 
-        // Adicionar metadados de importação
-        dadosEstruturados.metadados = {
-            fonteDados: 'sped',
-            timestampImportacao: new Date().toISOString(),
-            arquivosImportados: Object.keys(estadoImportacao.arquivosCarregados),
-            precisaoCalculos: 'alta'
-        };
-
-        // Validar e normalizar dados
-        const dadosValidados = window.DataManager.validarENormalizar(dadosEstruturados);
-        
         // Armazenar dados validados globalmente
-        window.dadosImportadosSped = dadosValidados;
-        
-        // Preencher formulário do simulador
-        window.DataManager.preencherFormulario(dadosValidados);
-        
-        adicionarLogImportacao('✅ Dados integrados com sucesso ao simulador!', 'success');
-        adicionarLogImportacao('🎯 Formulário do simulador preenchido automaticamente', 'success');
+        window.dadosImportadosSped = dadosEstruturados;
 
         // Adicionar indicador visual no simulador
         adicionarIndicadorDadosSped();
+
+        // Remover duplicações visuais
+        removerDuplicacoesCampos();
+
+        adicionarLogImportacao('✅ Dados integrados com sucesso ao simulador!', 'success');
+        adicionarLogImportacao('🎯 Formulário do simulador preenchido automaticamente', 'success');
+    }
+
+    /**
+     * Função auxiliar para preencher campos da interface
+     */
+    function preencherCampoInterface(idCampo, valor, origem = 'SPED') {
+        const campo = document.getElementById(idCampo);
+        if (!campo) return;
+
+        // Formatar valor conforme tipo do campo
+        if (campo.classList.contains('money-input') || idCampo.includes('debito') || idCampo.includes('credito') || idCampo.includes('total')) {
+            campo.value = window.DataManager.formatarMoeda(valor || 0);
+        } else if (idCampo.includes('aliquota') || idCampo === 'margem') {
+            campo.value = typeof valor === 'number' ? valor.toFixed(valor > 1 ? 2 : 3) : (valor || 0);
+        } else {
+            campo.value = valor || 0;
+        }
+
+        // Adicionar classe e marcação de origem
+        campo.classList.add('sped-data');
+        campo.dataset.origem = origem;
+        campo.readOnly = true;
+
+        // Adicionar etiqueta visual de origem
+        adicionarEtiquetaOrigem(campo, origem);
+    }
+
+    /**
+     * Adiciona etiqueta visual da origem dos dados
+     */
+    function adicionarEtiquetaOrigem(campo, origem) {
+        // Remover etiqueta existente
+        const etiquetaExistente = campo.parentElement.querySelector('.origem-tag');
+        if (etiquetaExistente) {
+            etiquetaExistente.remove();
+        }
+
+        // Adicionar nova etiqueta
+        const etiqueta = document.createElement('span');
+        etiqueta.className = 'origem-tag';
+        etiqueta.textContent = origem;
+        etiqueta.style.cssText = `
+            font-size: 10px;
+            background: #28a745;
+            color: white;
+            padding: 2px 6px;
+            border-radius: 3px;
+            margin-left: 5px;
+            position: absolute;
+            top: -8px;
+            right: 0;
+        `;
+
+        campo.parentElement.style.position = 'relative';
+        campo.parentElement.appendChild(etiqueta);
+    }
+
+    /**
+     * Remove duplicações de campos visuais
+     */
+    function removerDuplicacoesCampos() {
+        // Ocultar campos duplicados de margem se existirem
+        const margensExtras = document.querySelectorAll('[id*="margem"]:not(#margem):not(#margem-operacional-calc)');
+        margensExtras.forEach(campo => {
+            if (campo.id !== 'margem' && campo.id !== 'margem-operacional-calc') {
+                campo.closest('.form-group')?.style.setProperty('display', 'none');
+            }
+        });
+
+        // Ocultar faturamentos duplicados
+        const faturamentosExtras = document.querySelectorAll('[id*="faturamento"]:not(#faturamento)');
+        faturamentosExtras.forEach(campo => {
+            if (campo.id !== 'faturamento') {
+                campo.closest('.form-group')?.style.setProperty('display', 'none');
+            }
+        });
     }
 
     /**

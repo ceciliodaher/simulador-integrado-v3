@@ -1,520 +1,993 @@
 /**
- * Configurações do parser
+ * @fileoverview Parser SPED Aprimorado - Extração completa de dados tributários e financeiros
+ * Versão corrigida que extrai todos os dados necessários para o simulador
+ * @version 2.1.0 - Versão funcional completa e corrigida
  */
-const CONFIG = {
-    // Tamanhos máximos para segurança
-    tamanhoMaximoArquivo: 100 * 1024 * 1024, // 100MB
-    numeroMaximoLinhas: 1000000, // 1 milhão de linhas
-    timeoutLeitura: 60000, // 60 segundos
-    
-    // Configurações de parsing
-    separadorCampo: '|',
-    terminadorLinha: /\r?\n/,
-    codificacaoArquivo: 'UTF-8',
-    
-    // Tipos de SPED suportados
-    tiposSuportados: {
-        'EFD-ICMS/IPI': {
-            codigo: 'fiscal',
-            descricao: 'SPED Fiscal - EFD ICMS/IPI',
-            versoes: ['014', '015', '016', '017'],
-            registroIdentificador: '0000',
-            codigoLayoutEsperado: '014'
-        },
-        'EFD-Contribuições': {
-            codigo: 'contribuicoes',
-            descricao: 'SPED Contribuições - EFD PIS/COFINS',
-            versoes: ['011', '012', '013'],
-            registroIdentificador: '0000',
-            codigoLayoutEsperado: '011'
-        },
-        'ECF': {
-            codigo: 'ecf',
-            descricao: 'Escrituração Contábil Fiscal',
-            versoes: ['010', '011', '012'],
-            registroIdentificador: 'J001',
-            codigoLayoutEsperado: '010'
-        },
-        'ECD': {
-            codigo: 'ecd',
-            descricao: 'Escrituração Contábil Digital',
-            versoes: ['010', '011', '012'],
-            registroIdentificador: 'I001',
-            codigoLayoutEsperado: '010'
-        }
-    },
-    
-    // Registros principais de cada tipo de SPED
-    registrosPrincipais: {
-        fiscal: {
-            // Identificação e abertura
-            abertura: ['0000', '0001', '0005', '0015', '0100', '0150', '0190', '0200', '0205', '0210'],
-            // Documentos fiscais de entrada
-            entradas: ['C100', 'C101', 'C105', 'C110', 'C111', 'C112', 'C113', 'C114', 'C120', 'C130'],
-            // Documentos fiscais de saída
-            saidas: ['C300', 'C301', 'C305', 'C310', 'C311', 'C312', 'C313', 'C314', 'C320', 'C321'],
-            // Apuração ICMS
-            apuracaoICMS: ['E001', 'E100', 'E110', 'E111', 'E112', 'E113', 'E115', 'E116'],
-            // Apuração IPI
-            apuracaoIPI: ['E200', 'E210', 'E220', 'E230', 'E240', 'E250'],
-            // Inventário
-            inventario: ['H001', 'H005', 'H010', 'H020'],
-            // Encerramento
-            encerramento: ['9001', '9900', '9990', '9999']
-        },
-        contribuicoes: {
-            // Identificação
-            abertura: ['0000', '0001', '0035', '0100', '0110', '0111', '0120', '0140', '0150'],
-            // Receitas
-            receitas: ['A100', 'A110', 'A111', 'A120', 'A170'],
-            // Custos
-            custos: ['A200', 'A210', 'A220', 'A230'],
-            // Créditos
-            creditos: ['C100', 'C110', 'C111', 'C120', 'C170', 'C175', 'C180', 'C181', 'C185'],
-            // Apuração PIS
-            apuracaoPIS: ['M100', 'M105', 'M110', 'M115', 'M200', 'M205', 'M210', 'M220', 'M225'],
-            // Apuração COFINS
-            apuracaoCOFINS: ['M400', 'M405', 'M410', 'M411', 'M500', 'M505', 'M510', 'M515'],
-            // Encerramento
-            encerramento: ['9001', '9900', '9990', '9999']
-        },
-        ecf: {
-            // Identificação
-            abertura: ['J001', 'J005'],
-            // Demonstrações
-            demonstracoes: ['J100', 'J150', 'J200', 'J210', 'J215', 'J800', 'J801', 'J900', 'J930', 'J932'],
-            // Encerramento
-            encerramento: ['9001', '9900', '9990', '9999']
-        },
-        ecd: {
-            // Identificação
-            abertura: ['I001', 'I010', 'I012', 'I015', 'I020', 'I030', 'I050', 'I051', 'I052'],
-            // Plano de contas
-            planoContas: ['I100', 'I150', 'I155', 'I200', 'I250', 'I300', 'I310', 'I350', 'I355'],
-            // Balancetes e balanços
-            balancetes: ['J100', 'J150', 'J200', 'J210', 'J215'],
-            // Demonstrações
-            demonstracoes: ['J800', 'J801', 'J900', 'J930', 'J932', 'J935'],
-            // Encerramento
-            encerramento: ['9001', '9900', '9990', '9999']
-        }
-    },
-    
-    // Tolerâncias e limites
-    tolerancias: {
-        percentualLeituraMinimo: 0.95, // 95% das linhas devem ser processadas com sucesso
-        percentualRegistrosMinimo: 0.90, // 90% dos registros devem ser válidos
-        tamanhoMinimoArquivo: 1024 // 1KB mínimo
-    }
-};
 
-/**
- * Classe principal do parser SPED
- */
-class SpedParser {
-    constructor() {
-        this.estatisticas = {
-            linhasProcessadas: 0,
-            linhasComErro: 0,
-            registrosEncontrados: 0,
-            registrosValidos: 0,
-            tempoProcessamento: 0,
-            erros: []
-        };
+window.SpedParser = (function() {
+    
+    // Configurações do parser
+    const CONFIG = {
+        separadorCampo: '|',
+        terminadorLinha: /\r?\n/,
+        tamanhoMaximoArquivo: 500 * 1024 * 1024, // 500MB
+        timeoutProcessamento: 300000, // 5 minutos
         
-        this.dadosExtraidos = {};
-        this.tipoSpedIdentificado = null;
-        this.versaoLayout = null;
-        this.log = [];
+        // Mapeamento AMPLIADO e CORRIGIDO de registros por tipo de SPED
+        registrosFiscal: {
+            // Dados da empresa
+            '0000': ['REG', 'COD_VER', 'COD_FIN', 'DT_INI', 'DT_FIN', 'NOME', 'CNPJ', 'CPF', 'UF', 'IE', 'COD_MUN', 'IM', 'SUFRAMA'],
+            '0001': ['REG', 'IND_MOV'],
+            '0005': ['REG', 'FANTASIA', 'CEP', 'END', 'NUM', 'COMPL', 'BAIRRO', 'FONE', 'FAX', 'EMAIL'],
+            
+            // Produtos
+            '0200': ['REG', 'COD_ITEM', 'DESCR_ITEM', 'COD_BARRA', 'COD_ANT_ITEM', 'UNID_INV', 'TIPO_ITEM', 'COD_NCM', 'EX_IPI', 'COD_GEN', 'COD_LST', 'ALIQ_ICMS'],
+            
+            // Documentos fiscais de entrada (CRÍTICO PARA CRÉDITOS)
+            'C100': ['REG', 'IND_OPER', 'IND_EMIT', 'COD_PART', 'COD_MOD', 'COD_SIT', 'SER', 'NUM_DOC', 'CHV_NFE', 'DT_DOC', 'DT_E_S', 'VL_DOC', 'IND_PGTO', 'VL_DESC', 'VL_ABAT_NT', 'VL_MERC', 'IND_FRT', 'VL_FRT', 'VL_SEG', 'VL_OUT_DA', 'VL_BC_ICMS', 'VL_ICMS', 'VL_BC_ICMS_ST', 'VL_ICMS_ST', 'VL_IPI', 'VL_PIS', 'VL_COFINS', 'VL_PIS_ST', 'VL_COFINS_ST'],
+            'C170': ['REG', 'NUM_ITEM', 'COD_ITEM', 'DESCR_COMPL', 'QTD', 'UNID', 'VL_ITEM', 'VL_DESC', 'IND_MOV', 'CST_ICMS', 'CFOP', 'COD_NAT', 'VL_BC_ICMS', 'ALIQ_ICMS', 'VL_ICMS', 'VL_BC_ICMS_ST', 'ALIQ_ST', 'VL_ICMS_ST', 'IND_APUR', 'CST_IPI', 'COD_ENQ', 'VL_BC_IPI', 'ALIQ_IPI', 'VL_IPI', 'CST_PIS', 'VL_BC_PIS', 'ALIQ_PIS', 'QUANT_BC_PIS', 'ALIQ_PIS_QUANT', 'VL_PIS', 'CST_COFINS', 'VL_BC_COFINS', 'ALIQ_COFINS', 'QUANT_BC_COFINS', 'ALIQ_COFINS_QUANT', 'VL_COFINS', 'COD_CTA'],
+            
+            // Documentos de saída (CRÍTICO PARA RECEITAS)
+            'C300': ['REG', 'COD_MOD', 'SER', 'SUB', 'NUM_DOC_INI', 'NUM_DOC_FIN', 'DT_DOC', 'VL_DOC', 'VL_PIS', 'VL_COFINS', 'COD_CTA'],
+            'C370': ['REG', 'NUM_ITEM', 'COD_ITEM', 'QTD', 'UNID', 'VL_ITEM', 'VL_DESC', 'CST_ICMS', 'CFOP', 'VL_BC_ICMS', 'ALIQ_ICMS', 'VL_ICMS', 'VL_BC_ICMS_ST', 'ALIQ_ST', 'VL_ICMS_ST', 'VL_BC_IPI', 'ALIQ_IPI', 'VL_IPI', 'CST_PIS', 'VL_BC_PIS', 'ALIQ_PIS', 'VL_PIS', 'CST_COFINS', 'VL_BC_COFINS', 'ALIQ_COFINS', 'VL_COFINS'],
+            
+            // Apuração ICMS (CRÍTICO PARA DÉBITOS E CRÉDITOS)
+            'E110': ['REG', 'VL_TOT_DEBITOS', 'VL_AJ_DEBITOS', 'VL_TOT_AJ_DEBITOS', 'VL_ESTORNOS_CRED', 'VL_TOT_CREDITOS', 'VL_AJ_CREDITOS', 'VL_TOT_AJ_CREDITOS', 'VL_ESTORNOS_DEB', 'VL_SLD_CREDOR_ANT', 'VL_SLD_APURADO', 'VL_TOT_DED', 'VL_ICMS_RECOLHER', 'VL_SLD_CREDOR_TRANSPORTAR', 'DEB_ESP'],
+            'E111': ['REG', 'COD_AJ_APUR', 'DESCR_COMPL_AJ', 'VL_AJ_APUR'],
+            'E116': ['REG', 'COD_OR', 'VL_OR', 'DT_VCTO', 'COD_REC', 'NUM_PROC', 'IND_PROC', 'PROC', 'TXT_COMPL', 'MES_REF'],
+            
+            // Apuração IPI (CRÍTICO PARA INDÚSTRIAS)
+            'E200': ['REG', 'UF', 'DT_INI', 'DT_FIN'],
+            'E210': ['REG', 'IND_MOV_IPI', 'VL_SLD_CRED_ANT_IPI', 'VL_TOT_DEBITOS_IPI', 'VL_OUT_DEB_IPI', 'VL_TOT_CREDITOS_IPI', 'VL_OUT_CRED_IPI', 'VL_SLD_DEVEDOR_IPI', 'VL_SLD_CRED_IPI_A_TRANSP', 'DEB_ESP_IPI']
+        },
+        
+        registrosContribuicoes: {
+            // Dados da empresa
+            '0000': ['REG', 'COD_VER', 'TIPO_ESCRIT', 'IND_SIT_ESP', 'NUM_REC_ANTERIOR', 'DT_INI', 'DT_FIN', 'NOME', 'CNPJ', 'UF', 'IE', 'COD_MUN', 'SUFRAMA', 'IND_NAT_PJ', 'IND_ATIV'],
+            
+            // Receitas (CRÍTICO PARA RECEITA BRUTA)
+            'A100': ['REG', 'IND_OPER', 'IND_EMIT', 'COD_PART', 'COD_SIT', 'SER', 'SUB', 'NUM_DOC', 'CHV_NFSE', 'DT_DOC', 'DT_E_S', 'VL_DOC', 'IND_PGTO', 'VL_DESC', 'VL_SERV', 'VL_SERV_NT', 'VL_TERC', 'VL_DA', 'VL_BC_ICMS', 'VL_ICMS', 'VL_BC_ICMS_ST', 'VL_ICMS_ST', 'COD_INF_COMPL', 'VL_PIS', 'VL_COFINS'],
+            'A110': ['REG', 'COD_INF', 'TXT_COMPL'],
+            'A120': ['REG', 'VL_TOT_SERV', 'VL_BC_PIS', 'VL_PIS_IMP', 'DT_PAG_PIS', 'VL_BC_COFINS', 'VL_COFINS_IMP', 'DT_PAG_COFINS', 'LOC_EXE_SERV'],
+            
+            // NOVO: Receitas Detalhadas por Natureza
+            'A200': ['REG', 'NUM_CAMPO', 'COD_REC', 'VL_REC_BRT', 'VL_BC_CONT', 'VL_AJUS_ACRES', 'VL_AJUS_REDUC', 'VL_BC_CONT_AJUS', 'ALIQ_PIS', 'QUANT_BC_PIS', 'ALIQ_PIS_QUANT', 'VL_CONT', 'VL_AJUS_ACRES', 'VL_AJUS_REDUC', 'VL_CONT_DIFER', 'VL_CONT_DIFER_ANT', 'VL_CONT_PER'],
+            
+            // Créditos PIS/COFINS (CRÍTICO)
+            'C100': ['REG', 'IND_OPER', 'IND_EMIT', 'COD_PART', 'COD_MOD', 'COD_SIT', 'SER', 'NUM_DOC', 'CHV_NFE', 'DT_DOC', 'DT_E_S', 'VL_DOC', 'IND_PGTO', 'VL_DESC', 'VL_ABAT_NT', 'VL_MERC', 'IND_FRT', 'VL_FRT', 'VL_SEG', 'VL_OUT_DA', 'VL_BC_ICMS', 'VL_ICMS', 'VL_BC_ICMS_ST', 'VL_ICMS_ST', 'VL_IPI', 'VL_PIS', 'VL_COFINS', 'VL_PIS_ST', 'VL_COFINS_ST'],
+            'C170': ['REG', 'NUM_ITEM', 'COD_ITEM', 'DESCR_COMPL', 'QTD', 'UNID', 'VL_ITEM', 'VL_DESC', 'IND_MOV', 'CST_ICMS', 'CFOP', 'COD_NAT', 'VL_BC_ICMS', 'ALIQ_ICMS', 'VL_ICMS', 'VL_BC_ICMS_ST', 'ALIQ_ST', 'VL_ICMS_ST', 'IND_APUR', 'CST_IPI', 'COD_ENQ', 'VL_BC_IPI', 'ALIQ_IPI', 'VL_IPI', 'CST_PIS', 'VL_BC_PIS', 'ALIQ_PIS', 'QUANT_BC_PIS', 'ALIQ_PIS_QUANT', 'VL_PIS', 'VL_CRED_PIS', 'CST_COFINS', 'VL_BC_COFINS', 'ALIQ_COFINS', 'QUANT_BC_COFINS', 'ALIQ_COFINS_QUANT', 'VL_COFINS', 'VL_CRED_COFINS', 'COD_CTA'],
+            
+            // Apuração PIS (CRÍTICO)
+            'M100': ['REG', 'COD_CRED', 'IND_CRED_ORI', 'VL_BC_PIS', 'ALIQ_PIS', 'QUANT_BC_PIS', 'ALIQ_PIS_QUANT', 'VL_CRED', 'VL_AJUS_ACRES', 'VL_AJUS_REDUC', 'VL_CRED_DIF', 'VL_CRED_DISP', 'IND_DESC_CRED', 'VL_CRED_DESC', 'SLD_CRED'],    
+            'M200': ['REG', 'VL_TOT_CONT_NC_PER', 'VL_TOT_CRED_DESC', 'VL_TOT_CRED_DESC_ANT', 'VL_TOT_CONT_NC_DEV', 'VL_RET_NC', 'VL_OUT_DED_NC', 'VL_CONT_NC_REC', 'VL_TOT_CONT_CUM_PER', 'VL_RET_CUM', 'VL_OUT_DED_CUM', 'VL_CONT_CUM_REC', 'VL_TOT_CONT_REC'],
+            'M210': ['REG', 'COD_CONT', 'VL_REC_BRT', 'VL_BC_CONT', 'ALIQ_PIS', 'QUANT_BC_PIS', 'ALIQ_PIS_QUANT', 'VL_CONT', 'VL_AJUS_ACRES', 'VL_AJUS_REDUC', 'VL_CONT_DIFER', 'VL_CONT_DIFER_ANT', 'VL_CONT_PER'],
+            
+            // Apuração COFINS (CRÍTICO)
+            'M600': ['REG', 'VL_TOT_CONT_NC_PER', 'VL_TOT_CRED_DESC', 'VL_TOT_CRED_DESC_ANT', 'VL_TOT_CONT_NC_DEV', 'VL_RET_NC', 'VL_OUT_DED_NC', 'VL_CONT_NC_REC', 'VL_TOT_CONT_CUM_PER', 'VL_RET_CUM', 'VL_OUT_DED_CUM', 'VL_CONT_CUM_REC', 'VL_TOT_CONT_REC'],
+            'M605': ['REG', 'NAT_BC_CRED', 'CST_COFINS', 'VL_BC_COFINS_TOT', 'VL_BC_COFINS_CUM', 'VL_BC_COFINS_NC', 'VL_BC_COFINS', 'QUANT_BC_COFINS_TOT', 'QUANT_BC_COFINS', 'DESC_CRED'],
+            'M610': ['REG', 'COD_CONT', 'VL_REC_BRT', 'VL_BC_CONT', 'ALIQ_COFINS', 'QUANT_BC_COFINS', 'ALIQ_COFINS_QUANT', 'VL_CONT', 'VL_AJUS_ACRES', 'VL_AJUS_REDUC', 'VL_CONT_DIFER', 'VL_CONT_DIFER_ANT', 'VL_CONT_PER'],
+            
+            // NOVOS REGISTROS PARA CRÉDITOS DETALHADOS
+            'C191': ['REG', 'CNPJ_CPF_PART', 'CST_PIS', 'CFOP', 'VL_ITEM', 'VL_DESC', 'VL_BC_PIS', 'ALIQ_PIS', 'QUANT_BC_PIS', 'ALIQ_PIS_QUANT', 'VL_PIS', 'CST_COFINS', 'VL_BC_COFINS', 'ALIQ_COFINS', 'QUANT_BC_COFINS', 'ALIQ_COFINS_QUANT', 'VL_COFINS', 'COD_CTA'],
+            'C195': ['REG', 'CNPJ_CPF_PART', 'CST_PIS', 'CFOP', 'VL_ITEM', 'VL_DESC', 'VL_BC_PIS', 'ALIQ_PIS', 'QUANT_BC_PIS', 'ALIQ_PIS_QUANT', 'VL_PIS', 'CST_COFINS', 'VL_BC_COFINS', 'ALIQ_COFINS', 'QUANT_BC_COFINS', 'ALIQ_COFINS_QUANT', 'VL_COFINS', 'COD_CTA'],
+
+            // Documentos de Serviços
+            'D100': ['REG', 'IND_OPER', 'IND_EMIT', 'COD_PART', 'COD_MOD', 'COD_SIT', 'SER', 'SUB', 'NUM_DOC', 'CHV_CTE', 'DT_DOC', 'DT_A_P', 'TP_CT_E', 'CHV_CTE_REF', 'VL_DOC', 'VL_DESC', 'IND_FRT', 'VL_SERV', 'VL_BC_ICMS', 'VL_ICMS', 'VL_NT', 'COD_INF', 'COD_CTA'],
+            'D101': ['REG', 'IND_NAT_FRT', 'VL_ITEM', 'CST_PIS', 'NAT_BC_CRED', 'VL_BC_PIS', 'ALIQ_PIS', 'VL_PIS', 'CST_COFINS', 'VL_BC_COFINS', 'ALIQ_COFINS', 'VL_COFINS', 'COD_CTA'],
+
+            // Demais Documentos e Operações
+            'F100': ['REG', 'IND_OPER', 'COD_PART', 'COD_ITEM', 'DT_OPER', 'VL_OPER', 'CST_PIS', 'VL_BC_PIS', 'ALIQ_PIS', 'VL_PIS', 'CST_COFINS', 'VL_BC_COFINS', 'ALIQ_COFINS', 'VL_COFINS', 'NAT_BC_CRED', 'IND_ORIG_CRED', 'COD_CTA', 'COD_CCUS', 'DESC_DOC_OPER'],
+
+            // Apuração de Créditos
+            'M105': ['REG', 'NAT_BC_CRED', 'CST_PIS', 'VL_BC_PIS_TOT', 'VL_BC_PIS_CUM', 'VL_BC_PIS_NC', 'VL_BC_PIS', 'QUANT_BC_PIS_TOT', 'QUANT_BC_PIS', 'DESC_CRED'],
+            'M110': ['REG', 'IND_AJ', 'VL_AJ', 'COD_AJ', 'NUM_DOC', 'DESCR_AJ', 'DT_REF'],
+            'M115': ['REG', 'DET_VALOR_AJ', 'CST_PIS', 'DET_BC_CRED', 'DET_ALIQ', 'DT_OPER_AJ', 'DESC_AJ', 'COD_CTA', 'INFO_COMPL'],
+
+            'M505': ['REG', 'NAT_BC_CRED', 'CST_COFINS', 'VL_BC_COFINS_TOT', 'VL_BC_COFINS_CUM', 'VL_BC_COFINS_NC', 'VL_BC_COFINS', 'QUANT_BC_COFINS_TOT', 'QUANT_BC_COFINS', 'DESC_CRED'],
+            'M510': ['REG', 'IND_AJ', 'VL_AJ', 'COD_AJ', 'NUM_DOC', 'DESCR_AJ', 'DT_REF'],
+            'M515': ['REG', 'DET_VALOR_AJ', 'CST_COFINS', 'DET_BC_CRED', 'DET_ALIQ', 'DT_OPER_AJ', 'DESC_AJ', 'COD_CTA', 'INFO_COMPL']
+        },
+        
+        registrosECF: {
+            // Identificação
+            'J001': ['REG', 'NUM_ORD', 'NAT_LIVR', 'NOME', 'NIRE', 'CNPJ', 'DT_ARQ', 'DT_ARQ_CONV', 'DESC_MUN', 'VL_REC_BRT'],
+            
+            // Demonstrações Financeiras (CRÍTICO PARA DADOS FINANCEIROS)
+            'J100': ['REG', 'COD_AGL', 'NIVEL_AGL', 'IND_GRP_BAL', 'DESCR_COD_AGL', 'VL_CTA_INI_PER', 'IND_DC_INI_PER', 'VL_CTA_FIN_PER', 'IND_DC_FIN_PER'],
+            'J150': ['REG', 'COD_AGL', 'NIVEL_AGL', 'DESCR_COD_AGL', 'VL_CTA', 'IND_VL'],
+            'J200': ['REG', 'COD_HISTR_FAT_GER', 'VAL_FAT_CONT', 'IND_VAL_FAT_CONT', 'VAL_EXC_BC_EAC', 'IND_VAL_EXC_BC_EAC', 'VAL_EXC_BC_SUSP', 'IND_VAL_EXC_BC_SUSP', 'VAL_BC_EAC', 'IND_VAL_BC_EAC', 'VAL_BC_EAC_ADC', 'IND_VAL_BC_EAC_ADC', 'VAL_EAC', 'IND_VAL_EAC', 'VAL_EAC_ADC', 'IND_VAL_EAC_ADC'],
+            'J210': ['REG', 'IND_TIP_INFO_ADIC', 'VL_INF_ADIC', 'DESCR_COMPL_AJ', 'VL_AJ', 'IND_VL_AJ'],
+            
+            // NOVO: Dados específicos de DRE e Balanço para análises financeiras
+            'J930': ['REG', 'IDENT_NOM', 'IDENT_CPF_CNPJ', 'IND_RESP_LEGAL', 'IDENT_QUALIF', 'COD_ASSIN_DIG', 'IND_CRC', 'EMAIL', 'FONE', 'UF_CRC', 'NUM_SEQ_CRC', 'DT_CRC'],
+            
+            // Demonstrações Contábeis Detalhadas
+            'L100': ['REG', 'DT_INI', 'DT_FIN', 'TIPO_ESCR', 'COD_QUAL_PJ', 'COD_FORM_TRIB', 'FORMA_TRIB', 'PERIODO_PREV', 'OPT_REFIS', 'OPT_PAES', 'FORMA_APUR'],
+            'L200': ['REG', 'IND_TIT_UTIL', 'TIT_UTIL'],
+            'L210': ['REG', 'CODIGO', 'DESCRICAO', 'VALOR', 'IND_VALOR'],
+            'L300': ['REG', 'CODIGO', 'DESCRICAO', 'VALOR', 'IND_VALOR']
+        },
+        
+        registrosECD: {
+            // Identificação
+            'I001': ['REG', 'NUM_ORD', 'NAT_LIVR', 'NOME', 'NIRE', 'CNPJ', 'DT_ARQ', 'DT_ARQ_CONV', 'SIT_ESP', 'MOEDA', 'VL_CAP', 'IND_ATIV', 'QTDE_SCP'],
+            'I010': ['REG', 'IND_ESC', 'COD_VER_LC'],
+            'I012': ['REG', 'NUM_ORD', 'NAT_LIVR', 'TIPO_ESC', 'COD_ESC_DETAL', 'NUM_ESC', 'DESCR_ESC'],
+            
+            // Balanço e DRE (CRÍTICO PARA CICLO FINANCEIRO)
+            'J100': ['REG', 'DT_ALT', 'COD_CCUS', 'COD_CTA', 'COD_CTA_SUP', 'COD_NAT_CC', 'IND_CTA', 'NIVEL', 'COD_GRP_CTA', 'NOME_CTA'],
+            'J150': ['REG', 'NIVEL', 'COD_CTA', 'COD_CTA_SUP', 'COD_CTA_INF', 'VL_SLD_INI', 'IND_DC_INI', 'VL_DEB', 'VL_CRED', 'VL_SLD_FIN', 'IND_DC_FIN'],
+            
+            // NOVO: Fluxo de Caixa para análise de prazos
+            'J800': ['REG', 'ARQ_RTF', 'IND_FIN_RTF'],
+            'J801': ['REG', 'DESCR_UND_HASH', 'HASH_UND'],
+            'J900': ['REG', 'DNRC_ENC', 'DNRC_INI', 'DNRC_FIN', 'NOME_AC', 'COD_QUALIF_AC', 'CNPJ_AC', 'CRC_AC', 'EMAIL_AC', 'FONE_AC', 'UF_CRC_AC', 'NUM_SEQ_CRC_AC', 'DT_CRC_AC'],
+            
+            // Demonstrações Financeiras Detalhadas            
+            'J930': ['REG', 'IDENT_NOM', 'IDENT_CPF_CNPJ', 'IND_CRC', 'EMAIL', 'FONE', 'UF_CRC', 'NUM_SEQ_CRC', 'DT_CRC'],
+
+            // Balancetes e Balanços Analíticos
+            'I050': ['REG', 'DT_ALT', 'COD_NAT', 'IND_CTA', 'NIVEL', 'COD_CTA', 'COD_CTA_SUP', 'CTA'],
+            'I051': ['REG', 'COD_ENT_REF', 'COD_CCUS', 'COD_CTA_REF'],
+            'I052': ['REG', 'COD_CCUS', 'COD_AGL'],
+            'I053': ['REG', 'COD_IDT', 'COD_CNT_CORR', 'NAT_SUB_CNT'],
+
+            // Saldos Periódicos
+            'I155': ['REG', 'COD_CTA', 'COD_CCUS', 'VL_SLD_INI', 'IND_DC_INI', 'VL_DEB', 'VL_CRED', 'VL_SLD_FIN', 'IND_DC_FIN', 'VL_SLD_INI_MF', 'IND_DC_INI_MF', 'VL_DEB_MF', 'VL_CRED_MF', 'VL_SLD_FIN_MF', 'IND_DC_FIN_MF']
+        }
+    };
+    
+    /**
+     * Classe principal do parser SPED aprimorado
+     */
+    class SpedParserAprimorado {
+        constructor() {
+            this.registrosExtraidos = {};
+            this.dadosEmpresa = {};
+            this.dadosFinanceiros = {};      // NOVO: Para dados de DRE/Balanço
+            this.dadosTributarios = {};      // NOVO: Para débitos e créditos detalhados
+            this.dadosCicloFinanceiro = {};  // NOVO: Para cálculo de prazos
+            this.estatisticas = {
+                linhasProcessadas: 0,
+                registrosEncontrados: 0,
+                registrosValidos: 0,
+                erros: [],
+                inicioProcessamento: null,
+                fimProcessamento: null
+            };
+            this.tipoSped = null;
+            this.log = [];
+        }
+        
+        /**
+         * Função principal de parsing aprimorada
+         */
+        async parsearArquivo(arquivo, opcoes = {}) {
+            this.log.push(`🚀 Iniciando parsing APRIMORADO do arquivo: ${arquivo.name}`);
+            this.estatisticas.inicioProcessamento = new Date();
+            
+            try {
+                // 1. Ler conteúdo do arquivo
+                const conteudo = await this.lerArquivo(arquivo);
+                
+                // 2. Identificar tipo de SPED
+                this.tipoSped = this.identificarTipoSped(conteudo);
+                if (!this.tipoSped) {
+                    throw new Error('Tipo de SPED não identificado');
+                }
+                
+                this.log.push(`📋 Tipo identificado: ${this.tipoSped.nome}`);
+                
+                // 3. Processar linhas e extrair registros
+                await this.processarLinhas(conteudo);
+                
+                // 4. NOVO: Extrair dados específicos por tipo
+                this.extrairDadosEmpresa();
+                this.extrairDadosFinanceiros();        // NOVO
+                this.extrairDadosTributarios();        // NOVO
+                this.extrairDadosCicloFinanceiro();    // NOVO
+                
+                // 5. Calcular estatísticas finais
+                this.finalizarEstatisticas();
+                
+                return this.gerarResultadoAprimorado();
+                
+            } catch (erro) {
+                this.log.push(`❌ Erro no parsing: ${erro.message}`);
+                throw erro;
+            }
+        }
+        
+        /**
+         * NOVO: Extração específica de dados financeiros
+         */
+        extrairDadosFinanceiros() {
+            this.log.push('💰 Extraindo dados financeiros...');
+            
+            this.dadosFinanceiros = {
+                receitaBruta: 0,
+                receitaLiquida: 0,
+                custoTotal: 0,
+                despesasOperacionais: 0,
+                lucroOperacional: 0,
+                margemOperacional: 0,
+                fonte: []
+            };
+            
+            // Para ECF - Demonstrações
+            if (this.tipoSped.tipo === 'ecf') {
+                this.extrairDadosFinanceirosECF();
+            }
+            
+            // Para SPED Contribuições - Receitas
+            if (this.tipoSped.tipo === 'contribuicoes') {
+                this.extrairReceitasContribuicoes();
+            }
+            
+            // Para ECD - Balanço e DRE
+            if (this.tipoSped.tipo === 'ecd') {
+                this.extrairDadosFinanceirosECD();
+            }
+            
+            // Calcular indicadores derivados
+            this.calcularIndicadoresFinanceiros();
+            
+            this.log.push(`✅ Dados financeiros extraídos - Receita Bruta: R$ ${this.dadosFinanceiros.receitaBruta.toFixed(2)}`);
+        }
+        
+        /**
+         * NOVO: Extração de dados tributários detalhados
+         */
+        extrairDadosTributarios() {
+            this.log.push('📊 Extraindo dados tributários detalhados...');
+            
+            this.dadosTributarios = {
+                debitos: {
+                    pis: 0,
+                    cofins: 0,
+                    icms: 0,
+                    ipi: 0,
+                    iss: 0
+                },
+                creditos: {
+                    pis: 0,
+                    cofins: 0,
+                    icms: 0,
+                    ipi: 0,
+                    iss: 0
+                },
+                aliquotasEfetivas: {
+                    pis: 0,
+                    cofins: 0,
+                    icms: 0,
+                    ipi: 0,
+                    iss: 0,
+                    total: 0
+                },
+                fonte: []
+            };
+            
+            // Extrair por tipo de SPED
+            switch (this.tipoSped.tipo) {
+                case 'fiscal':
+                    this.extrairTributariosFiscal();
+                    break;
+                case 'contribuicoes':
+                    this.extrairTributariosContribuicoes();
+                    break;
+            }
+            
+            // Calcular alíquotas efetivas
+            this.calcularAliquotasEfetivas();
+            
+            this.log.push(`✅ Dados tributários extraídos - Alíquota total efetiva: ${this.dadosTributarios.aliquotasEfetivas.total.toFixed(2)}%`);
+        }
+        
+        /**
+     * Extração tributária melhorada do SPED Fiscal
+     */
+    extrairTributariosFiscal() {
+        // ICMS - Registro E110 (Apuração ICMS)
+        if (this.registrosExtraidos.E110) {
+            this.registrosExtraidos.E110.forEach(registro => {
+                this.dadosTributarios.debitos.icms += this.converterParaNumero(registro.VL_TOT_DEBITOS);
+                this.dadosTributarios.creditos.icms += this.converterParaNumero(registro.VL_TOT_CREDITOS);
+            });
+            this.dadosTributarios.fonte.push('SPED Fiscal - E110');
+        }
+
+        // IPI - Registro E210 (Apuração IPI)  
+        if (this.registrosExtraidos.E210) {
+            this.registrosExtraidos.E210.forEach(registro => {
+                this.dadosTributarios.debitos.ipi += this.converterParaNumero(registro.VL_TOT_DEBITOS_IPI);
+                this.dadosTributarios.creditos.ipi += this.converterParaNumero(registro.VL_TOT_CREDITOS_IPI);
+            });
+            this.dadosTributarios.fonte.push('SPED Fiscal - E210');
+        }
+
+        // PROCESSAR C100/C170 CORRETAMENTE
+        if (this.registrosExtraidos.C100) {
+            this.registrosExtraidos.C100.forEach(registro => {
+                const indOperacao = registro.IND_OPER;
+                const situacao = registro.COD_SIT;
+
+                // Ignorar documentos cancelados (situação 02, 03, 04)
+                if (['02', '03', '04'].includes(situacao)) return;
+
+                // ENTRADA (IND_OPER = 0) - CRÉDITOS
+                if (indOperacao === '0') {
+                    this.dadosTributarios.creditos.icms += this.converterParaNumero(registro.VL_ICMS);
+                    this.dadosTributarios.creditos.ipi += this.converterParaNumero(registro.VL_IPI);
+                    this.dadosTributarios.creditos.pis += this.converterParaNumero(registro.VL_PIS);
+                    this.dadosTributarios.creditos.cofins += this.converterParaNumero(registro.VL_COFINS);
+                }
+                // SAÍDA (IND_OPER = 1) - DÉBITOS
+                else if (indOperacao === '1') {
+                    this.dadosTributarios.debitos.pis += this.converterParaNumero(registro.VL_PIS);
+                    this.dadosTributarios.debitos.cofins += this.converterParaNumero(registro.VL_COFINS);
+
+                    // Para saídas, ICMS já está contabilizado no E110
+                    // mas podemos usar para validação
+                }
+            });
+            this.dadosTributarios.fonte.push('SPED Fiscal - C100');
+        }
+
+        // PROCESSAR C170 para detalhamento de créditos por item
+        if (this.registrosExtraidos.C170) {
+            this.registrosExtraidos.C170.forEach(registro => {
+                // Verificar CST para determinar se há direito a crédito
+                const cstPis = registro.CST_PIS;
+                const cstCofins = registro.CST_COFINS;
+                const cstIcms = registro.CST_ICMS;
+                const cstIpi = registro.CST_IPI;
+
+                // PIS - CSTs que geram crédito: 50-66
+                if (cstPis >= '50' && cstPis <= '66') {
+                    this.dadosTributarios.creditos.pis += this.converterParaNumero(registro.VL_PIS);
+                }
+
+                // COFINS - CSTs que geram crédito: 50-66
+                if (cstCofins >= '50' && cstCofins <= '66') {
+                    this.dadosTributarios.creditos.cofins += this.converterParaNumero(registro.VL_COFINS);
+                }
+            });
+        }
     }
 
     /**
-     * Adiciona entrada ao log interno
-     * @param {string} mensagem - Mensagem do log
-     * @param {string} nivel - Nível do log (info, warning, error)
-     * @param {Object} detalhes - Detalhes adicionais
+     * Extração tributária melhorada do SPED Contribuições
      */
-    adicionarLog(mensagem, nivel = 'info', detalhes = null) {
-        const entrada = {
-            timestamp: new Date().toISOString(),
-            nivel: nivel,
-            mensagem: mensagem,
-            detalhes: detalhes
-        };
-        
-        this.log.push(entrada);
-        
-        // Log no console também para desenvolvimento
-        const metodo = nivel === 'error' ? 'error' : nivel === 'warning' ? 'warn' : 'log';
-        console[metodo](`[SPED-PARSER] ${mensagem}`, detalhes || '');
-    }
+    extrairTributariosContribuicoes() {
+        // PIS - Débitos (M200, M210)
+        if (this.registrosExtraidos.M200) {
+            this.registrosExtraidos.M200.forEach(registro => {
+                this.dadosTributarios.debitos.pis += this.converterParaNumero(registro.VL_TOT_CONT_NC_PER);
+                this.dadosTributarios.debitos.pis += this.converterParaNumero(registro.VL_TOT_CONT_CUM_PER);
+            });
+            this.dadosTributarios.fonte.push('SPED Contribuições - M200');
+        }
 
+        // COFINS - Débitos (M600, M610)
+        if (this.registrosExtraidos.M600) {
+            this.registrosExtraidos.M600.forEach(registro => {
+                this.dadosTributarios.debitos.cofins += this.converterParaNumero(registro.VL_TOT_CONT_NC_PER);
+                this.dadosTributarios.debitos.cofins += this.converterParaNumero(registro.VL_TOT_CONT_CUM_PER);
+            });
+            this.dadosTributarios.fonte.push('SPED Contribuições - M600');
+        }
+
+        // CRÉDITOS - M100 (Créditos de PIS)
+        if (this.registrosExtraidos.M100) {
+            this.registrosExtraidos.M100.forEach(registro => {
+                this.dadosTributarios.creditos.pis += this.converterParaNumero(registro.VL_CRED);
+            });
+            this.dadosTributarios.fonte.push('SPED Contribuições - M100');
+        }
+
+        // CRÉDITOS - M500 (Créditos de COFINS) 
+        if (this.registrosExtraidos.M500) {
+            this.registrosExtraidos.M500.forEach(registro => {
+                this.dadosTributarios.creditos.cofins += this.converterParaNumero(registro.VL_CRED);
+            });
+            this.dadosTributarios.fonte.push('SPED Contribuições - M500');
+        }
+
+        // Créditos detalhados - C170
+        if (this.registrosExtraidos.C170) {
+            this.registrosExtraidos.C170.forEach(registro => {
+                // No SPED Contribuições, C170 tem campos específicos para créditos
+                if (registro.VL_CRED_PIS) {
+                    this.dadosTributarios.creditos.pis += this.converterParaNumero(registro.VL_CRED_PIS);
+                }
+                if (registro.VL_CRED_COFINS) {
+                    this.dadosTributarios.creditos.cofins += this.converterParaNumero(registro.VL_CRED_COFINS);
+                }
+            });
+        }
+
+        // Processar F100 - Demais Documentos e Operações
+        if (this.registrosExtraidos.F100) {
+            this.registrosExtraidos.F100.forEach(registro => {
+                const indOperacao = registro.IND_OPER;
+
+                // Entrada (0) - Créditos
+                if (indOperacao === '0') {
+                    this.dadosTributarios.creditos.pis += this.converterParaNumero(registro.VL_PIS);
+                    this.dadosTributarios.creditos.cofins += this.converterParaNumero(registro.VL_COFINS);
+                }
+                // Saída (1) - Débitos
+                else if (indOperacao === '1') {
+                    this.dadosTributarios.debitos.pis += this.converterParaNumero(registro.VL_PIS);
+                    this.dadosTributarios.debitos.cofins += this.converterParaNumero(registro.VL_COFINS);
+                }
+            });
+            this.dadosTributarios.fonte.push('SPED Contribuições - F100');
+        }
+    }      
+    
+        /**
+         * NOVO: Cálculo de alíquotas efetivas
+         */
+        calcularAliquotasEfetivas() {
+            const faturamento = this.dadosFinanceiros.receitaBruta || 
+                              this.dadosEmpresa.receitaBruta || 
+                              this.calcularFaturamentoBase();
+            
+            if (faturamento > 0) {
+                // Calcular alíquotas líquidas (débitos - créditos)
+                const impostoLiquidoPIS = Math.max(0, this.dadosTributarios.debitos.pis - this.dadosTributarios.creditos.pis);
+                const impostoLiquidoCOFINS = Math.max(0, this.dadosTributarios.debitos.cofins - this.dadosTributarios.creditos.cofins);
+                const impostoLiquidoICMS = Math.max(0, this.dadosTributarios.debitos.icms - this.dadosTributarios.creditos.icms);
+                const impostoLiquidoIPI = Math.max(0, this.dadosTributarios.debitos.ipi - this.dadosTributarios.creditos.ipi);
+                const impostoLiquidoISS = Math.max(0, this.dadosTributarios.debitos.iss - this.dadosTributarios.creditos.iss);
+                
+                this.dadosTributarios.aliquotasEfetivas = {
+                    pis: (impostoLiquidoPIS / faturamento) * 100,
+                    cofins: (impostoLiquidoCOFINS / faturamento) * 100,
+                    icms: (impostoLiquidoICMS / faturamento) * 100,
+                    ipi: (impostoLiquidoIPI / faturamento) * 100,
+                    iss: (impostoLiquidoISS / faturamento) * 100,
+                    total: ((impostoLiquidoPIS + impostoLiquidoCOFINS + impostoLiquidoICMS + impostoLiquidoIPI + impostoLiquidoISS) / faturamento) * 100
+                };
+            }
+        }
+        
+        /**
+         * NOVO: Extração de dados para ciclo financeiro
+         */
+        extrairDadosCicloFinanceiro() {
+            this.log.push('⏱️ Extraindo dados para ciclo financeiro...');
+            
+            this.dadosCicloFinanceiro = {
+                pmr: 30,  // Prazo Médio de Recebimento
+                pme: 30,  // Prazo Médio de Estoque
+                pmp: 30,  // Prazo Médio de Pagamento
+                estimado: true,
+                fonte: []
+            };
+            
+            // Para ECD - usar dados do balanço
+            if (this.tipoSped.tipo === 'ecd') {
+                this.calcularCicloFinanceiroECD();
+            }
+            
+            // Para outros SPEDs - estimativas baseadas em volume de operações
+            this.estimarCicloFinanceiro();
+            
+            this.log.push(`✅ Ciclo financeiro calculado - PMR: ${this.dadosCicloFinanceiro.pmr}, PME: ${this.dadosCicloFinanceiro.pme}, PMP: ${this.dadosCicloFinanceiro.pmp}`);
+        }
+        
+        /**
+         * NOVO: Cálculo de ciclo financeiro baseado no ECD
+         */
+        calcularCicloFinanceiroECD() {
+            // Tentar calcular baseado em contas do balanço
+            if (this.registrosExtraidos.J150) {
+                let contasReceber = 0;
+                let estoques = 0;
+                let contasPagar = 0;
+                let vendas = this.dadosFinanceiros.receitaBruta || 0;
+                let cmv = this.dadosFinanceiros.custoTotal || 0;
+                
+                this.registrosExtraidos.J150.forEach(registro => {
+                    const codigoConta = registro.COD_CTA;
+                    const valorConta = this.converterParaNumero(registro.VL_SLD_FIN);
+                    
+                    // Contas a Receber (geralmente 1.1.2.x)
+                    if (codigoConta.startsWith('1.1.2')) {
+                        contasReceber += valorConta;
+                    }
+                    // Estoques (geralmente 1.1.3.x)
+                    else if (codigoConta.startsWith('1.1.3')) {
+                        estoques += valorConta;
+                    }
+                    // Contas a Pagar (geralmente 2.1.1.x)
+                    else if (codigoConta.startsWith('2.1.1')) {
+                        contasPagar += valorConta;
+                    }
+                });
+                
+                // Calcular prazos se houver dados suficientes
+                if (vendas > 0) {
+                    this.dadosCicloFinanceiro.pmr = Math.round((contasReceber / vendas) * 365);
+                    this.dadosCicloFinanceiro.estimado = false;
+                }
+                
+                if (cmv > 0) {
+                    this.dadosCicloFinanceiro.pme = Math.round((estoques / cmv) * 365);
+                    this.dadosCicloFinanceiro.pmp = Math.round((contasPagar / cmv) * 365);
+                }
+                
+                this.dadosCicloFinanceiro.fonte.push('ECD - Balanço');
+            }
+        }
+        
+        /**
+         * NOVO: Estimativa de ciclo baseado em volume de operações
+         */
+        estimarCicloFinanceiro() {
+            // Lógica de estimativa baseada no porte da empresa
+            const faturamento = this.dadosFinanceiros.receitaBruta || this.dadosEmpresa.receitaBruta || 0;
+            const faturamentoAnual = faturamento * 12;
+            
+            if (faturamentoAnual > 0) {
+                // Empresas maiores tendem a ter PMR menor
+                if (faturamentoAnual > 100000000) { // > 100M
+                    this.dadosCicloFinanceiro.pmr = 25;
+                    this.dadosCicloFinanceiro.pmp = 45;
+                } else if (faturamentoAnual > 50000000) { // > 50M
+                    this.dadosCicloFinanceiro.pmr = 30;
+                    this.dadosCicloFinanceiro.pmp = 35;
+                } else {
+                    this.dadosCicloFinanceiro.pmr = 35;
+                    this.dadosCicloFinanceiro.pmp = 30;
+                }
+                
+                this.dadosCicloFinanceiro.fonte.push('Estimativa baseada no porte');
+            }
+        }
+        
+        /**
+         * NOVO: Geração de resultado aprimorado
+         */
+        gerarResultadoAprimorado() {
+            const resultadoBase = this.gerarResultado();
+            
+            // Adicionar dados aprimorados
+            return {
+                ...resultadoBase,
+                dadosFinanceiros: this.dadosFinanceiros,
+                dadosTributarios: this.dadosTributarios,
+                dadosCicloFinanceiro: this.dadosCicloFinanceiro,
+                
+                // Estrutura padronizada para integração
+                dadosIntegracao: {
+                    empresa: {
+                        ...this.dadosEmpresa,
+                        faturamentoMensal: this.dadosFinanceiros.receitaBruta || 0,
+                        margemOperacional: this.dadosFinanceiros.margemOperacional || 0
+                    },
+                    
+                    financeiro: {
+                        receitaBruta: this.dadosFinanceiros.receitaBruta,
+                        receitaLiquida: this.dadosFinanceiros.receitaLiquida,
+                        custoTotal: this.dadosFinanceiros.custoTotal,
+                        despesasOperacionais: this.dadosFinanceiros.despesasOperacionais,
+                        lucroOperacional: this.dadosFinanceiros.lucroOperacional,
+                        margemOperacional: this.dadosFinanceiros.margemOperacional
+                    },
+                    
+                    tributario: {
+                        debitos: this.dadosTributarios.debitos,
+                        creditos: this.dadosTributarios.creditos,
+                        aliquotasEfetivas: this.dadosTributarios.aliquotasEfetivas
+                    },
+                    
+                    cicloFinanceiro: {
+                        pmr: this.dadosCicloFinanceiro.pmr,
+                        pme: this.dadosCicloFinanceiro.pme,
+                        pmp: this.dadosCicloFinanceiro.pmp,
+                        estimado: this.dadosCicloFinanceiro.estimado
+                    }
+                },
+                
+                // Metadados aprimorados
+                metadados: {
+                    ...resultadoBase.metadados,
+                    versaoParser: '2.1.0-aprimorado',
+                    dadosExtraidos: {
+                        empresa: Object.keys(this.dadosEmpresa).length > 0,
+                        financeiro: Object.keys(this.dadosFinanceiros).length > 0,
+                        tributario: Object.keys(this.dadosTributarios).length > 0,
+                        cicloFinanceiro: Object.keys(this.dadosCicloFinanceiro).length > 0
+                    }
+                }
+            };
+        }
+        
+        // Métodos auxiliares existentes mantidos...
+        async lerArquivo(arquivo) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                
+                reader.onload = (evento) => {
+                    resolve(evento.target.result);
+                };
+                
+                reader.onerror = () => {
+                    reject(new Error('Erro ao ler arquivo'));
+                };
+                
+                reader.readAsText(arquivo, 'UTF-8');
+            });
+        }
+        
+        identificarTipoSped(conteudo) {
+            const linhas = conteudo.split(CONFIG.terminadorLinha);
+            
+            for (let i = 0; i < Math.min(linhas.length, 20); i++) {
+                const linha = linhas[i].trim();
+                if (!linha) continue;
+                
+                const campos = linha.split(CONFIG.separadorCampo);
+                if (campos.length < 3) continue;
+                
+                const registro = campos[1];
+                
+                if (registro === '0000') {
+                    const codigoFinalidade = campos[2];
+                    if (codigoFinalidade === '0' || codigoFinalidade === '1') {
+                        return { tipo: 'fiscal', nome: 'SPED Fiscal' };
+                    }
+                    if (codigoFinalidade === '2' || codigoFinalidade === '3') {
+                        return { tipo: 'contribuicoes', nome: 'SPED Contribuições' };
+                    }
+                }
+                
+                if (registro === 'J001') {
+                    return { tipo: 'ecf', nome: 'ECF' };
+                }
+                
+                if (registro === 'I001') {
+                    return { tipo: 'ecd', nome: 'ECD' };
+                }
+            }
+            
+            return null;
+        }
+        
+        async processarLinhas(conteudo) {
+            const linhas = conteudo.split(CONFIG.terminadorLinha);
+            const totalLinhas = linhas.length;
+            
+            this.log.push(`📊 Processando ${totalLinhas.toLocaleString()} linhas...`);
+            
+            const mapeamentoRegistros = this.obterMapeamentoRegistros();
+            
+            for (let i = 0; i < linhas.length; i++) {
+                const linha = linhas[i].trim();
+                this.estatisticas.linhasProcessadas++;
+                
+                if (i > 0 && i % 50000 === 0) {
+                    const progresso = ((i / totalLinhas) * 100).toFixed(1);
+                    this.log.push(`⏳ Progresso: ${progresso}% (${i.toLocaleString()}/${totalLinhas.toLocaleString()} linhas)`);
+                }
+                
+                if (!linha || linha.length < 5) continue;
+                
+                try {
+                    const registro = this.processarLinha(linha, mapeamentoRegistros);
+                    if (registro) {
+                        this.adicionarRegistro(registro);
+                        this.estatisticas.registrosValidos++;
+                    }
+                    this.estatisticas.registrosEncontrados++;
+                    
+                } catch (erro) {
+                    this.estatisticas.erros.push({
+                        linha: i + 1,
+                        erro: erro.message,
+                        conteudo: linha.substring(0, 100)
+                    });
+                }
+            }
+            
+            this.log.push(`✅ Processamento concluído: ${this.estatisticas.registrosValidos.toLocaleString()} registros válidos extraídos`);
+        }
+        
+        obterMapeamentoRegistros() {
+            switch (this.tipoSped.tipo) {
+                case 'fiscal':
+                    return CONFIG.registrosFiscal;
+                case 'contribuicoes':
+                    return CONFIG.registrosContribuicoes;
+                case 'ecf':
+                    return CONFIG.registrosECF;
+                case 'ecd':
+                    return CONFIG.registrosECD;
+                default:
+                    return {};
+            }
+        }
+        
+        processarLinha(linha, mapeamento) {
+            const campos = linha.split(CONFIG.separadorCampo);
+            if (campos.length < 2) return null;
+            
+            const tipoRegistro = campos[1];
+            const estrutura = mapeamento[tipoRegistro];
+            
+            if (!estrutura) return null;
+            
+            const registro = {
+                tipo: tipoRegistro,
+                linha: linha,
+                dados: {}
+            };
+            
+            for (let i = 0; i < Math.min(campos.length, estrutura.length); i++) {
+                const nomeCampo = estrutura[i];
+                const valorCampo = campos[i] ? campos[i].trim() : '';
+                registro.dados[nomeCampo] = valorCampo;
+            }
+            
+            return registro;
+        }
+        
+        adicionarRegistro(registro) {
+            const tipo = registro.tipo;
+            
+            if (!this.registrosExtraidos[tipo]) {
+                this.registrosExtraidos[tipo] = [];
+            }
+            
+            this.registrosExtraidos[tipo].push(registro.dados);
+        }
+        
+        extrairDadosEmpresa() {
+            if (this.registrosExtraidos['0000'] && this.registrosExtraidos['0000'].length > 0) {
+                const reg0000 = this.registrosExtraidos['0000'][0];
+                
+                this.dadosEmpresa = {
+                    razaoSocial: reg0000.NOME || '',
+                    cnpj: reg0000.CNPJ || '',
+                    uf: reg0000.UF || '',
+                    inscricaoEstadual: reg0000.IE || '',
+                    dataInicialPeriodo: this.formatarData(reg0000.DT_INI),
+                    dataFinalPeriodo: this.formatarData(reg0000.DT_FIN),
+                    codigoMunicipio: reg0000.COD_MUN || ''
+                };
+            }
+            
+            if (this.registrosExtraidos['0005'] && this.registrosExtraidos['0005'].length > 0) {
+                const reg0005 = this.registrosExtraidos['0005'][0];
+                
+                this.dadosEmpresa.nomeFantasia = reg0005.FANTASIA || '';
+                this.dadosEmpresa.endereco = reg0005.END || '';
+                this.dadosEmpresa.cep = reg0005.CEP || '';
+                this.dadosEmpresa.telefone = reg0005.FONE || '';
+                this.dadosEmpresa.email = reg0005.EMAIL || '';
+            }
+            
+            if (this.tipoSped.tipo === 'ecf' && this.registrosExtraidos['J001']) {
+                const regJ001 = this.registrosExtraidos['J001'][0];
+                if (regJ001) {
+                    this.dadosEmpresa.razaoSocial = regJ001.NOME || '';
+                    this.dadosEmpresa.cnpj = regJ001.CNPJ || '';
+                    this.dadosEmpresa.receitaBruta = this.converterParaNumero(regJ001.VL_REC_BRT);
+                }
+            }
+            
+            this.log.push(`🏢 Dados da empresa extraídos: ${this.dadosEmpresa.razaoSocial}`);
+        }
+        
+        extrairDadosFinanceirosECF() {
+            // Implementar extração específica do ECF
+            if (this.registrosExtraidos.J001) {
+                const regJ001 = this.registrosExtraidos.J001[0];
+                if (regJ001) {
+                    this.dadosFinanceiros.receitaBruta = this.converterParaNumero(regJ001.VL_REC_BRT);
+                    this.dadosFinanceiros.fonte.push('ECF - J001');
+                }
+            }
+        }
+        
+        extrairReceitasContribuicoes() {
+            // Somar receitas dos registros A100
+            if (this.registrosExtraidos.A100) {
+                this.registrosExtraidos.A100.forEach(registro => {
+                    this.dadosFinanceiros.receitaBruta += this.converterParaNumero(registro.VL_DOC);
+                });
+                this.dadosFinanceiros.fonte.push('SPED Contribuições - A100');
+            }
+            
+            // Somar receitas dos registros A200
+            if (this.registrosExtraidos.A200) {
+                this.registrosExtraidos.A200.forEach(registro => {
+                    this.dadosFinanceiros.receitaBruta += this.converterParaNumero(registro.VL_REC_BRT);
+                });
+                this.dadosFinanceiros.fonte.push('SPED Contribuições - A200');
+            }
+        }
+        
+        extrairDadosFinanceirosECD() {
+            // Implementar extração do ECD baseado no plano de contas
+            if (this.registrosExtraidos.J150) {
+                this.registrosExtraidos.J150.forEach(registro => {
+                    const codigoConta = registro.COD_CTA;
+                    const valorConta = this.converterParaNumero(registro.VL_SLD_FIN);
+                    
+                    // Receitas (geralmente 3.1.x)
+                    if (codigoConta.startsWith('3.1')) {
+                        this.dadosFinanceiros.receitaBruta += valorConta;
+                    }
+                    // Custos (geralmente 3.2.x)
+                    else if (codigoConta.startsWith('3.2')) {
+                        this.dadosFinanceiros.custoTotal += valorConta;
+                    }
+                    // Despesas (geralmente 3.3.x)
+                    else if (codigoConta.startsWith('3.3')) {
+                        this.dadosFinanceiros.despesasOperacionais += valorConta;
+                    }
+                });
+                this.dadosFinanceiros.fonte.push('ECD - J150');
+            }
+        }
+        
+        calcularIndicadoresFinanceiros() {
+            // Calcular receita líquida (assumindo 5% de deduções se não informado)
+            if (this.dadosFinanceiros.receitaLiquida === 0 && this.dadosFinanceiros.receitaBruta > 0) {
+                this.dadosFinanceiros.receitaLiquida = this.dadosFinanceiros.receitaBruta * 0.95;
+            }
+            
+            // Calcular lucro operacional
+            this.dadosFinanceiros.lucroOperacional = 
+                this.dadosFinanceiros.receitaLiquida - 
+                this.dadosFinanceiros.custoTotal - 
+                this.dadosFinanceiros.despesasOperacionais;
+            
+            // Calcular margem operacional
+            if (this.dadosFinanceiros.receitaLiquida > 0) {
+                this.dadosFinanceiros.margemOperacional = 
+                    (this.dadosFinanceiros.lucroOperacional / this.dadosFinanceiros.receitaLiquida) * 100;
+            }
+        }
+        
+        calcularFaturamentoBase() {
+            // Tentar calcular um faturamento base para alíquotas efetivas
+            let faturamento = 0;
+            
+            // Priorizar dados financeiros
+            if (this.dadosFinanceiros.receitaBruta > 0) {
+                faturamento = this.dadosFinanceiros.receitaBruta;
+            }
+            // Usar dados da empresa
+            else if (this.dadosEmpresa.receitaBruta > 0) {
+                faturamento = this.dadosEmpresa.receitaBruta;
+            }
+            // Estimar baseado em documentos fiscais
+            else if (this.registrosExtraidos.C100) {
+                this.registrosExtraidos.C100.forEach(registro => {
+                    if (registro.IND_OPER === '1') { // Saídas
+                        faturamento += this.converterParaNumero(registro.VL_DOC);
+                    }
+                });
+            }
+            
+            return faturamento;
+        }
+        
+        formatarData(dataStr) {
+            if (!dataStr || dataStr.length !== 8) return '';
+            
+            const dia = dataStr.substring(0, 2);
+            const mes = dataStr.substring(2, 4);
+            const ano = dataStr.substring(4, 8);
+            
+            return `${ano}-${mes}-${dia}`;
+        }
+        
+        converterParaNumero(valorStr) {
+            if (!valorStr) return 0;
+            
+            const numeroLimpo = valorStr.replace(/\./g, '').replace(',', '.');
+            const numero = parseFloat(numeroLimpo);
+            
+            return isNaN(numero) ? 0 : numero;
+        }
+        
+        finalizarEstatisticas() {
+            this.estatisticas.fimProcessamento = new Date();
+            this.estatisticas.tempoProcessamento = 
+                this.estatisticas.fimProcessamento - this.estatisticas.inicioProcessamento;
+            
+            this.estatisticas.tiposRegistroEncontrados = Object.keys(this.registrosExtraidos).length;
+            this.estatisticas.registrosPorTipo = {};
+            
+            Object.keys(this.registrosExtraidos).forEach(tipo => {
+                this.estatisticas.registrosPorTipo[tipo] = this.registrosExtraidos[tipo].length;
+            });
+        }
+        
+        gerarResultado() {
+            const resultado = {
+                sucesso: true,
+                tipoSped: {
+                    tipo: this.tipoSped.tipo,
+                    nome: this.tipoSped.nome,
+                    detalhes: {
+                        codigo: this.tipoSped.tipo,
+                        descricao: this.tipoSped.nome
+                    }
+                },
+                dadosEmpresa: this.dadosEmpresa,
+                registros: this.registrosExtraidos,
+                resumo: {
+                    totalTiposRegistro: this.estatisticas.tiposRegistroEncontrados,
+                    registrosPorTipo: this.estatisticas.registrosPorTipo
+                },
+                estatisticas: {
+                    linhasProcessadas: this.estatisticas.linhasProcessadas,
+                    registrosEncontrados: this.estatisticas.registrosEncontrados,
+                    registrosValidos: this.estatisticas.registrosValidos,
+                    tempoProcessamento: this.estatisticas.tempoProcessamento,
+                    erros: this.estatisticas.erros.slice(0, 50)
+                },
+                log: this.log,
+                metadados: {
+                    timestampProcessamento: new Date().toISOString(),
+                    versaoParser: '2.1.0-aprimorado'
+                }
+            };
+            
+            this.log.push(`🎉 Parsing APRIMORADO concluído! ${this.estatisticas.registrosValidos} registros extraídos`);
+            
+            return resultado;
+        }
+    }
+    
     /**
-     * Valida o arquivo antes do processamento
-     * @param {File} arquivo - Arquivo a ser validado
-     * @returns {Object} Resultado da validação
+     * Função principal de parsing aprimorada
      */
-    validarArquivo(arquivo) {
+    async function parsearArquivoSped(arquivo, opcoes = {}) {
+        const parser = new SpedParserAprimorado();
+        return await parser.parsearArquivo(arquivo, opcoes);
+    }
+    
+    /**
+     * Função de validação de arquivo (mantida)
+     */
+    function validarArquivoSped(arquivo) {
         const validacao = {
             valido: true,
             erros: [],
             avisos: []
         };
-
-        try {
-            // Validar tamanho
-            if (arquivo.size === 0) {
-                validacao.valido = false;
-                validacao.erros.push('Arquivo vazio');
-            } else if (arquivo.size < CONFIG.tolerancias.tamanhoMinimoArquivo) {
-                validacao.avisos.push(`Arquivo muito pequeno (${arquivo.size} bytes)`);
-            } else if (arquivo.size > CONFIG.tamanhoMaximoArquivo) {
-                validacao.valido = false;
-                validacao.erros.push(`Arquivo muito grande: ${this.formatarTamanho(arquivo.size)}. Máximo: ${this.formatarTamanho(CONFIG.tamanhoMaximoArquivo)}`);
-            }
-
-            // Validar tipo
-            const extensao = arquivo.name.toLowerCase().split('.').pop();
-            if (!['txt', 'sped'].includes(extensao)) {
-                validacao.avisos.push(`Extensão incomum para SPED: .${extensao}`);
-            }
-
-            // Validar nome (heurística)
-            const nomeArquivo = arquivo.name.toLowerCase();
-            const palavrasChave = ['sped', 'efd', 'ecf', 'ecd', 'fiscal', 'contribuicoes'];
-            const contemPalavraChave = palavrasChave.some(palavra => nomeArquivo.includes(palavra));
-            
-            if (!contemPalavraChave) {
-                validacao.avisos.push('Nome do arquivo não contém palavras-chave típicas de SPED');
-            }
-
-            this.adicionarLog(`Validação de arquivo concluída: ${validacao.valido ? 'Válido' : 'Inválido'}`, 
-                              validacao.valido ? 'info' : 'error', {
-                arquivo: arquivo.name,
-                tamanho: arquivo.size,
-                erros: validacao.erros,
-                avisos: validacao.avisos
-            });
-
-        } catch (erro) {
+        
+        if (arquivo.size === 0) {
             validacao.valido = false;
-            validacao.erros.push(`Erro na validação: ${erro.message}`);
-            this.adicionarLog('Erro durante validação do arquivo', 'error', erro);
+            validacao.erros.push('Arquivo vazio');
         }
-
+        
+        if (arquivo.size > CONFIG.tamanhoMaximoArquivo) {
+            validacao.valido = false;
+            validacao.erros.push(`Arquivo muito grande: ${(arquivo.size / 1024 / 1024).toFixed(2)}MB. Máximo: ${CONFIG.tamanhoMaximoArquivo / 1024 / 1024}MB`);
+        }
+        
+        const extensao = arquivo.name.toLowerCase().split('.').pop();
+        if (!['txt', 'sped'].includes(extensao)) {
+            validacao.avisos.push(`Extensão não usual para SPED: .${extensao}`);
+        }
+        
         return validacao;
     }
-
-    /**
-     * Lê o conteúdo do arquivo
-     * @param {File} arquivo - Arquivo a ser lido
-     * @returns {Promise<string>} Conteúdo do arquivo
-     */
-    async lerArquivo(arquivo) {
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            const timeoutId = setTimeout(() => {
-                reject(new Error('Timeout na leitura do arquivo'));
-            }, CONFIG.timeoutLeitura);
-
-            reader.onload = (evento) => {
-                clearTimeout(timeoutId);
-                resolve(evento.target.result);
-            };
-
-            reader.onerror = (erro) => {
-                clearTimeout(timeoutId);
-                reject(new Error(`Erro ao ler arquivo: ${erro.message}`));
-            };
-
-            try {
-                reader.readAsText(arquivo, CONFIG.codificacaoArquivo);
-            } catch (erro) {
-                clearTimeout(timeoutId);
-                reject(erro);
-            }
-        });
-    }
-
-    /**
-     * Identifica o tipo de SPED baseado no conteúdo
-     * @param {string} conteudo - Conteúdo do arquivo
-     * @returns {Object|null} Informações do tipo identificado
-     */
-    identificarTipoSped(conteudo) {
-        this.adicionarLog('Iniciando identificação do tipo de SPED...');
-
-        try {
-            const linhas = conteudo.split(CONFIG.terminadorLinha);
-            
-            // Procurar pela primeira linha não vazia
-            let primeiraLinha = null;
-            for (let i = 0; i < Math.min(linhas.length, 10); i++) {
-                const linha = linhas[i].trim();
-                if (linha.length > 0) {
-                    primeiraLinha = linha;
-                    break;
-                }
-            }
-
-            if (!primeiraLinha) {
-                this.adicionarLog('Nenhuma linha válida encontrada no arquivo', 'error');
-                return null;
-            }
-
-            this.adicionarLog(`Primeira linha encontrada: ${primeiraLinha.substring(0, 100)}...`);
-
-            // Analisar estrutura da primeira linha
-            const campos = primeiraLinha.split(CONFIG.separadorCampo);
-            if (campos.length < 3) {
-                this.adicionarLog('Estrutura de linha inválida para SPED', 'error');
-                return null;
-            }
-
-            // Identificar tipo baseado no primeiro registro
-            const codigoRegistro = campos[1]; // Campo REG
-            const tipoIdentificado = this.identificarPorCodigoRegistro(codigoRegistro, campos);
-
-            if (tipoIdentificado) {
-                this.tipoSpedIdentificado = tipoIdentificado;
-                this.versaoLayout = this.extrairVersaoLayout(campos);
-                
-                this.adicionarLog(`Tipo SPED identificado: ${tipoIdentificado.descricao}`, 'info', {
-                    codigo: tipoIdentificado.codigo,
-                    versao: this.versaoLayout,
-                    registro: codigoRegistro
-                });
-
-                return {
-                    tipo: tipoIdentificado,
-                    versao: this.versaoLayout,
-                    registroIdentificador: codigoRegistro
-                };
-            } else {
-                this.adicionarLog(`Tipo de SPED não reconhecido. Registro: ${codigoRegistro}`, 'error');
-                return null;
-            }
-
-        } catch (erro) {
-            this.adicionarLog('Erro na identificação do tipo de SPED', 'error', erro);
-            return null;
-        }
-    }
-
-    /**
-     * Identifica o tipo de SPED pelo código do registro
-     * @param {string} codigoRegistro - Código do registro
-     * @param {Array} campos - Campos da linha
-     * @returns {Object|null} Tipo identificado
-     */
-    identificarPorCodigoRegistro(codigoRegistro, campos) {
-        // SPED Fiscal - EFD ICMS/IPI
-        if (codigoRegistro === '0000' && campos.length >= 6) {
-            const codigoFinalidade = campos[2]; // Campo COD_FIN
-            if (['0', '1'].includes(codigoFinalidade)) {
-                return CONFIG.tiposSuportados['EFD-ICMS/IPI'];
-            }
-        }
-        
-        // ECF - Escrituração Contábil Fiscal
-        if (codigoRegistro === 'J001') {
-            return CONFIG.tiposSuportados['ECF'];
-        }
-        
-        // ECD - Escrituração Contábil Digital
-        if (codigoRegistro === 'I001') {
-            return CONFIG.tiposSuportados['ECD'];
-        }
-        
-        // Análise mais detalhada para diferenciar SPED Fiscal de Contribuições
-        if (codigoRegistro === '0000') {
-            // Examinar mais linhas para distinguir
-            return this.analisarConteudoParaIdentificacao(campos);
-        }
-
-        return null;
-    }
-
-    /**
-     * Análise mais profunda para identificação em casos ambíguos
-     * @param {Array} campos - Campos da primeira linha
-     * @returns {Object|null} Tipo identificado
-     */
-    analisarConteudoParaIdentificacao(campos) {
-        // Se tem mais de 10 campos, provavelmente é SPED Fiscal
-        if (campos.length > 10) {
-            return CONFIG.tiposSuportados['EFD-ICMS/IPI'];
-        }
-        
-        // Verificar padrões específicos nos campos
-        const terceiroCampo = campos[2] || '';
-        
-        // SPED Contribuições geralmente tem códigos específicos
-        if (['2', '3', '4'].includes(terceiroCampo)) {
-            return CONFIG.tiposSuportados['EFD-Contribuições'];
-        }
-        
-        // Por padrão, assumir SPED Fiscal
-        return CONFIG.tiposSuportados['EFD-ICMS/IPI'];
-    }
-
-    /**
-     * Extrai a versão do layout do arquivo
-     * @param {Array} campos - Campos da linha de identificação
-     * @returns {string} Versão do layout
-     */
-    extrairVersaoLayout(campos) {
-        // A versão geralmente está no campo 3 ou 4
-        if (campos.length >= 4) {
-            const possivelVersao = campos[3];
-            if (/^\d{3}$/.test(possivelVersao)) {
-                return possivelVersao;
-            }
-        }
-        
-        if (campos.length >= 5) {
-            const possivelVersao = campos[4];
-            if (/^\d{3}$/.test(possivelVersao)) {
-                return possivelVersao;
-            }
-        }
-        
-        return 'desconhecida';
-    }
-
-    /**
-     * Formata tamanho de arquivo
-     * @param {number} bytes - Tamanho em bytes
-     * @returns {string} Tamanho formatado
-     */
-    formatarTamanho(bytes) {
-        if (bytes === 0) return '0 Bytes';
-        
-        const k = 1024;
-        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-        const i = Math.floor(Math.log(bytes) / Math.log(k));
-        
-        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-    }
-}
-
-/**
- * Função principal de parsing (interface pública)
- * @param {File} arquivo - Arquivo SPED a ser parseado
- * @param {Object} opcoes - Opções de processamento
- * @returns {Promise<Object>} Resultado do parsing
- */
-async function parsearArquivoSped(arquivo, opcoes = {}) {
-    console.log('SPED-PARSER: Iniciando parsing do arquivo SPED...', arquivo.name);
-
-    const parser = new SpedParser();
-
-    try {
-        // 1. Validar arquivo
-        const validacao = parser.validarArquivo(arquivo);
-        if (!validacao.valido) {
-            return {
-                sucesso: false,
-                erro: `Arquivo inválido: ${validacao.erros.join(', ')}`,
-                avisos: validacao.avisos,
-                estatisticas: parser.estatisticas,
-                log: parser.log
-            };
-        }
-
-        // 2. Ler conteúdo do arquivo
-        parser.adicionarLog(`Lendo arquivo: ${arquivo.name} (${parser.formatarTamanho(arquivo.size)})`);
-        const conteudo = await parser.lerArquivo(arquivo);
-        
-        // 3. Identificar tipo de SPED
-        const tipoIdentificado = parser.identificarTipoSped(conteudo);
-        if (!tipoIdentificado) {
-            return {
-                sucesso: false,
-                erro: 'Não foi possível identificar o tipo de SPED',
-                estatisticas: parser.estatisticas,
-                log: parser.log
-            };
-        }
-
-        // 4. Retornar resultado básico (versão simplificada para correção)
-        return {
-            sucesso: true,
-            tipoSped: tipoIdentificado,
-            dadosEmpresa: {
-                razaoSocial: 'Empresa Exemplo',
-                cnpj: '00.000.000/0001-00',
-                dataInicialPeriodo: '2024-01-01',
-                dataFinalPeriodo: '2024-12-31'
-            },
-            registros: {},
-            resumo: {
-                totalTiposRegistro: 0,
-                registrosPorTipo: {}
-            },
-            estatisticas: parser.estatisticas,
-            log: parser.log,
-            metadados: {
-                nomeArquivo: arquivo.name,
-                tamanhoArquivo: arquivo.size,
-                timestampProcessamento: new Date().toISOString(),
-                versaoParser: '1.0.0'
-            }
-        };
-
-    } catch (erro) {
-        console.error('SPED-PARSER: Erro durante o parsing:', erro);
-        parser.adicionarLog('Erro crítico durante o parsing', 'error', erro);
-        
-        return {
-            sucesso: false,
-            erro: `Erro no processamento: ${erro.message}`,
-            estatisticas: parser.estatisticas,
-            log: parser.log
-        };
-    }
-}
-
-/**
- * Função utilitária para identificar tipo de SPED sem processar
- * @param {File} arquivo - Arquivo SPED
- * @returns {Promise<Object|null>} Tipo identificado ou null
- */
-async function identificarTipoArquivoSped(arquivo) {
-    const parser = new SpedParser();
     
-    try {
-        // Ler apenas o início do arquivo
-        const conteudo = await parser.lerArquivo(arquivo);
-        const linhasIniciais = conteudo.split(CONFIG.terminadorLinha).slice(0, 10).join('\n');
-        
-        return parser.identificarTipoSped(linhasIniciais);
-    } catch (erro) {
-        console.error('SPED-PARSER: Erro na identificação:', erro);
-        return null;
-    }
-}
-
-/**
- * Função utilitária para validar arquivo SPED
- * @param {File} arquivo - Arquivo a ser validado
- * @returns {Object} Resultado da validação
- */
-function validarArquivoSped(arquivo) {
-    const parser = new SpedParser();
-    return parser.validarArquivo(arquivo);
-}
-
-// Criar módulo global usando IIFE (Immediately Invoked Function Expression)
-window.SpedParser = (function() {
     // Interface pública do módulo
     return {
         parsearArquivoSped,
-        identificarTipoArquivoSped,
         validarArquivoSped,
         CONFIG,
-        
-        // Classes e utilitários expostos para extensão
-        SpedParser
+        SpedParserAprimorado
     };
 })();
