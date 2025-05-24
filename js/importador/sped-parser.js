@@ -310,6 +310,70 @@ const SpedParser = (function() {
             }
         });
     }
+    
+    function processarDadosTributarios(dadosSped) {
+        console.log('Processando dados tributários...');
+
+        const tributarios = {
+            debitos: { pis: 0, cofins: 0, icms: 0, ipi: 0, iss: 0 },
+            creditos: { pis: 0, cofins: 0, icms: 0, ipi: 0, iss: 0 },
+            aproveitamentoPIS: 100,
+            aproveitamentoCOFINS: 100,
+            aliquotaICMS: 18
+        };
+
+        if (!dadosSped.contribuicoes) return tributarios;
+
+        // Processar SPED Contribuições
+        for (const linha of dadosSped.contribuicoes) {
+            const campos = linha.split('|');
+            const registro = campos[1];
+
+            switch (registro) {
+                case 'M100': // DÉBITOS PIS estão no campo 3 do M100
+                    const debitosPIS = parseFloat(campos[3]?.replace(',', '.') || 0);
+                    tributarios.debitos.pis = debitosPIS;
+                    console.log(`PIS Débitos M100: R$ ${debitosPIS.toLocaleString('pt-BR', {minimumFractionDigits: 2})}`);
+                    break;
+
+                case 'M500': // DÉBITOS COFINS estão no campo 3 do M500
+                    const debitosCOFINS = parseFloat(campos[3]?.replace(',', '.') || 0);
+                    tributarios.debitos.cofins = debitosCOFINS;
+                    console.log(`COFINS Débitos M500: R$ ${debitosCOFINS.toLocaleString('pt-BR', {minimumFractionDigits: 2})}`);
+                    break;
+
+                case 'M105': // Créditos PIS
+                    const creditoPIS = parseFloat(campos[5]?.replace(',', '.') || 0);
+                    tributarios.creditos.pis += creditoPIS;
+                    break;
+
+                case 'M505': // Créditos COFINS  
+                    const creditoCOFINS = parseFloat(campos[5]?.replace(',', '.') || 0);
+                    tributarios.creditos.cofins += creditoCOFINS;
+                    break;
+            }
+        }
+
+        // Se não encontrou M500, estimar COFINS baseado no PIS (proporção 7,6/1,65)
+        if (tributarios.debitos.cofins === 0 && tributarios.debitos.pis > 0) {
+            tributarios.debitos.cofins = tributarios.debitos.pis * (7.6 / 1.65);
+            console.log(`COFINS estimado: R$ ${tributarios.debitos.cofins.toLocaleString('pt-BR', {minimumFractionDigits: 2})}`);
+        }
+
+        // Calcular percentuais de aproveitamento
+        if (tributarios.debitos.pis > 0) {
+            tributarios.aproveitamentoPIS = Math.min((tributarios.creditos.pis / tributarios.debitos.pis) * 100, 100);
+        }
+
+        if (tributarios.debitos.cofins > 0) {
+            tributarios.aproveitamentoCOFINS = Math.min((tributarios.creditos.cofins / tributarios.debitos.cofins) * 100, 100);
+        }
+
+        console.log(`PIS: Débito R$ ${tributarios.debitos.pis.toLocaleString('pt-BR', {minimumFractionDigits: 2})}, Crédito R$ ${tributarios.creditos.pis.toLocaleString('pt-BR', {minimumFractionDigits: 2})}`);
+        console.log(`COFINS: Débito R$ ${tributarios.debitos.cofins.toLocaleString('pt-BR', {minimumFractionDigits: 2})}, Crédito R$ ${tributarios.creditos.cofins.toLocaleString('pt-BR', {minimumFractionDigits: 2})}`);
+
+        return tributarios;
+    }
 
     /**
      * Extrai dados relevantes das linhas do arquivo SPED
