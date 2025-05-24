@@ -1391,6 +1391,13 @@ const ImportacaoController = (function() {
         // Nome da empresa - Verificação e log detalhados
         const campoEmpresa = document.getElementById('empresa');
         if (campoEmpresa) {
+            // Verificação extra para debug
+            console.log('IMPORTACAO-CONTROLLER: Possíveis fontes do nome da empresa:', {
+                nome: dadosEmpresa.nome,
+                nomeEmpresarial: dadosEmpresa.nomeEmpresarial,
+                razaoSocial: dadosEmpresa.razaoSocial
+            });
+
             if (dadosEmpresa.nome && dadosEmpresa.nome.trim() !== '') {
                 campoEmpresa.value = dadosEmpresa.nome.trim();
                 marcarCampoComoSped(campoEmpresa);
@@ -1402,6 +1409,7 @@ const ImportacaoController = (function() {
         } else {
             console.warn('IMPORTACAO-CONTROLLER: Campo de nome da empresa não encontrado no formulário');
         }
+
 
         // Faturamento mensal - Utilizar DataManager para conversão consistente
         const campoFaturamento = document.getElementById('faturamento');

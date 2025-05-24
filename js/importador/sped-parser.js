@@ -245,7 +245,17 @@ const SpedParser = (function() {
             'K200': parseRegistroK200ECD,
             'K220': parseRegistroK220ECD,
             'K230': parseRegistroK230ECD,
-            'K300': parseRegistroK300ECD
+            'K300': parseRegistroK300ECD,
+            
+            // Atualização do mapeamento de registros
+            '9900': parseRegistro9900,
+            '9990': parseRegistro9990,
+            '9999': parseRegistro9999,
+
+            'J050': parseRegistroJ050ECF,
+            'L100': parseRegistroL100ECF,        
+            'M105': parseRegistroM105,
+            'M505': parseRegistroM505,
         }
     };
 
@@ -889,6 +899,25 @@ const SpedParser = (function() {
         // Calcular totais por categoria
         calcularTotaisPorCategoria(resultado);
     }
+    
+    // Adicionar após a função processarRelacoesEntreDados(resultado, tipoSped)
+    // ...
+
+    function normalizarPropriedadesEmpresa(resultado) {
+        if (resultado.empresa) {
+            // Garantir que o nome da empresa esteja sempre no campo 'nome'
+            if (!resultado.empresa.nome && resultado.empresa.nomeEmpresarial) {
+                resultado.empresa.nome = resultado.empresa.nomeEmpresarial;
+            }
+
+            // Log para diagnóstico
+            console.log('SPED-PARSER: Propriedades normalizadas da empresa:', {
+                nome: resultado.empresa.nome,
+                nomeEmpresarial: resultado.empresa.nomeEmpresarial,
+                cnpj: resultado.empresa.cnpj
+            });
+        }
+    }
 
     /**
      * Calcula totais por categoria de impostos
@@ -949,18 +978,6 @@ const SpedParser = (function() {
         }
 
         try {
-            // Validar campos críticos com mensagens detalhadas
-            const cnpj = validarCampo(campos, 7);
-            const nome = validarCampo(campos, 6); // CORRIGIDO: nome empresarial está no campo 6, não 8
-
-            if (!nome || nome.trim() === '') {
-                console.warn('Nome da empresa não encontrado no registro 0000 (campo 7)');
-            }
-
-            if (!cnpj || cnpj.trim() === '') {
-                console.warn('CNPJ da empresa não encontrado no registro 0000 (campo 8)');
-            }
-
             return {
                 tipo: 'empresa',
                 categoria: 'identificacao',
@@ -968,19 +985,18 @@ const SpedParser = (function() {
                 finalidade: validarCampo(campos, 4),
                 dataInicial: validarCampo(campos, 5),
                 dataFinal: validarCampo(campos, 6),
-                nomeEmpresarial: nome, // CORRIGIDO: obtém nome do campo 7
-                cnpj: cnpj,
-                nome: nome,           // CORRIGIDO: nome no campo 7
-                uf: validarCampo(campos, 9),  // CORRIGIDO: UF está no campo 9, não 14
-                ie: validarCampo(campos, 10), // CORRIGIDO: IE está no campo 10, não 11
-                codMunicipio: validarCampo(campos, 11), // CORRIGIDO: código do município está no campo 11, não 13
+                nomeEmpresarial: validarCampo(campos, 7), // ✅ Corrigido: campo 7
+                cnpj: validarCampo(campos, 8), // ✅ Corrigido: campo 8
+                uf: validarCampo(campos, 9), // ✅ Corrigido: campo 9
+                ie: validarCampo(campos, 10), // ✅ Corrigido: campo 10
+                codMunicipio: validarCampo(campos, 11), // ✅ Corrigido: campo 11
                 im: validarCampo(campos, 12),
                 suframa: validarCampo(campos, 13),
                 perfil: validarCampo(campos, 14),
                 atividade: validarCampo(campos, 15)
             };
         } catch (erro) {
-            console.warn('Erro ao processar registro 0000:', erro.message, 'Conteúdo do campo:', JSON.stringify(campos));
+            console.warn('Erro ao processar registro 0000:', erro.message);
             return null;
         }
     }
@@ -1093,19 +1109,19 @@ const SpedParser = (function() {
                 descrItem: validarCampo(campos, 4),
                 qtd: parseFloat(validarCampo(campos, 5, '0').replace(',', '.')) || 0,
                 unid: validarCampo(campos, 6),
-                valorItem: parseValorMonetario(validarCampo(campos, 7, '0')),     // CORRIGIDO: índice 7
-                valorTotal: parseValorMonetario(validarCampo(campos, 8, '0')),    // CORRIGIDO: índice 8
-                valorDesc: parseValorMonetario(validarCampo(campos, 9, '0')),
-                indMov: validarCampo(campos, 10),
-                cstIcms: validarCampo(campos, 11),
-                cfop: validarCampo(campos, 12),
-                codNat: validarCampo(campos, 13),
-                valorBcIcms: parseValorMonetario(validarCampo(campos, 14, '0')),
-                aliqIcms: parseFloat(validarCampo(campos, 15, '0').replace(',', '.')) || 0,
-                valorIcms: parseValorMonetario(validarCampo(campos, 16, '0')),    // CORRIGIDO: índice 16
-                valorBcIcmsSt: parseValorMonetario(validarCampo(campos, 17, '0')),
-                aliqIcmsSt: parseFloat(validarCampo(campos, 18, '0').replace(',', '.')) || 0,
-                valorIcmsSt: parseValorMonetario(validarCampo(campos, 19, '0'))
+                valorItem: parseValorMonetario(validarCampo(campos, 7, '0')), // ✅ Correto
+                valorTotalItem: parseValorMonetario(validarCampo(campos, 7, '0')), // ✅ Corrigido: usar VL_ITEM
+                valorDesc: parseValorMonetario(validarCampo(campos, 8, '0')), // ✅ Correto: campo 8 é desconto
+                indMov: validarCampo(campos, 9),
+                cstIcms: validarCampo(campos, 10),
+                cfop: validarCampo(campos, 11),
+                codNat: validarCampo(campos, 12),
+                valorBcIcms: parseValorMonetario(validarCampo(campos, 13, '0')), // ✅ Corrigido: índice 13
+                aliqIcms: parseFloat(validarCampo(campos, 14, '0').replace(',', '.')) || 0, // ✅ Corrigido: índice 14
+                valorIcms: parseValorMonetario(validarCampo(campos, 15, '0')), // ✅ Corrigido: índice 15
+                valorBcIcmsSt: parseValorMonetario(validarCampo(campos, 16, '0')),
+                aliqIcmsSt: parseFloat(validarCampo(campos, 17, '0').replace(',', '.')) || 0,
+                valorIcmsSt: parseValorMonetario(validarCampo(campos, 18, '0'))
             };
         } catch (erro) {
             console.warn('Erro ao processar registro C170:', erro.message);
@@ -1154,15 +1170,26 @@ const SpedParser = (function() {
 
     function parseRegistroE110(campos) {
         if (!validarEstruturaRegistro(campos, 29)) return null;
-        return {
-            tipo: 'debito',
-            categoria: 'icms',
-            valorTotalDebitos: converterValorMonetario(validarCampo(campos, 2, '0')),  // CORRIGIDO: campo 2, não 4
-            valorTotalCreditos: converterValorMonetario(validarCampo(campos, 7, '0')),  // CORRIGIDO: campo 7, não 11
-            valorSaldoApurado: converterValorMonetario(validarCampo(campos, 13, '0')),  // CORRIGIDO: campo 13, não 26
-            valorDebitoEspecial: converterValorMonetario(validarCampo(campos, 14, '0')), // CORRIGIDO: campo 14, não 27
-            valorSaldoAPagar: converterValorMonetario(validarCampo(campos, 15, '0'))     // CORRIGIDO: campo 15, não 28
-        };
+
+        try {
+            return {
+                tipo: 'debito',
+                categoria: 'icms',
+                valorTotalDebitos: converterValorMonetario(validarCampo(campos, 2, '0')), // ✅ Corrigido: índice 2
+                valorAjDebitos: converterValorMonetario(validarCampo(campos, 3, '0')),
+                valorEstornoCreditos: converterValorMonetario(validarCampo(campos, 4, '0')),
+                valorTotalCreditos: converterValorMonetario(validarCampo(campos, 6, '0')), // ✅ Corrigido: índice 6
+                valorAjCreditos: converterValorMonetario(validarCampo(campos, 7, '0')),
+                valorEstornoDebitos: converterValorMonetario(validarCampo(campos, 8, '0')),
+                valorSaldoCredorAnt: converterValorMonetario(validarCampo(campos, 9, '0')),
+                valorSaldoApurado: converterValorMonetario(validarCampo(campos, 10, '0')),
+                valorDebitoEspecial: converterValorMonetario(validarCampo(campos, 11, '0')),
+                valorSaldoAPagar: converterValorMonetario(validarCampo(campos, 12, '0'))
+            };
+        } catch (erro) {
+            console.warn('Erro ao processar registro E110:', erro.message);
+            return null;
+        }
     }
 
     function parseRegistroE111(campos) {
@@ -1724,7 +1751,7 @@ const SpedParser = (function() {
     }
 
     function parseRegistroM105(campos) {
-        if (!validarEstruturaRegistro(campos, 12)) {
+        if (!validarEstruturaRegistro(campos, 7)) { // ✅ Corrigido: M105 tem apenas 7 campos
             console.warn('Registro M105 com estrutura insuficiente:', campos.length);
             return null;
         }
@@ -1733,16 +1760,12 @@ const SpedParser = (function() {
             return {
                 tipo: 'credito_detalhe',
                 categoria: 'pis',
-                natBcCred: validarCampo(campos, 2),
-                cstPis: validarCampo(campos, 3),
+                natBcCred: validarCampo(campos, 2), // Natureza da BC do crédito
+                cstPis: validarCampo(campos, 3), // ✅ Corrigido: CST PIS (código do crédito)
                 valorBcPis: parseValorMonetario(validarCampo(campos, 4, '0')),
                 aliqPis: parseFloat(validarCampo(campos, 5, '0').replace(',', '.')) || 0,
-                valorPis: parseValorMonetario(validarCampo(campos, 6, '0')),
-                codCred: validarCampo(campos, 7),                                     // CORRIGIDO: índice 7
-                aliquotaCredito: parseFloat(validarCampo(campos, 8, '0').replace(',', '.')) || 0,  // CORRIGIDO: índice 8
-                valorCredito: parseValorMonetario(validarCampo(campos, 9, '0')),      // CORRIGIDO: índice 9
-                descrCompl: validarCampo(campos, 10),
-                codCta: validarCampo(campos, 11)
+                valorCredito: parseValorMonetario(validarCampo(campos, 6, '0')), // ✅ Corrigido: campo 6 é o valor do crédito
+                codCta: validarCampo(campos, 7) // ✅ Corrigido: código da conta contábil
             };
         } catch (erro) {
             console.warn('Erro ao processar registro M105:', erro.message);
@@ -2814,31 +2837,44 @@ const SpedParser = (function() {
 
     function parseRegistroI200ECD(campos) {
         if (!validarEstruturaRegistro(campos, 15)) return null;
-        return {
-            tipo: 'lancamento_contabil',
-            categoria: 'lancamento',
-            numLanc: validarCampo(campos, 2),
-            dataLanc: validarCampo(campos, 3),
-            valorLanc: converterValorMonetario(validarCampo(campos, 4, '0')),
-            indLanc: validarCampo(campos, 5),
-            descrLanc: validarCampo(campos, 6),
-            codHist: validarCampo(campos, 7),
-            descrHist: validarCampo(campos, 8),
-            descrCompl: validarCampo(campos, 9)
-        };
+
+        try {
+            return {
+                tipo: 'lancamento_contabil',
+                categoria: 'lancamento',
+                numLanc: validarCampo(campos, 2), // Número do lançamento
+                dataLanc: validarCampo(campos, 3), // Data do lançamento
+                valorLanc: converterValorMonetario(validarCampo(campos, 4, '0')), // Valor do lançamento
+                indLanc: validarCampo(campos, 5), // Indicador do tipo de lançamento
+                descrLanc: validarCampo(campos, 6), // Descrição do lançamento
+                codHist: validarCampo(campos, 7), // Código do histórico
+                descrHist: validarCampo(campos, 8), // Descrição do histórico
+                descrCompl: validarCampo(campos, 9) // Descrição complementar
+                // ✅ Observação: código da conta está no registro I250 (partidas)
+            };
+        } catch (erro) {
+            console.warn('Erro ao processar registro I200:', erro.message);
+            return null;
+        }
     }
 
     function parseRegistroI250ECD(campos) {
         if (!validarEstruturaRegistro(campos, 8)) return null;
-        return {
-            tipo: 'partida_lancamento',
-            categoria: 'partida',
-            codCta: validarCampo(campos, 2),
-            codCcus: validarCampo(campos, 3),
-            valorPartida: converterValorMonetario(validarCampo(campos, 4, '0')),
-            indDC: validarCampo(campos, 5),
-            numLinea: validarCampo(campos, 6)
-        };
+
+        try {
+            return {
+                tipo: 'partida_lancamento',
+                categoria: 'partida',
+                codCta: validarCampo(campos, 2), // ✅ Código da conta contábil (estava sendo buscado erroneamente no I200)
+                codCcus: validarCampo(campos, 3), // Código do centro de custos
+                valorPartida: converterValorMonetario(validarCampo(campos, 4, '0')), // Valor da partida
+                indDC: validarCampo(campos, 5), // Indicador D/C
+                numLinea: validarCampo(campos, 6) // Número da linha
+            };
+        } catch (erro) {
+            console.warn('Erro ao processar registro I250:', erro.message);
+            return null;
+        }
     }
 
     function parseRegistroI300ECD(campos) {
@@ -3140,24 +3176,38 @@ const SpedParser = (function() {
             codEmpresaOrigemElim: validarCampo(campos, 5),
             codEmpresaDestinoElim: validarCampo(campos, 6)
         };
-    }   
-        
-    // Atualização do mapeamento de registros
-    registrosMapeados.fiscal['9900'] = parseRegistro9900;
-    registrosMapeados.fiscal['9990'] = parseRegistro9990;
-    registrosMapeados.fiscal['9999'] = parseRegistro9999;
-
-    registrosMapeados.ecf['J050'] = parseRegistroJ050ECF;
-    registrosMapeados.ecf['K155'] = parseRegistroK155ECF;
-    registrosMapeados.ecf['L100'] = parseRegistroL100ECF;
-
-    registrosMapeados.ecd['I150'] = parseRegistroI150ECD;
-    registrosMapeados.ecd['I200'] = parseRegistroI200ECD;
-    registrosMapeados.ecd['K100'] = parseRegistroK100ECD;
-
-    registrosMapeados.contribuicoes['M105'] = parseRegistroM105;
-    registrosMapeados.contribuicoes['M505'] = parseRegistroM505;
+    }
     
+    /**
+     * Valida a estrutura do registro baseada no layout oficial
+     */
+    function validarLayoutRegistro(registro, campos, tipoSped) {
+        const layoutsMinimos = {
+            'fiscal': {
+                '0000': 15,
+                'C100': 18,
+                'C170': 19,
+                'E110': 29
+            },
+            'contribuicoes': {
+                'M105': 7,
+                'M200': 14,
+                'M600': 14
+            },
+            'ecd': {
+                'I200': 15,
+                'I250': 8
+            }
+        };
+
+        const minCampos = layoutsMinimos[tipoSped]?.[registro];
+        if (minCampos && campos.length < minCampos) {
+            console.warn(`Registro ${registro} (${tipoSped}): esperados ${minCampos} campos, encontrados ${campos.length}`);
+            return false;
+        }
+        return true;
+    }      
+        
     // Interface pública
     return {
         processarArquivo,
