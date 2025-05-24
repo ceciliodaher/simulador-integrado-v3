@@ -951,10 +951,10 @@ const SpedParser = (function() {
         try {
             // Validar campos críticos com mensagens detalhadas
             const cnpj = validarCampo(campos, 8);
-            const nome = validarCampo(campos, 9);
+            const nome = validarCampo(campos, 7); // CORRIGIDO: nome empresarial está no campo 7, não 9
 
             if (!nome || nome.trim() === '') {
-                console.warn('Nome da empresa não encontrado no registro 0000 (campo 9)');
+                console.warn('Nome da empresa não encontrado no registro 0000 (campo 7)');
             }
 
             if (!cnpj || cnpj.trim() === '') {
@@ -968,16 +968,16 @@ const SpedParser = (function() {
                 finalidade: validarCampo(campos, 4),
                 dataInicial: validarCampo(campos, 5),
                 dataFinal: validarCampo(campos, 6),
-                nomeEmpresarial: nome, // Usar campo 9 como nome empresarial
+                nomeEmpresarial: nome, // CORRIGIDO: obtém nome do campo 7
                 cnpj: cnpj,
-                nome: nome,           // CORRIGIDO: nome no campo 9
-                uf: validarCampo(campos, 14),
-                ie: validarCampo(campos, 11),
-                codMunicipio: validarCampo(campos, 13),
-                im: validarCampo(campos, 15),
-                suframa: validarCampo(campos, 16),
-                perfil: validarCampo(campos, 17),
-                atividade: validarCampo(campos, 18)
+                nome: nome,           // CORRIGIDO: nome no campo 7
+                uf: validarCampo(campos, 9),  // CORRIGIDO: UF está no campo 9, não 14
+                ie: validarCampo(campos, 10), // CORRIGIDO: IE está no campo 10, não 11
+                codMunicipio: validarCampo(campos, 11), // CORRIGIDO: código do município está no campo 11, não 13
+                im: validarCampo(campos, 12),
+                suframa: validarCampo(campos, 13),
+                perfil: validarCampo(campos, 14),
+                atividade: validarCampo(campos, 15)
             };
         } catch (erro) {
             console.warn('Erro ao processar registro 0000:', erro.message, 'Conteúdo do campo:', JSON.stringify(campos));
@@ -1113,6 +1113,17 @@ const SpedParser = (function() {
         }
     }
 
+    function parseRegistroC197(campos) {
+        if (!validarEstruturaRegistro(campos, 8)) return null;
+        return {
+            tipo: 'outras_obrigacoes',
+            categoria: 'icms',
+            codigoAjOuInf: validarCampo(campos, 2),
+            descrCompl: validarCampo(campos, 3),
+            valorAjuste: converterValorMonetario(validarCampo(campos, 4, '0'))
+        };
+    }
+    
     function parseRegistroC190(campos) {
         if (!validarEstruturaRegistro(campos, 9)) {
             console.warn('Registro C190 com estrutura insuficiente:', campos.length);
@@ -1125,7 +1136,7 @@ const SpedParser = (function() {
                 categoria: 'icms',
                 cstIcms: validarCampo(campos, 2),
                 cfop: validarCampo(campos, 3),
-                aliqIcms: parseFloat(validarCampo(campos, 4, '0').replace(',', '.')) || 0,  // CORRIGIDO: formatação decimal
+                aliqIcms: parseFloat(validarCampo(campos, 4, '0').replace(',', '.')) || 0,
                 valorOpr: parseValorMonetario(validarCampo(campos, 5, '0')),
                 valorBcIcms: parseValorMonetario(validarCampo(campos, 6, '0')),
                 valorIcms: parseValorMonetario(validarCampo(campos, 7, '0')),
@@ -1141,27 +1152,16 @@ const SpedParser = (function() {
         }
     }
 
-    function parseRegistroC197(campos) {
-        if (!validarEstruturaRegistro(campos, 8)) return null;
-        return {
-            tipo: 'outras_obrigacoes',
-            categoria: 'icms',
-            codigoAjOuInf: validarCampo(campos, 2),
-            descrCompl: validarCampo(campos, 3),
-            valorAjuste: converterValorMonetario(validarCampo(campos, 4, '0'))
-        };
-    }
-
     function parseRegistroE110(campos) {
         if (!validarEstruturaRegistro(campos, 29)) return null;
         return {
             tipo: 'debito',
             categoria: 'icms',
-            valorTotalDebitos: converterValorMonetario(validarCampo(campos, 4, '0')),
-            valorTotalCreditos: converterValorMonetario(validarCampo(campos, 11, '0')),
-            valorSaldoApurado: converterValorMonetario(validarCampo(campos, 26, '0')),
-            valorDebitoEspecial: converterValorMonetario(validarCampo(campos, 27, '0')),
-            valorSaldoAPagar: converterValorMonetario(validarCampo(campos, 28, '0'))
+            valorTotalDebitos: converterValorMonetario(validarCampo(campos, 2, '0')),  // CORRIGIDO: campo 2, não 4
+            valorTotalCreditos: converterValorMonetario(validarCampo(campos, 7, '0')),  // CORRIGIDO: campo 7, não 11
+            valorSaldoApurado: converterValorMonetario(validarCampo(campos, 13, '0')),  // CORRIGIDO: campo 13, não 26
+            valorDebitoEspecial: converterValorMonetario(validarCampo(campos, 14, '0')), // CORRIGIDO: campo 14, não 27
+            valorSaldoAPagar: converterValorMonetario(validarCampo(campos, 15, '0'))     // CORRIGIDO: campo 15, não 28
         };
     }
 
@@ -1193,9 +1193,9 @@ const SpedParser = (function() {
         return {
             tipo: 'debito',
             categoria: 'ipi',
-            valorTotalDebitos: converterValorMonetario(validarCampo(campos, 4, '0')),
-            valorTotalCreditos: converterValorMonetario(validarCampo(campos, 5, '0')),
-            valorTotalAPagar: converterValorMonetario(validarCampo(campos, 12, '0'))
+            valorTotalDebitos: converterValorMonetario(validarCampo(campos, 2, '0')),  // CORRIGIDO: campo 2, não 4
+            valorTotalCreditos: converterValorMonetario(validarCampo(campos, 3, '0')),  // CORRIGIDO: campo 3, não 5
+            valorTotalAPagar: converterValorMonetario(validarCampo(campos, 10, '0'))    // CORRIGIDO: campo 10, não 12
         };
     }
 
