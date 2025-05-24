@@ -151,38 +151,56 @@ const SpedExtractor = (function() {
         };
     }
 
-    /**
-     * Calcula faturamento mensal com múltiplas fontes de dados
-     */
-    function calcularFaturamentoMensal(dadosSped) {
-        let faturamento = 0;
-        let fonte = 'estimado';
-
-        // PRIORIDADE 1: Dados contábeis da ECD/ECF
-        if (dadosSped.receitaBruta && dadosSped.receitaBruta > 0) {
-            faturamento = dadosSped.receitaBruta / 12;
-            fonte = 'ecd_receita_bruta';
-        } else if (dadosSped.dre?.receita_liquida?.valor) {
-            faturamento = dadosSped.dre.receita_liquida.valor / 12;
-            fonte = 'ecf_dre';
+    // Função para calcular faturamento mensal
+    function calcularFaturamentoMensal(documentos) {
+        if (!documentos || !Array.isArray(documentos)) {
+            console.warn('Documentos não é um array válido:', documentos);
+            return 0;
         }
 
-        // PRIORIDADE 2: Cálculo baseado em documentos fiscais
-        if (faturamento === 0 && dadosSped.documentos?.length > 0) {
-            const resultadoDocumentos = calcularFaturamentoPorDocumentos(dadosSped.documentos);
-            faturamento = resultadoDocumentos.faturamentoMensal;
-            fonte = 'documentos_fiscais';
+        let faturamentoTotal = 0;
+        let documentosValidos = 0;
+        let documentosSaida = 0;
+
+        console.log(`Analisando ${documentos.length} documentos...`);
+
+        for (const doc of documentos) {
+            if (!doc || typeof doc !== 'object') {
+                continue;
+            }
+
+            // Log cada documento para debug
+            if (doc.valorTotal > 0) {
+                console.log('Documento encontrado:', {
+                    indOper: doc.indOper,
+                    valorTotal: doc.valorTotal,
+                    dataEmissao: doc.dataEmissao
+                });
+            }
+
+            // Considerar apenas SAÍDAS (vendas) - indOper = '1'
+            if (doc.indOper === '1') {
+                documentosSaida++;
+
+                if (doc.valorTotal > 0) {
+                    faturamentoTotal += doc.valorTotal;
+                    documentosValidos++;
+                }
+            }
         }
 
-        // PRIORIDADE 3: Estimativa baseada em débitos de impostos
-        if (faturamento === 0) {
-            faturamento = estimarFaturamentoPorImpostos(dadosSped);
-            fonte = 'estimativa_impostos';
+        console.log(`Documentos de saída: ${documentosSaida}`);
+        console.log(`Documentos válidos com valor: ${documentosValidos}`);
+        console.log(`Faturamento total: R$ ${faturamentoTotal.toFixed(2)}`);
+
+        if (documentosValidos === 0) {
+            console.warn('Nenhum documento de saída com valor válido encontrado');
+            return 0;
         }
 
-        console.log(`SPED-EXTRACTOR: Faturamento calculado - Valor: R$ ${faturamento.toFixed(2)}, Fonte: ${fonte}`);
-        
-        return Math.max(0, faturamento);
+        // Retornar o faturamento total (não dividir por documentos)
+        // Se quiser médio mensal, dividir por número de meses do período
+        return faturamentoTotal;
     }
 
     /**

@@ -3,6 +3,39 @@
  * Responsável por ler e analisar arquivos SPED de diferentes tipos
  * VERSÃO CORRIGIDA E COMPLETA - Janeiro 2025
  */
+
+function parseValorMonetario(valorString) {
+    // Log de debug - REMOVER após correção
+    if (valorString && valorString !== '0') {
+        console.log('Valor recebido para parsing:', valorString);
+    }
+    
+    if (!valorString || valorString === '' || valorString === '0') {
+        return 0;
+    }
+    
+    let valor = valorString.toString().trim();
+    
+    if (valor.includes(',')) {
+        const partes = valor.split(',');
+        const parteInteira = partes[0].replace(/\./g, '');
+        const parteDecimal = partes[1] || '00';
+        valor = parteInteira + '.' + parteDecimal;
+    } else {
+        valor = valor.replace(/\./g, '');
+    }
+    
+    const resultado = parseFloat(valor);
+    
+    // Log de debug - REMOVER após correção
+    if (resultado > 0) {
+        console.log('Valor convertido:', valorString, '->', resultado);
+    }
+    
+    return isNaN(resultado) ? 0 : resultado;
+}
+
+
 const SpedParser = (function() {
     // Mapeamento completo de registros por tipo de SPED
     const registrosMapeados = {
@@ -711,65 +744,55 @@ const SpedParser = (function() {
         };
     }
 
+    // Registro C100 - Documento Fiscal
     function parseRegistroC100(campos) {
-        if (!validarEstruturaRegistro(campos, 28)) return null;
-        return {
+        // Log para debug
+        if (campos.length > 12 && campos[12]) {
+            console.log('Registro C100 - Valor do campo 12:', campos[12]);
+        }
+
+        const documento = {
             tipo: 'documento',
-            indOper: validarCampo(campos, 2),
-            indEmit: validarCampo(campos, 3),
-            codPart: validarCampo(campos, 4),
-            codMod: validarCampo(campos, 5),
-            codSit: validarCampo(campos, 6),
-            serie: validarCampo(campos, 7),
-            numDoc: validarCampo(campos, 8),
-            chvNfe: validarCampo(campos, 9),
-            dataDoc: validarCampo(campos, 10),
-            dataEnt: validarCampo(campos, 11),
-            valorDoc: converterValorMonetario(validarCampo(campos, 12, '0')),
-            indPgto: validarCampo(campos, 13),
-            valorDesc: converterValorMonetario(validarCampo(campos, 14, '0')),
-            valorAbatNt: converterValorMonetario(validarCampo(campos, 15, '0')),
-            valorMerc: converterValorMonetario(validarCampo(campos, 16, '0')),
-            indFrt: validarCampo(campos, 17),
-            valorFrt: converterValorMonetario(validarCampo(campos, 18, '0')),
-            valorSeg: converterValorMonetario(validarCampo(campos, 19, '0')),
-            valorOutDa: converterValorMonetario(validarCampo(campos, 20, '0')),
-            valorBc: converterValorMonetario(validarCampo(campos, 21, '0')),
-            valorIcms: converterValorMonetario(validarCampo(campos, 22, '0')),
-            valorBcSt: converterValorMonetario(validarCampo(campos, 23, '0')),
-            valorSt: converterValorMonetario(validarCampo(campos, 24, '0')),
-            valorIpi: converterValorMonetario(validarCampo(campos, 25, '0')),
-            valorPis: converterValorMonetario(validarCampo(campos, 26, '0')),
-            valorCofins: converterValorMonetario(validarCampo(campos, 27, '0')),
-            valorPisSt: converterValorMonetario(validarCampo(campos, 28, '0')),
-            valorCofinsSt: converterValorMonetario(validarCampo(campos, 29, '0')),
-            valorTotal: converterValorMonetario(validarCampo(campos, 12, '0')),
-            dataEmissao: validarCampo(campos, 10),
-            modelo: validarCampo(campos, 5),
-            situacao: validarCampo(campos, 6)
+            indOper: campos[2], // 0=Entrada, 1=Saída
+            indEmit: campos[3],
+            codPart: campos[4],
+            modelo: campos[5],
+            serie: campos[7],
+            numero: campos[8],
+            chaveNFe: campos[9],
+            dataEmissao: campos[10],
+            dataSaidaEntrada: campos[11],
+            valorTotal: parseValorMonetario(campos[12]), // Valor do documento
+            valorProdutos: parseValorMonetario(campos[16]) // Valor dos produtos
         };
+
+        // Log do documento parseado
+        if (documento.valorTotal > 0) {
+            console.log('Documento C100 parseado:', documento);
+        }
+
+        return documento;
     }
 
+    // Registro C170 - Item do Documento
     function parseRegistroC170(campos) {
-        if (!validarEstruturaRegistro(campos, 17)) return null;
         return {
-            tipo: 'item_documento',
-            numItem: validarCampo(campos, 2),
-            codItem: validarCampo(campos, 3),
-            descrCompl: validarCampo(campos, 4),
-            qtd: converterValorMonetario(validarCampo(campos, 5, '0')),
-            unid: validarCampo(campos, 6),
-            valorItem: converterValorMonetario(validarCampo(campos, 7, '0')),
-            valorDesc: converterValorMonetario(validarCampo(campos, 8, '0')),
-            indMov: validarCampo(campos, 9),
-            cstIcms: validarCampo(campos, 10),
-            cfop: validarCampo(campos, 11),
-            codNat: validarCampo(campos, 12),
-            valorBcIcms: converterValorMonetario(validarCampo(campos, 13, '0')),
-            aliqIcms: converterValorMonetario(validarCampo(campos, 14, '0')),
-            valorIcms: converterValorMonetario(validarCampo(campos, 15, '0')),
-            valorBcIcmsSt: converterValorMonetario(validarCampo(campos, 16, '0')),
-            aliqSt: converterValorMonetario(validarCampo(campos, 17, '0'))
+            tipo: 'item',
+            numItem: campos[2],
+            codItem: campos[3],
+            descricao: campos[4],
+            quantidade: parseFloat(campos[5].replace(',', '.')) || 0,
+            unidade: campos[6],
+            valorUnitario: parseValorMonetario(campos[7]), // Corrigido
+            valorTotal: parseValorMonetario(campos[8]), // Corrigido
+            valorDesconto: parseValorMonetario(campos[9]), // Corrigido
+            indMov: campos[10],
+            cstIcms: campos[11],
+            cfop: campos[12],
+            codNat: campos[13],
+            valorBcIcms: parseValorMonetario(campos[14]), // Corrigido
+            aliqIcms: parseFloat(campos[15].replace(',', '.')) || 0,
+            valorIcms: parseValorMonetario(campos[16]) // Corrigido
         };
     }
 
