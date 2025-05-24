@@ -138,7 +138,6 @@ const ImportacaoController = (function() {
 
         return sucesso;
     }
-
     
     /**
      * Adiciona os event listeners aos elementos da interface
@@ -860,7 +859,8 @@ const ImportacaoController = (function() {
 
             // Dados da empresa
             if (dadosExtraidos.empresa) {
-                estruturaAdaptada.empresa = window.DataManager.normalizarObjeto({
+                // CORREÇÃO: Usar método disponível em vez de normalizarObjeto
+                estruturaAdaptada.empresa = {
                     ...estruturaAdaptada.empresa,
                     nome: dadosExtraidos.empresa.nome || '',
                     faturamento: window.DataManager.normalizarValor(
@@ -871,12 +871,13 @@ const ImportacaoController = (function() {
                     margem: window.DataManager.extrairValorPercentual(dadosExtraidos.empresa.margem || 0.15),
                     tipoEmpresa: dadosExtraidos.empresa.tipoEmpresa || '',
                     regime: dadosExtraidos.empresa.regime || ''
-                }, 'empresa');
+                };
             }
 
             // Ciclo financeiro
             if (dadosExtraidos.cicloFinanceiro) {
-                estruturaAdaptada.cicloFinanceiro = window.DataManager.normalizarObjeto({
+                // CORREÇÃO: Usar método disponível em vez de normalizarObjeto
+                estruturaAdaptada.cicloFinanceiro = {
                     ...estruturaAdaptada.cicloFinanceiro,
                     pmr: window.DataManager.normalizarValor(
                         dadosExtraidos.cicloFinanceiro.pmr || 
@@ -901,7 +902,7 @@ const ImportacaoController = (function() {
                         dadosExtraidos.cicloFinanceiro.percPrazo || 
                         dadosExtraidos.cicloFinanceiro.percentualPrazo || 0.7
                     )
-                }, 'cicloFinanceiro');
+                };
             }
 
             // Parâmetros fiscais
@@ -916,24 +917,26 @@ const ImportacaoController = (function() {
                     ibs: 0   // Valor padrão, será calculado depois
                 };
 
-                estruturaAdaptada.parametrosFiscais = window.DataManager.normalizarObjeto({
+                // CORREÇÃO: Usar método disponível em vez de normalizarObjeto
+                estruturaAdaptada.parametrosFiscais = {
                     ...estruturaAdaptada.parametrosFiscais,
                     aliquota: window.DataManager.extrairValorPercentual(dadosExtraidos.parametrosFiscais.aliquota || 0.265),
                     tipoOperacao: dadosExtraidos.parametrosFiscais.tipoOperacao || '',
                     regimePisCofins: dadosExtraidos.parametrosFiscais.regimePisCofins || '',
-                    creditos: window.DataManager.normalizarObjeto(creditos, 'creditos')
-                }, 'parametrosFiscais');
+                    creditos: creditos
+                };
             }
 
             // IVA Config
             if (dadosExtraidos.ivaConfig) {
-                estruturaAdaptada.ivaConfig = window.DataManager.normalizarObjeto({
+                // CORREÇÃO: Usar método disponível em vez de normalizarObjeto
+                estruturaAdaptada.ivaConfig = {
                     ...estruturaAdaptada.ivaConfig,
                     cbs: window.DataManager.extrairValorPercentual(dadosExtraidos.ivaConfig.cbs || 0.088),
                     ibs: window.DataManager.extrairValorPercentual(dadosExtraidos.ivaConfig.ibs || 0.177),
                     categoriaIva: dadosExtraidos.ivaConfig.categoriaIva || 'standard',
                     reducaoEspecial: window.DataManager.extrairValorPercentual(dadosExtraidos.ivaConfig.reducaoEspecial || 0)
-                }, 'ivaConfig');
+                };
             }
 
             // Adicionar informações de validação
@@ -952,13 +955,72 @@ const ImportacaoController = (function() {
                 versaoAdaptador: '2.0'
             };
 
-            console.log('IMPORTACAO-CONTROLLER: Dados adaptados para formato DataManager:', estruturaAdaptada);
-            return estruturaAdaptada;
+            // Aplicar validação final usando método existente no DataManager
+            const dadosValidados = window.DataManager.validarENormalizar(estruturaAdaptada);
+
+            console.log('IMPORTACAO-CONTROLLER: Dados adaptados para formato DataManager:', dadosValidados);
+            return dadosValidados;
         } catch (erro) {
             console.error('IMPORTACAO-CONTROLLER: Erro ao adaptar dados para DataManager:', erro);
-            adicionarLog('Erro ao adaptar dados para simulador: ' + erro.message, 'error');
             return dadosExtraidos; // Retorna dados originais em caso de erro
         }
+    }
+    
+    /**
+     * Integra dados de diferentes arquivos SPED para validação cruzada
+     * @param {Object} dadosFiscal - Dados do SPED Fiscal
+     * @param {Object} dadosContribuicoes - Dados do SPED Contribuições
+     * @param {Object} dadosECF - Dados da ECF
+     * @param {Object} dadosECD - Dados da ECD
+     * @returns {Object} Dados integrados e validados
+     */
+    function integrarDadosSPED(dadosFiscal, dadosContribuicoes, dadosECF, dadosECD) {
+        const dadosIntegrados = {
+            empresa: {},
+            parametrosFiscais: {},
+            cicloFinanceiro: {},
+            totalizadores: {}
+        };
+
+        // Integrar dados da empresa priorizando fonte mais confiável
+        if (dadosFiscal?.empresa) {
+            Object.assign(dadosIntegrados.empresa, dadosFiscal.empresa);
+        }
+        if (dadosECF?.empresa) {
+            Object.assign(dadosIntegrados.empresa, dadosECF.empresa);
+        }
+
+        // Validar faturamento entre diferentes fontes
+        const faturamentoFiscal = calcularFaturamentoMensal(dadosFiscal?.documentos || []);
+        const faturamentoContabil = dadosECD?.dre?.receitaBruta / 12 || dadosECF?.dre?.receitaBruta / 12;
+
+        if (faturamentoFiscal && faturamentoContabil) {
+            const diferenca = Math.abs(faturamentoFiscal - faturamentoContabil) / faturamentoFiscal;
+            if (diferenca <= 0.05) { // Diferença aceitável de 5%
+                dadosIntegrados.empresa.faturamento = (faturamentoFiscal + faturamentoContabil) / 2;
+            } else {
+                dadosIntegrados.empresa.faturamento = faturamentoFiscal; // Priorizar fiscal
+                console.warn(`Divergência no faturamento: Fiscal ${faturamentoFiscal}, Contábil ${faturamentoContabil}`);
+            }
+        }
+
+        return dadosIntegrados;
+    }
+
+    /**
+     * Calcula faturamento mensal baseado nos documentos fiscais
+     * @param {Array} documentos - Array de documentos fiscais
+     * @returns {number} Faturamento mensal médio
+     */
+    function calcularFaturamentoMensal(documentos) {
+        if (!documentos || documentos.length === 0) return 0;
+
+        const valorTotal = documentos.reduce((total, doc) => {
+            return total + (parseFloat(doc.valorTotal) || 0);
+        }, 0);
+
+        // Assumindo que os documentos representam um período de 12 meses
+        return valorTotal / 12;
     }
 
     /**
