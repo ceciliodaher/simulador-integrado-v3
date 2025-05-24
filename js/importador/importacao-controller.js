@@ -240,12 +240,30 @@ const ImportacaoController = (function() {
                 // Extrair dados para o simulador
                 const dadosSimulador = window.SpedExtractor.extrairDadosParaSimulador(dadosCombinados);
                 
-                // Armazenar dados importados
-                dadosImportados = dadosSimulador;
-                window.dadosImportadosSped = dadosImportados; // Global para referência
+                // Adaptar dados para o formato esperado pelo DataManager
+                const dadosAdaptados = adaptarParaDataManager(dadosSimulador);
                 
-                // Preencher campos do simulador
-                preencherCamposSimulador(dadosSimulador);
+                // Armazenar dados importados (tanto original quanto adaptado)
+                dadosImportados = dadosAdaptados;
+                window.dadosImportadosSped = {
+                    original: dadosSimulador,
+                    adaptado: dadosAdaptados
+                }; // Global para referência
+                
+                // Validar dados adaptados via DataManager (se disponível)
+                let dadosValidados = dadosAdaptados;
+                if (window.DataManager && typeof window.DataManager.validarENormalizar === 'function') {
+                    try {
+                        dadosValidados = window.DataManager.validarENormalizar(dadosAdaptados);
+                        adicionarLog('Dados validados e normalizados pelo DataManager.', 'success');
+                    } catch (erroValidacao) {
+                        console.error('IMPORTACAO-CONTROLLER: Erro ao validar dados via DataManager:', erroValidacao);
+                        adicionarLog('Erro ao validar dados via DataManager: ' + erroValidacao.message, 'error');
+                    }
+                }
+                
+                // Preencher campos do simulador com dados validados
+                preencherCamposSimulador(dadosValidados);
                 
                 adicionarLog('Importação concluída com sucesso!', 'success');
                 adicionarLog(`Dados da empresa: ${dadosSimulador.empresa?.nome || 'N/A'}`, 'info');
@@ -273,8 +291,30 @@ const ImportacaoController = (function() {
 
         return new Promise((resolve, reject) => {
             try {
+                // Validar arquivo antes de processar
+                if (!arquivo || arquivo.size === 0) {
+                    adicionarLog(`Arquivo ${arquivo.name} vazio ou inválido.`, 'error');
+                    reject(new Error('Arquivo vazio ou inválido'));
+                    return;
+                }
+
+                console.log(`IMPORTACAO-CONTROLLER: Iniciando processamento de ${arquivo.name} (${tipo}) - Tamanho: ${arquivo.size} bytes`);
+
                 window.SpedParser.processarArquivo(arquivo, tipo)
                     .then(dados => {
+                        // Validar dados retornados
+                        if (!dados || typeof dados !== 'object') {
+                            adicionarLog(`Arquivo ${arquivo.name} não retornou dados válidos.`, 'error');
+                            reject(new Error('Dados retornados inválidos'));
+                            return;
+                        }
+
+                        // Validar dados críticos da empresa
+                        if (!dados.empresa || !dados.empresa.nome) {
+                            console.warn(`IMPORTACAO-CONTROLLER: Nome da empresa não encontrado em ${arquivo.name}`, dados.empresa);
+                            adicionarLog(`Atenção: Nome da empresa não encontrado em ${arquivo.name}`, 'warning');
+                        }
+
                         // Adicionar metadados ao resultado
                         dados.metadados = {
                             ...dados.metadados,
@@ -293,10 +333,18 @@ const ImportacaoController = (function() {
                     .catch(erro => {
                         adicionarLog(`Erro ao processar ${arquivo.name}: ${erro.message}`, 'error');
                         console.error('IMPORTACAO-CONTROLLER: Erro no processamento:', erro);
-                        reject(erro);
+
+                        // Fornecer mais contexto sobre o erro
+                        const erroDetalhado = new Error(`Falha no processamento de ${arquivo.name}: ${erro.message}`);
+                        erroDetalhado.arquivoOriginal = arquivo.name;
+                        erroDetalhado.tipoArquivo = tipo;
+                        erroDetalhado.erroOriginal = erro;
+
+                        reject(erroDetalhado);
                     });
             } catch (erro) {
-                adicionarLog(`Erro ao processar ${arquivo.name}: ${erro.message}`, 'error');
+                adicionarLog(`Erro ao iniciar processamento de ${arquivo.name}: ${erro.message}`, 'error');
+                console.error('IMPORTACAO-CONTROLLER: Exceção ao iniciar processamento:', erro);
                 reject(erro);
             }
         });
@@ -484,6 +532,128 @@ const ImportacaoController = (function() {
         });
 
         return combinado;
+    }
+    
+    /**
+     * Adapta dados extraídos do SPED para o formato esperado pelo DataManager
+     * @param {Object} dadosExtraidos - Dados extraídos do SPED
+     * @returns {Object} - Dados no formato esperado pelo DataManager
+     */
+    function adaptarParaDataManager(dadosExtraidos) {
+        console.log('IMPORTACAO-CONTROLLER: Adaptando dados para formato DataManager');
+
+        // Verificar se DataManager está disponível
+        if (!window.DataManager) {
+            console.warn('IMPORTACAO-CONTROLLER: DataManager não disponível para adaptação');
+            return dadosExtraidos;
+        }
+
+        // Obter estrutura aninhada padrão do DataManager
+        let estruturaAdaptada;
+        if (typeof window.DataManager.obterEstruturaAninhadaPadrao === 'function') {
+            estruturaAdaptada = window.DataManager.obterEstruturaAninhadaPadrao();
+        } else {
+            console.warn('IMPORTACAO-CONTROLLER: Função obterEstruturaAninhadaPadrao não disponível');
+            estruturaAdaptada = {
+                empresa: {},
+                cicloFinanceiro: {},
+                parametrosFiscais: {
+                    creditos: {}
+                },
+                parametrosSimulacao: {},
+                parametrosFinanceiros: {},
+                ivaConfig: {},
+                estrategias: {},
+                cronogramaImplementacao: {}
+            };
+        }
+
+        // Preencher dados da empresa
+        if (dadosExtraidos.empresa) {
+            estruturaAdaptada.empresa = {
+                ...estruturaAdaptada.empresa,
+                nome: dadosExtraidos.empresa.nome || '',
+                faturamento: dadosExtraidos.empresa.faturamentoMensal || dadosExtraidos.empresa.faturamento || 0,
+                margem: dadosExtraidos.empresa.margem || 0.15,
+                tipoEmpresa: dadosExtraidos.empresa.tipoEmpresa || '',
+                regime: dadosExtraidos.empresa.regime || ''
+            };
+        }
+
+        // Preencher ciclo financeiro
+        if (dadosExtraidos.cicloFinanceiro) {
+            estruturaAdaptada.cicloFinanceiro = {
+                ...estruturaAdaptada.cicloFinanceiro,
+                pmr: dadosExtraidos.cicloFinanceiro.pmr || dadosExtraidos.cicloFinanceiro.prazoRecebimento || 30,
+                pmp: dadosExtraidos.cicloFinanceiro.pmp || dadosExtraidos.cicloFinanceiro.prazoPagamento || 30,
+                pme: dadosExtraidos.cicloFinanceiro.pme || dadosExtraidos.cicloFinanceiro.prazoEstoque || 30,
+                percVista: dadosExtraidos.cicloFinanceiro.percVista || dadosExtraidos.cicloFinanceiro.percentualVista || 0.3,
+                percPrazo: dadosExtraidos.cicloFinanceiro.percPrazo || dadosExtraidos.cicloFinanceiro.percentualPrazo || 0.7
+            };
+        }
+
+        // Preencher parâmetros fiscais
+        if (dadosExtraidos.parametrosFiscais) {
+            estruturaAdaptada.parametrosFiscais = {
+                ...estruturaAdaptada.parametrosFiscais,
+                aliquota: dadosExtraidos.parametrosFiscais.aliquota || 0.265,
+                tipoOperacao: dadosExtraidos.parametrosFiscais.tipoOperacao || '',
+                regimePisCofins: dadosExtraidos.parametrosFiscais.regimePisCofins || '',
+                creditos: {
+                    ...estruturaAdaptada.parametrosFiscais.creditos,
+                    pis: obterValorCredito(dadosExtraidos, 'pis'),
+                    cofins: obterValorCredito(dadosExtraidos, 'cofins'),
+                    icms: obterValorCredito(dadosExtraidos, 'icms'),
+                    ipi: obterValorCredito(dadosExtraidos, 'ipi'),
+                    cbs: 0,  // Valor padrão, será calculado depois
+                    ibs: 0   // Valor padrão, será calculado depois
+                }
+            };
+        }
+
+        // Preencher IVA Config
+        if (dadosExtraidos.ivaConfig) {
+            estruturaAdaptada.ivaConfig = {
+                ...estruturaAdaptada.ivaConfig,
+                cbs: dadosExtraidos.ivaConfig.cbs || 0.088,
+                ibs: dadosExtraidos.ivaConfig.ibs || 0.177,
+                categoriaIva: dadosExtraidos.ivaConfig.categoriaIva || 'standard',
+                reducaoEspecial: dadosExtraidos.ivaConfig.reducaoEspecial || 0
+            };
+        }
+
+        console.log('IMPORTACAO-CONTROLLER: Dados adaptados para formato DataManager:', estruturaAdaptada);
+        return estruturaAdaptada;
+    }
+
+    /**
+     * Função auxiliar para obter valor de crédito
+     * @param {Object} dados - Dados extraídos
+     * @param {string} tipo - Tipo de crédito (pis, cofins, icms, ipi)
+     * @returns {number} - Valor do crédito
+     */
+    function obterValorCredito(dados, tipo) {
+        // Verificar várias possíveis fontes para o valor do crédito
+        if (dados.parametrosFiscais?.creditos && dados.parametrosFiscais.creditos[tipo] !== undefined) {
+            return dados.parametrosFiscais.creditos[tipo];
+        }
+
+        if (dados.parametrosFiscais && dados.parametrosFiscais[`credito${tipo.toUpperCase()}`] !== undefined) {
+            return dados.parametrosFiscais[`credito${tipo.toUpperCase()}`];
+        }
+
+        if (dados.creditos && dados.creditos[tipo] !== undefined) {
+            // Pode ser um array de objetos de crédito
+            if (Array.isArray(dados.creditos[tipo])) {
+                return dados.creditos[tipo].reduce((total, credito) => {
+                    return total + (credito.valorCredito || credito.valor || 0);
+                }, 0);
+            }
+            return dados.creditos[tipo];
+        }
+
+        // Valor padrão
+        return 0;
     }
     
     /**
@@ -711,28 +881,65 @@ const ImportacaoController = (function() {
                 ivaConfig: dados.ivaConfig ? Object.keys(dados.ivaConfig) : 'Não disponível'
             });
 
+            // Normalizar dados usando o DataManager antes de preencher
+            let dadosNormalizados;
+
+            if (window.DataManager && typeof window.DataManager.validarENormalizar === 'function') {
+                console.log('IMPORTACAO-CONTROLLER: Normalizando dados via DataManager');
+                dadosNormalizados = window.DataManager.validarENormalizar(dados);
+                console.log('IMPORTACAO-CONTROLLER: Dados normalizados:', dadosNormalizados);
+            } else {
+                console.warn('IMPORTACAO-CONTROLLER: DataManager não disponível para normalização');
+                dadosNormalizados = dados;
+            }
+
             // Preencher dados da empresa
-            if (dados.empresa && elements.importEmpresa?.checked !== false) {
-                preencherDadosEmpresa(dados.empresa);
+            if (dadosNormalizados.empresa && elements.importEmpresa?.checked !== false) {
+                // Verificar campos críticos antes de preencher
+                if (!dadosNormalizados.empresa.nome || dadosNormalizados.empresa.nome.trim() === '') {
+                    adicionarLog('ATENÇÃO: Nome da empresa não encontrado nos dados importados.', 'warning');
+                    console.warn('IMPORTACAO-CONTROLLER: Nome da empresa vazio ou não encontrado');
+                }
+
+                if (!dadosNormalizados.empresa.faturamento || dadosNormalizados.empresa.faturamento <= 0) {
+                    adicionarLog('ATENÇÃO: Faturamento da empresa não encontrado ou zero.', 'warning');
+                    console.warn('IMPORTACAO-CONTROLLER: Faturamento vazio ou não encontrado');
+                }
+
+                preencherDadosEmpresa(dadosNormalizados.empresa);
                 adicionarLog('Dados da empresa preenchidos com sucesso.', 'success');
+            } else {
+                adicionarLog('Dados da empresa não importados (desativado ou não disponíveis).', 'info');
             }
 
             // Preencher parâmetros fiscais
-            if (dados.parametrosFiscais && elements.importImpostos?.checked !== false) {
-                preencherParametrosFiscais(dados.parametrosFiscais);
+            if (dadosNormalizados.parametrosFiscais && elements.importImpostos?.checked !== false) {
+                preencherParametrosFiscais(dadosNormalizados.parametrosFiscais);
                 adicionarLog('Parâmetros fiscais preenchidos com sucesso.', 'success');
+            } else {
+                adicionarLog('Parâmetros fiscais não importados (desativado ou não disponíveis).', 'info');
             }
 
             // Preencher ciclo financeiro
-            if (dados.cicloFinanceiro && elements.importCiclo?.checked !== false) {
-                preencherCicloFinanceiro(dados.cicloFinanceiro);
+            if (dadosNormalizados.cicloFinanceiro && elements.importCiclo?.checked !== false) {
+                preencherCicloFinanceiro(dadosNormalizados.cicloFinanceiro);
                 adicionarLog('Dados do ciclo financeiro preenchidos com sucesso.', 'success');
+
+                // Recalcular ciclo financeiro com os novos dados
+                if (window.FormsManager && typeof window.FormsManager.calcularCicloFinanceiro === 'function') {
+                    window.FormsManager.calcularCicloFinanceiro();
+                    adicionarLog('Ciclo financeiro recalculado com sucesso.', 'success');
+                }
+            } else {
+                adicionarLog('Ciclo financeiro não importado (desativado ou não disponível).', 'info');
             }
 
             // Configurar IVA Dual
-            if (dados.ivaConfig) {
-                preencherDadosIVADual(dados.ivaConfig);
+            if (dadosNormalizados.ivaConfig) {
+                preencherDadosIVADual(dadosNormalizados.ivaConfig);
                 adicionarLog('Configurações do IVA Dual preenchidas com sucesso.', 'success');
+            } else {
+                adicionarLog('Configurações IVA Dual não disponíveis nos dados importados.', 'info');
             }
 
             // Rolar para a aba de simulação
@@ -740,6 +947,9 @@ const ImportacaoController = (function() {
                 const abaPrincipal = document.querySelector('.tab-button[data-tab="simulacao"]');
                 if (abaPrincipal) {
                     abaPrincipal.click();
+                    adicionarLog('Navegando para a aba de simulação.', 'info');
+                } else {
+                    adicionarLog('Aba de simulação não encontrada.', 'warning');
                 }
 
                 const btnSimular = document.getElementById('btn-simular');
@@ -750,7 +960,7 @@ const ImportacaoController = (function() {
 
         } catch (erro) {
             adicionarLog('Erro ao preencher campos do simulador: ' + erro.message, 'error');
-            console.error('IMPORTACAO-CONTROLLER: Erro ao preencher campos:', erro);
+            console.error('IMPORTACAO-CONTROLLER: Erro ao preencher campos:', erro, erro.stack);
         }
     }
     
@@ -765,78 +975,143 @@ const ImportacaoController = (function() {
             return;
         }
 
-        // Nome da empresa
+        // Nome da empresa - Verificação e log detalhados
         const campoEmpresa = document.getElementById('empresa');
-        if (campoEmpresa && dadosEmpresa.nome) {
-            campoEmpresa.value = dadosEmpresa.nome;
-            marcarCampoComoSped(campoEmpresa);
+        if (campoEmpresa) {
+            if (dadosEmpresa.nome && dadosEmpresa.nome.trim() !== '') {
+                campoEmpresa.value = dadosEmpresa.nome.trim();
+                marcarCampoComoSped(campoEmpresa);
+                console.log(`IMPORTACAO-CONTROLLER: Nome da empresa preenchido: "${dadosEmpresa.nome}"`);
+            } else {
+                console.warn('IMPORTACAO-CONTROLLER: Nome da empresa não encontrado ou vazio');
+                adicionarLog('Nome da empresa não encontrado nos dados importados.', 'warning');
+            }
+        } else {
+            console.warn('IMPORTACAO-CONTROLLER: Campo de nome da empresa não encontrado no formulário');
         }
 
-        // Faturamento mensal
+        // Faturamento mensal - Utilizar DataManager para conversão consistente
         const campoFaturamento = document.getElementById('faturamento');
-        if (campoFaturamento && dadosEmpresa.faturamento && dadosEmpresa.faturamento > 0) {
-            // Validar o valor do faturamento
-            const faturamento = validarValorMonetario(dadosEmpresa.faturamento);
-            if (faturamento > 0 && faturamento < 1000000000) { // Entre 0 e 1 bilhão
-                const valorFormatado = formatarMoeda(faturamento);
-                campoFaturamento.value = valorFormatado;
+        if (campoFaturamento) {
+            let faturamentoValido = 0;
 
-                // Se o campo tem dataset.rawValue (para CurrencyFormatter)
-                if (campoFaturamento.dataset) {
-                    campoFaturamento.dataset.rawValue = faturamento.toString();
+            // Tentativa 1: Usar faturamento diretamente
+            if (dadosEmpresa.faturamento && dadosEmpresa.faturamento > 0) {
+                faturamentoValido = dadosEmpresa.faturamento;
+            }
+            // Tentativa 2: Usar faturamentoMensal se disponível
+            else if (dadosEmpresa.faturamentoMensal && dadosEmpresa.faturamentoMensal > 0) {
+                faturamentoValido = dadosEmpresa.faturamentoMensal;
+            }
+
+            if (faturamentoValido > 0) {
+                // Usar DataManager para normalização, se disponível
+                let faturamentoNormalizado = faturamentoValido;
+                if (window.DataManager && typeof window.DataManager.normalizarValor === 'function') {
+                    faturamentoNormalizado = window.DataManager.normalizarValor(faturamentoValido, 'monetario');
+                } else {
+                    // Fallback para função local
+                    faturamentoNormalizado = validarValorMonetario(faturamentoValido);
                 }
 
-                // Marcar campo como preenchido pelo SPED
-                marcarCampoComoSped(campoFaturamento);
+                // Validar limites razoáveis
+                if (faturamentoNormalizado > 0 && faturamentoNormalizado < 1000000000) { // Entre 0 e 1 bilhão
+                    // Usar DataManager para formatação, se disponível
+                    let valorFormatado;
+                    if (window.DataManager && typeof window.DataManager.formatarMoeda === 'function') {
+                        valorFormatado = window.DataManager.formatarMoeda(faturamentoNormalizado);
+                    } else {
+                        valorFormatado = formatarMoeda(faturamentoNormalizado);
+                    }
 
-                // Disparar evento para recalcular valores dependentes
-                campoFaturamento.dispatchEvent(new Event('input', { bubbles: true }));
+                    campoFaturamento.value = valorFormatado;
 
-                console.log(`IMPORTACAO-CONTROLLER: Faturamento preenchido: ${faturamento} (${valorFormatado})`);
+                    // Se o campo tem dataset.rawValue (para CurrencyFormatter)
+                    if (campoFaturamento.dataset) {
+                        campoFaturamento.dataset.rawValue = faturamentoNormalizado.toString();
+                    }
+
+                    // Marcar campo como preenchido pelo SPED
+                    marcarCampoComoSped(campoFaturamento);
+
+                    // Disparar evento para recalcular valores dependentes
+                    campoFaturamento.dispatchEvent(new Event('input', { bubbles: true }));
+
+                    console.log(`IMPORTACAO-CONTROLLER: Faturamento preenchido: ${faturamentoNormalizado} (${valorFormatado})`);
+                    adicionarLog(`Faturamento mensal: ${valorFormatado}`, 'info');
+                } else {
+                    console.warn(`IMPORTACAO-CONTROLLER: Faturamento fora dos limites razoáveis: ${faturamentoNormalizado}`);
+                    adicionarLog('Faturamento com valor inválido nos dados importados.', 'warning');
+                }
             } else {
-                console.warn(`IMPORTACAO-CONTROLLER: Faturamento fora dos limites razoáveis: ${faturamento}`);
+                console.warn('IMPORTACAO-CONTROLLER: Faturamento não encontrado ou zero');
+                adicionarLog('Faturamento não encontrado nos dados importados.', 'warning');
             }
+        } else {
+            console.warn('IMPORTACAO-CONTROLLER: Campo de faturamento não encontrado no formulário');
         }
 
-        // Margem operacional
+        // Margem operacional - Normalização e validação melhoradas
         const campoMargem = document.getElementById('margem');
         if (campoMargem && dadosEmpresa.margem !== undefined) {
-            // Garantir que a margem está em formato percentual (0-100)
-            let margem = dadosEmpresa.margem;
-            if (margem <= 1) {
-                margem = margem * 100; // Converter de decimal para percentual
+            // Usar DataManager para normalização, se disponível
+            let margemNormalizada;
+            if (window.DataManager && typeof window.DataManager.extrairValorPercentual === 'function') {
+                margemNormalizada = window.DataManager.extrairValorPercentual(dadosEmpresa.margem) * 100;
+            } else {
+                // Fallback: Garantir que a margem está em formato percentual (0-100)
+                margemNormalizada = dadosEmpresa.margem;
+                if (margemNormalizada <= 1) {
+                    margemNormalizada = margemNormalizada * 100;
+                }
             }
 
             // Garantir que a margem está entre 0 e 100
-            margem = Math.max(0, Math.min(100, margem));
+            margemNormalizada = Math.max(0, Math.min(100, margemNormalizada));
 
-            campoMargem.value = margem.toFixed(2);
+            campoMargem.value = margemNormalizada.toFixed(2);
             marcarCampoComoSped(campoMargem);
 
             // Disparar evento para recalcular valores dependentes
             campoMargem.dispatchEvent(new Event('input', { bubbles: true }));
 
-            console.log(`IMPORTACAO-CONTROLLER: Margem preenchida: ${margem.toFixed(2)}%`);
+            console.log(`IMPORTACAO-CONTROLLER: Margem preenchida: ${margemNormalizada.toFixed(2)}%`);
         }
 
-        // Tipo de empresa
+        // Tipo de empresa - Verificação e normalização de valores
         const campoTipoEmpresa = document.getElementById('tipo-empresa');
         if (campoTipoEmpresa && dadosEmpresa.tipoEmpresa) {
-            campoTipoEmpresa.value = dadosEmpresa.tipoEmpresa;
-            marcarCampoComoSped(campoTipoEmpresa);
-            campoTipoEmpresa.dispatchEvent(new Event('change', { bubbles: true }));
+            // Normalizar tipo de empresa (garantir compatibilidade com os valores aceitos pelo select)
+            const tiposValidos = ['comercio', 'industria', 'servicos'];
+            const tipoNormalizado = dadosEmpresa.tipoEmpresa.toLowerCase();
 
-            console.log(`IMPORTACAO-CONTROLLER: Tipo de empresa preenchido: ${dadosEmpresa.tipoEmpresa}`);
+            if (tiposValidos.includes(tipoNormalizado)) {
+                campoTipoEmpresa.value = tipoNormalizado;
+                marcarCampoComoSped(campoTipoEmpresa);
+                campoTipoEmpresa.dispatchEvent(new Event('change', { bubbles: true }));
+                console.log(`IMPORTACAO-CONTROLLER: Tipo de empresa preenchido: ${tipoNormalizado}`);
+            } else {
+                console.warn(`IMPORTACAO-CONTROLLER: Tipo de empresa inválido: ${dadosEmpresa.tipoEmpresa}`);
+                adicionarLog(`Tipo de empresa não reconhecido: ${dadosEmpresa.tipoEmpresa}`, 'warning');
+            }
         }
 
-        // Regime tributário
+        // Regime tributário - Verificação e normalização de valores
         const campoRegime = document.getElementById('regime');
         if (campoRegime && dadosEmpresa.regime) {
-            campoRegime.value = dadosEmpresa.regime;
-            marcarCampoComoSped(campoRegime);
-            campoRegime.dispatchEvent(new Event('change', { bubbles: true }));
+            // Normalizar regime tributário (garantir compatibilidade com os valores aceitos pelo select)
+            const regimesValidos = ['simples', 'presumido', 'real'];
+            const regimeNormalizado = dadosEmpresa.regime.toLowerCase();
 
-            console.log(`IMPORTACAO-CONTROLLER: Regime tributário preenchido: ${dadosEmpresa.regime}`);
+            if (regimesValidos.includes(regimeNormalizado)) {
+                campoRegime.value = regimeNormalizado;
+                marcarCampoComoSped(campoRegime);
+                campoRegime.dispatchEvent(new Event('change', { bubbles: true }));
+                console.log(`IMPORTACAO-CONTROLLER: Regime tributário preenchido: ${regimeNormalizado}`);
+            } else {
+                console.warn(`IMPORTACAO-CONTROLLER: Regime tributário inválido: ${dadosEmpresa.regime}`);
+                adicionarLog(`Regime tributário não reconhecido: ${dadosEmpresa.regime}`, 'warning');
+            }
         }
     }
 

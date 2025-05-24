@@ -949,6 +949,18 @@ const SpedParser = (function() {
         }
 
         try {
+            // Validar campos críticos com mensagens detalhadas
+            const cnpj = validarCampo(campos, 8);
+            const nome = validarCampo(campos, 9);
+
+            if (!nome || nome.trim() === '') {
+                console.warn('Nome da empresa não encontrado no registro 0000 (campo 9)');
+            }
+
+            if (!cnpj || cnpj.trim() === '') {
+                console.warn('CNPJ da empresa não encontrado no registro 0000 (campo 8)');
+            }
+
             return {
                 tipo: 'empresa',
                 categoria: 'identificacao',
@@ -956,10 +968,10 @@ const SpedParser = (function() {
                 finalidade: validarCampo(campos, 4),
                 dataInicial: validarCampo(campos, 5),
                 dataFinal: validarCampo(campos, 6),
-                nomeEmpresarial: validarCampo(campos, 7),
-                cnpj: validarCampo(campos, 8),
-                nome: validarCampo(campos, 9),           // CORRIGIDO: índice 9
-                uf: validarCampo(campos, 14),            // CORRIGIDO: índice 14
+                nomeEmpresarial: nome, // Usar campo 9 como nome empresarial
+                cnpj: cnpj,
+                nome: nome,           // CORRIGIDO: nome no campo 9
+                uf: validarCampo(campos, 14),
                 ie: validarCampo(campos, 11),
                 codMunicipio: validarCampo(campos, 13),
                 im: validarCampo(campos, 15),
@@ -968,7 +980,7 @@ const SpedParser = (function() {
                 atividade: validarCampo(campos, 18)
             };
         } catch (erro) {
-            console.warn('Erro ao processar registro 0000:', erro.message);
+            console.warn('Erro ao processar registro 0000:', erro.message, 'Conteúdo do campo:', JSON.stringify(campos));
             return null;
         }
     }
@@ -1238,18 +1250,35 @@ const SpedParser = (function() {
     // =============================
 
     function parseRegistro0000Contribuicoes(campos) {
-        if (!validarEstruturaRegistro(campos, 15)) return null;
-        return {
-            tipo: 'empresa',
-            cnpj: validarCampo(campos, 8),
-            nome: validarCampo(campos, 9),
-            ie: validarCampo(campos, 11),
-            municipio: validarCampo(campos, 13),  
-            uf: validarCampo(campos, 14),
-            dataInicial: validarCampo(campos, 5),
-            dataFinal: validarCampo(campos, 6),
-            versaoLeiaute: validarCampo(campos, 3)
-        };
+        if (!validarEstruturaRegistro(campos, 15)) {
+            console.warn('Registro 0000 Contribuições com estrutura insuficiente:', campos.length);
+            return null;
+        }
+
+        try {
+            // Validar campos críticos com mensagens detalhadas
+            const cnpj = validarCampo(campos, 8);
+            const nome = validarCampo(campos, 9);
+
+            if (!nome || nome.trim() === '') {
+                console.warn('Nome da empresa não encontrado no registro 0000 Contribuições (campo 9)');
+            }
+
+            return {
+                tipo: 'empresa',
+                cnpj: cnpj,
+                nome: nome,
+                ie: validarCampo(campos, 11),
+                municipio: validarCampo(campos, 13),  
+                uf: validarCampo(campos, 14),
+                dataInicial: validarCampo(campos, 5),
+                dataFinal: validarCampo(campos, 6),
+                versaoLeiaute: validarCampo(campos, 3)
+            };
+        } catch (erro) {
+            console.warn('Erro ao processar registro 0000 Contribuições:', erro.message);
+            return null;
+        }
     }
 
     function parseRegistro0001Contribuicoes(campos) {

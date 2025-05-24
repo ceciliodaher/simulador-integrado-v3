@@ -242,25 +242,61 @@ const SpedExtractor = (function() {
             faturamentoMensal: 0
         };
 
-        // Processar SPED Contribuições para faturamento correto
-        if (dadosSped.contribuicoes && dadosSped.contribuicoes.length > 0) {
+        // Verificar se empresa já existe nas propriedades do objeto
+        if (dadosSped.fiscal?.empresa) {
+            console.log('SPED-EXTRACTOR: Usando dados da empresa do SPED Fiscal');
+            empresa.cnpj = dadosSped.fiscal.empresa.cnpj || '';
+            empresa.nome = dadosSped.fiscal.empresa.nome || '';
+        } else if (dadosSped.contribuicoes?.empresa) {
+            console.log('SPED-EXTRACTOR: Usando dados da empresa do SPED Contribuições');
+            empresa.cnpj = dadosSped.contribuicoes.empresa.cnpj || '';
+            empresa.nome = dadosSped.contribuicoes.empresa.nome || '';
+        }
+
+        // Se não encontrou dados, tentar processar linhas brutas
+        if (!empresa.nome && dadosSped.contribuicoes && Array.isArray(dadosSped.contribuicoes)) {
+            console.log('SPED-EXTRACTOR: Processando linhas brutas do SPED Contribuições');
             for (const linha of dadosSped.contribuicoes) {
                 // Dados da empresa (registro 0000)
                 if (linha.startsWith('|0000|')) {
                     const campos = linha.split('|');
-                    empresa.cnpj = campos[8] || '';
-                    empresa.nome = campos[9] || '';
+                    if (campos.length >= 10) {
+                        empresa.cnpj = campos[8] || '';
+                        empresa.nome = campos[9] || '';
+                        console.log(`SPED-EXTRACTOR: Encontrado nome da empresa: "${empresa.nome}"`);
+                    }
                 }
 
                 // FATURAMENTO CORRETO (registro 0111)
                 if (linha.startsWith('|0111|')) {
                     const campos = linha.split('|');
-                    // Campo [2] = receita bruta total - CORRETO
-                    empresa.faturamentoMensal = parseFloat(campos[2]?.replace(',', '.') || 0);
-                    console.log(`Faturamento correto: R$ ${empresa.faturamentoMensal.toLocaleString('pt-BR', {minimumFractionDigits: 2})}`);
-                    break;
+                    if (campos.length >= 3) {
+                        // Campo [2] = receita bruta total - CORRETO
+                        empresa.faturamentoMensal = parseValorMonetario(campos[2]);
+                        console.log(`SPED-EXTRACTOR: Faturamento correto: R$ ${empresa.faturamentoMensal.toLocaleString('pt-BR', {minimumFractionDigits: 2})}`);
+                    }
                 }
             }
+        }
+
+        // Se ainda não encontrou faturamento, tentar outras fontes
+        if (empresa.faturamentoMensal <= 0) {
+            if (dadosSped.contribuicoes?.receitas?.receitaBrutaTotal > 0) {
+                empresa.faturamentoMensal = dadosSped.contribuicoes.receitas.receitaBrutaTotal;
+                console.log(`SPED-EXTRACTOR: Usando faturamento da receita bruta total: R$ ${empresa.faturamentoMensal.toLocaleString('pt-BR', {minimumFractionDigits: 2})}`);
+            } else if (dadosSped.fiscal?.totalizadores?.valorTotalSaidas > 0) {
+                empresa.faturamentoMensal = dadosSped.fiscal.totalizadores.valorTotalSaidas;
+                console.log(`SPED-EXTRACTOR: Usando faturamento do valor total de saídas: R$ ${empresa.faturamentoMensal.toLocaleString('pt-BR', {minimumFractionDigits: 2})}`);
+            }
+        }
+
+        // Validação final
+        if (!empresa.nome) {
+            console.warn('SPED-EXTRACTOR: Nome da empresa não encontrado em nenhuma fonte');
+        }
+
+        if (empresa.faturamentoMensal <= 0) {
+            console.warn('SPED-EXTRACTOR: Faturamento mensal não encontrado ou zero');
         }
 
         return empresa;
