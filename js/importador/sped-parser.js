@@ -950,8 +950,8 @@ const SpedParser = (function() {
 
         try {
             // Validar campos críticos com mensagens detalhadas
-            const cnpj = validarCampo(campos, 8);
-            const nome = validarCampo(campos, 7); // CORRIGIDO: nome empresarial está no campo 7, não 9
+            const cnpj = validarCampo(campos, 7);
+            const nome = validarCampo(campos, 6); // CORRIGIDO: nome empresarial está no campo 6, não 8
 
             if (!nome || nome.trim() === '') {
                 console.warn('Nome da empresa não encontrado no registro 0000 (campo 7)');
