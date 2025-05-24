@@ -3,6 +3,55 @@
  * Versão corrigida para integração com o simulador Split Payment
  * VERSÃO CORRIGIDA - Janeiro 2025
  */
+
+/**
+ * Converte uma string para valor monetário de forma robusta
+ * @param {string|number} valorString - String ou número representando valor monetário
+ * @returns {number} - Valor convertido como número
+ */
+function parseValorMonetario(valorString) {
+    // Verificar se valor é válido
+    if (!valorString || valorString === '' || valorString === '0' || valorString === 'null') {
+        return 0;
+    }
+    
+    try {
+        // Se já for um número, retornar diretamente
+        if (typeof valorString === 'number') {
+            return isNaN(valorString) ? 0 : valorString;
+        }
+        
+        // Converter para string e remover espaços
+        let valor = valorString.toString().trim();
+        
+        // Tratar formato brasileiro: 1.234.567,89
+        if (valor.includes(',')) {
+            const partes = valor.split(',');
+            if (partes.length === 2) {
+                // Remover separadores de milhar da parte inteira
+                const parteInteira = partes[0].replace(/\./g, '');
+                const parteDecimal = partes[1];
+                valor = parteInteira + '.' + parteDecimal;
+            }
+        } else {
+            // Se não tem vírgula, verificar se tem pontos
+            const pontos = valor.split('.');
+            if (pontos.length > 2) {
+                // Múltiplos pontos = separadores de milhar
+                valor = valor.replace(/\./g, '');
+            }
+            // Se tem apenas um ponto, pode ser decimal em formato americano
+        }
+        
+        const resultado = parseFloat(valor);
+        return isNaN(resultado) ? 0 : resultado;
+        
+    } catch (erro) {
+        console.warn('SPED-EXTRACTOR: Erro ao converter valor monetário:', valorString, erro);
+        return 0;
+    }
+}
+
 const SpedExtractor = (function() {
     
     /**
@@ -16,20 +65,65 @@ const SpedExtractor = (function() {
         }
 
         console.log('SPED-EXTRACTOR: Iniciando extração de dados para simulador');
+
+        // Log detalhado da estrutura recebida para diagnóstico
         console.log('SPED-EXTRACTOR: Estrutura de dados recebida:', {
-            empresa: !!dadosSped.empresa,
+            empresa: dadosSped.empresa ? Object.keys(dadosSped.empresa) : 'Não disponível',
             documentos: dadosSped.documentos?.length || 0,
-            creditos: Object.keys(dadosSped.creditos || {}).join(', '),
-            debitos: Object.keys(dadosSped.debitos || {}).join(', '),
-            impostos: Object.keys(dadosSped.impostos || {}).join(', ')
+            creditos: dadosSped.creditos ? Object.keys(dadosSped.creditos).join(', ') : 'Nenhum',
+            debitos: dadosSped.debitos ? Object.keys(dadosSped.debitos).join(', ') : 'Nenhum',
+            impostos: dadosSped.impostos ? Object.keys(dadosSped.impostos).join(', ') : 'Nenhum',
+            metadados: dadosSped.metadados ? Object.keys(dadosSped.metadados) : 'Nenhum'
         });
 
+        // Analisar alguns documentos para debug
+        if (dadosSped.documentos?.length > 0) {
+            const amostraDocs = dadosSped.documentos.slice(0, 3);
+            console.log('SPED-EXTRACTOR: Amostra de documentos:', JSON.stringify(amostraDocs, null, 2));
+        }
+
         try {
+            // Extrair dados da empresa primeiro para debug
+            const dadosEmpresa = extrairDadosEmpresa(dadosSped);
+            console.log('SPED-EXTRACTOR: Dados da empresa extraídos:', dadosEmpresa);
+
+            // Verificar se o nome da empresa foi extraído corretamente
+            if (!dadosEmpresa.nome || dadosEmpresa.nome.length <= 2) {
+                console.warn('SPED-EXTRACTOR: Nome da empresa não encontrado ou muito curto, verificando campos alternativos');
+
+                // Tentar extrair nome da empresa de campos alternativos
+                if (dadosSped.empresa) {
+                    const camposAlternativos = ['nomeEmpresarial', 'nome', 'razaoSocial', 'fantasia'];
+                    for (const campo of camposAlternativos) {
+                        if (dadosSped.empresa[campo] && dadosSped.empresa[campo].length > 2) {
+                            dadosEmpresa.nome = dadosSped.empresa[campo];
+                            console.log(`SPED-EXTRACTOR: Nome da empresa extraído do campo alternativo '${campo}': ${dadosEmpresa.nome}`);
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // Extrair parâmetros fiscais
+            const parametrosFiscais = extrairParametrosFiscais(dadosSped);
+            console.log('SPED-EXTRACTOR: Parâmetros fiscais extraídos:', 
+                Object.keys(parametrosFiscais.composicaoTributaria?.debitos || {})
+                    .map(imposto => `${imposto}: ${parametrosFiscais.composicaoTributaria.debitos[imposto]}`)
+            );
+
+            // Extrair ciclo financeiro
+            const cicloFinanceiro = extrairCicloFinanceiro(dadosSped);
+            console.log('SPED-EXTRACTOR: Ciclo financeiro extraído:', cicloFinanceiro);
+
+            // Extrair dados do IVA
+            const ivaConfig = extrairDadosIVA(dadosSped);
+            console.log('SPED-EXTRACTOR: Configuração IVA extraída:', ivaConfig);
+
             const dadosSimulador = {
-                empresa: extrairDadosEmpresa(dadosSped),
-                parametrosFiscais: extrairParametrosFiscais(dadosSped),
-                cicloFinanceiro: extrairCicloFinanceiro(dadosSped),
-                ivaConfig: extrairDadosIVA(dadosSped),
+                empresa: dadosEmpresa,
+                parametrosFiscais: parametrosFiscais,
+                cicloFinanceiro: cicloFinanceiro,
+                ivaConfig: ivaConfig,
                 metadados: {
                     fonteDados: 'sped',
                     timestampImportacao: new Date().toISOString(),
@@ -37,6 +131,13 @@ const SpedExtractor = (function() {
                     qualidadeDados: avaliarQualidadeDados(dadosSped)
                 }
             };
+
+            // Validar dados extraídos
+            const problemas = validarDadosExtraidos(dadosSimulador);
+            if (problemas.length > 0) {
+                console.warn('SPED-EXTRACTOR: Problemas encontrados nos dados extraídos:', problemas);
+                // Não abortar, apenas registrar os problemas
+            }
 
             // Validar e normalizar usando DataManager se disponível
             const resultado = window.DataManager ? 
@@ -50,6 +151,37 @@ const SpedExtractor = (function() {
             console.error('SPED-EXTRACTOR: Erro durante extração:', erro);
             return criarEstruturaVazia();
         }
+    }
+
+    /**
+     * Valida os dados extraídos para garantir integridade
+     * @param {Object} dados - Dados extraídos
+     * @returns {Array} - Lista de problemas encontrados
+     */
+    function validarDadosExtraidos(dados) {
+        const problemas = [];
+
+        // Validar empresa
+        if (!dados.empresa.nome || dados.empresa.nome.length <= 2) {
+            problemas.push('Nome da empresa não encontrado ou inválido');
+        }
+
+        if (dados.empresa.faturamento <= 0) {
+            problemas.push('Faturamento da empresa não encontrado ou zero');
+        }
+
+        // Validar parâmetros fiscais
+        const composicao = dados.parametrosFiscais?.composicaoTributaria;
+        if (!composicao) {
+            problemas.push('Composição tributária não encontrada');
+        } else {
+            const totalDebitos = Object.values(composicao.debitos || {}).reduce((sum, val) => sum + (val || 0), 0);
+            if (totalDebitos <= 0) {
+                problemas.push('Nenhum débito tributário encontrado');
+            }
+        }
+
+        return problemas;
     }
 
     /**
@@ -121,11 +253,18 @@ const SpedExtractor = (function() {
      */
     function extrairDadosEmpresa(dadosSped) {
         const empresa = dadosSped.empresa || {};
-        
+
         console.log('SPED-EXTRACTOR: Extraindo dados da empresa:', empresa);
 
+        // Verificar a estrutura completa do objeto empresa para debug
+        console.log('SPED-EXTRACTOR: Estrutura detalhada do objeto empresa:', JSON.stringify(empresa, null, 2));
+
+        // Garantir que estamos acessando o campo nome correto
+        // O SPED EFD-ICMS/IPI armazena em empresa.nomeEmpresarial, enquanto outros SPEDs usam empresa.nome
+        const nomeEmpresa = empresa.nomeEmpresarial || empresa.nome || '';
+
         // Calcular faturamento mensal com múltiplas fontes
-        const faturamentoMensal = calcularFaturamentoMensal(dadosSped);
+        const faturamentoMensal = calcularFaturamentoMensal(dadosSped.documentos || []);
         console.log('SPED-EXTRACTOR: Faturamento mensal calculado:', faturamentoMensal);
 
         // Calcular margem operacional
@@ -141,7 +280,7 @@ const SpedExtractor = (function() {
         console.log('SPED-EXTRACTOR: Regime tributário determinado:', regimeTributario);
 
         return {
-            nome: empresa.nome || '',
+            nome: nomeEmpresa,
             cnpj: empresa.cnpj || '',
             faturamento: faturamentoMensal,
             margem: margemOperacional,
@@ -154,7 +293,7 @@ const SpedExtractor = (function() {
     // Função para calcular faturamento mensal
     function calcularFaturamentoMensal(documentos) {
         if (!documentos || !Array.isArray(documentos)) {
-            console.warn('Documentos não é um array válido:', documentos);
+            console.warn('SPED-EXTRACTOR: Documentos não é um array válido:', documentos);
             return 0;
         }
 
@@ -162,7 +301,11 @@ const SpedExtractor = (function() {
         let documentosValidos = 0;
         let documentosSaida = 0;
 
-        console.log(`Analisando ${documentos.length} documentos...`);
+        console.log(`SPED-EXTRACTOR: Analisando ${documentos.length} documentos para cálculo de faturamento...`);
+
+        // Verificar os primeiros documentos para debug
+        const amostraDocs = documentos.slice(0, 5);
+        console.log('SPED-EXTRACTOR: Amostra dos primeiros documentos:', JSON.stringify(amostraDocs, null, 2));
 
         for (const doc of documentos) {
             if (!doc || typeof doc !== 'object') {
@@ -171,10 +314,11 @@ const SpedExtractor = (function() {
 
             // Log cada documento para debug
             if (doc.valorTotal > 0) {
-                console.log('Documento encontrado:', {
+                console.log('SPED-EXTRACTOR: Documento com valor encontrado:', {
                     indOper: doc.indOper,
                     valorTotal: doc.valorTotal,
-                    dataEmissao: doc.dataEmissao
+                    dataEmissao: doc.dataEmissao,
+                    modelo: doc.modelo
                 });
             }
 
@@ -189,17 +333,23 @@ const SpedExtractor = (function() {
             }
         }
 
-        console.log(`Documentos de saída: ${documentosSaida}`);
-        console.log(`Documentos válidos com valor: ${documentosValidos}`);
-        console.log(`Faturamento total: R$ ${faturamentoTotal.toFixed(2)}`);
+        console.log(`SPED-EXTRACTOR: Documentos de saída: ${documentosSaida}`);
+        console.log(`SPED-EXTRACTOR: Documentos válidos com valor: ${documentosValidos}`);
+        console.log(`SPED-EXTRACTOR: Faturamento total calculado: R$ ${faturamentoTotal.toFixed(2)}`);
 
         if (documentosValidos === 0) {
-            console.warn('Nenhum documento de saída com valor válido encontrado');
+            // Tentar método alternativo de cálculo se não encontrou documentos válidos
+            const faturamentoAlternativo = calcularFaturamentoPorImpostos(dadosSped);
+            if (faturamentoAlternativo > 0) {
+                console.log(`SPED-EXTRACTOR: Usando cálculo alternativo de faturamento: R$ ${faturamentoAlternativo.toFixed(2)}`);
+                return faturamentoAlternativo;
+            }
+
+            console.warn('SPED-EXTRACTOR: Nenhum documento de saída com valor válido encontrado');
             return 0;
         }
 
-        // Retornar o faturamento total (não dividir por documentos)
-        // Se quiser médio mensal, dividir por número de meses do período
+        // Retornar o faturamento total
         return faturamentoTotal;
     }
 
@@ -207,11 +357,20 @@ const SpedExtractor = (function() {
      * Calcula faturamento baseado em documentos fiscais
      */
     function calcularFaturamentoPorDocumentos(documentos) {
+        if (!documentos || !Array.isArray(documentos) || documentos.length === 0) {
+            console.warn('SPED-EXTRACTOR: Array de documentos inválido ou vazio');
+            return { faturamentoMensal: 0, periodoAnalise: 0 };
+        }
+
+        // Filtrar apenas documentos de saída (vendas) e válidos
         const documentosSaida = documentos.filter(doc => 
+            doc && typeof doc === 'object' &&
             doc.indOper === '1' && // Saída
-            doc.situacao === '00' && // Documento regular
+            (doc.situacao === '00' || !doc.situacao) && // Documento regular ou sem info de situação
             doc.valorTotal > 0
         );
+
+        console.log(`SPED-EXTRACTOR: Encontrados ${documentosSaida.length} documentos de saída válidos de ${documentos.length} total`);
 
         if (documentosSaida.length === 0) {
             return { faturamentoMensal: 0, periodoAnalise: 0 };
@@ -237,12 +396,18 @@ const SpedExtractor = (function() {
             const diffTime = Math.abs(dataFinal - dataInicial);
             const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
             mesesPeriodo = Math.max(1, Math.round(diffDays / 30));
+
+            console.log(`SPED-EXTRACTOR: Período de análise: ${dataInicial.toISOString()} a ${dataFinal.toISOString()} (${mesesPeriodo} meses)`);
         }
 
+        const faturamentoMensal = faturamentoTotal / mesesPeriodo;
+        console.log(`SPED-EXTRACTOR: Faturamento total: R$ ${faturamentoTotal.toFixed(2)}, Mensal: R$ ${faturamentoMensal.toFixed(2)}`);
+
         return {
-            faturamentoMensal: faturamentoTotal / mesesPeriodo,
+            faturamentoMensal: faturamentoMensal,
             periodoAnalise: mesesPeriodo,
-            totalDocumentos: documentosSaida.length
+            totalDocumentos: documentosSaida.length,
+            faturamentoTotal: faturamentoTotal
         };
     }
 
@@ -297,21 +462,31 @@ const SpedExtractor = (function() {
      */
     function extrairParametrosFiscais(dadosSped) {
         console.log('SPED-EXTRACTOR: Extraindo parâmetros fiscais');
+        console.log('SPED-EXTRACTOR: Estrutura de dados fiscais disponível:', {
+            creditos: dadosSped.creditos ? Object.keys(dadosSped.creditos) : 'Nenhum',
+            debitos: dadosSped.debitos ? Object.keys(dadosSped.debitos) : 'Nenhum',
+            impostos: dadosSped.impostos ? Object.keys(dadosSped.impostos) : 'Nenhum'
+        });
 
         const regimeTributario = determinarRegimeTributario(dadosSped);
         const tipoOperacao = determinarTipoOperacao(dadosSped);
         const regimePisCofins = determinarRegimePisCofins(dadosSped);
 
         // Calcular dados tributários mensais
-        const faturamentoMensal = calcularFaturamentoMensal(dadosSped);
-        
+        const faturamentoMensal = calcularFaturamentoMensal(dadosSped.documentos || []);
+
+        // Se não encontrou faturamento pelos documentos, tenta método alternativo
+        const faturamentoEfetivo = faturamentoMensal > 0 ? faturamentoMensal : estimarFaturamentoPorImpostos(dadosSped);
+
+        console.log(`SPED-EXTRACTOR: Faturamento efetivo para cálculo de impostos: ${faturamentoEfetivo}`);
+
         const composicaoTributaria = {
             debitos: {
-                pis: calcularDebitosPIS(dadosSped, faturamentoMensal),
-                cofins: calcularDebitosCOFINS(dadosSped, faturamentoMensal),
-                icms: calcularDebitosICMS(dadosSped, faturamentoMensal),
-                ipi: calcularDebitosIPI(dadosSped, faturamentoMensal),
-                iss: calcularDebitosISS(dadosSped, faturamentoMensal)
+                pis: calcularDebitosPIS(dadosSped, faturamentoEfetivo),
+                cofins: calcularDebitosCOFINS(dadosSped, faturamentoEfetivo),
+                icms: calcularDebitosICMS(dadosSped, faturamentoEfetivo),
+                ipi: calcularDebitosIPI(dadosSped, faturamentoEfetivo),
+                iss: calcularDebitosISS(dadosSped, faturamentoEfetivo)
             },
             creditos: {
                 pis: calcularCreditosPIS(dadosSped),
@@ -330,13 +505,26 @@ const SpedExtractor = (function() {
             }
         };
 
+        // Log detalhado dos valores calculados
+        console.log('SPED-EXTRACTOR: Composição tributária calculada:', {
+            debitosPIS: composicaoTributaria.debitos.pis,
+            debitosCOFINS: composicaoTributaria.debitos.cofins,
+            debitosICMS: composicaoTributaria.debitos.icms,
+            debitosIPI: composicaoTributaria.debitos.ipi,
+            debitosISS: composicaoTributaria.debitos.iss,
+            creditosPIS: composicaoTributaria.creditos.pis,
+            creditosCOFINS: composicaoTributaria.creditos.cofins,
+            creditosICMS: composicaoTributaria.creditos.icms,
+            creditosIPI: composicaoTributaria.creditos.ipi
+        });
+
         // Calcular alíquotas efetivas
-        if (faturamentoMensal > 0) {
+        if (faturamentoEfetivo > 0) {
             Object.keys(composicaoTributaria.debitos).forEach(imposto => {
                 const debito = composicaoTributaria.debitos[imposto];
                 const credito = composicaoTributaria.creditos[imposto] || 0;
                 const impostoLiquido = Math.max(0, debito - credito);
-                composicaoTributaria.aliquotasEfetivas[imposto] = (impostoLiquido / faturamentoMensal) * 100;
+                composicaoTributaria.aliquotasEfetivas[imposto] = (impostoLiquido / faturamentoEfetivo) * 100;
             });
 
             // Calcular alíquota total
@@ -346,10 +534,12 @@ const SpedExtractor = (function() {
                 return total + Math.max(0, debito - credito);
             }, 0);
 
-            composicaoTributaria.aliquotasEfetivas.total = (totalImpostoLiquido / faturamentoMensal) * 100;
-        }
+            composicaoTributaria.aliquotasEfetivas.total = (totalImpostoLiquido / faturamentoEfetivo) * 100;
 
-        console.log('SPED-EXTRACTOR: Composição tributária calculada:', composicaoTributaria);
+            console.log('SPED-EXTRACTOR: Alíquotas efetivas calculadas:', composicaoTributaria.aliquotasEfetivas);
+        } else {
+            console.warn('SPED-EXTRACTOR: Faturamento zero, não foi possível calcular alíquotas efetivas');
+        }
 
         return {
             tipoOperacao: tipoOperacao,
@@ -364,23 +554,49 @@ const SpedExtractor = (function() {
      * Calcula débitos de PIS com múltiplas fontes
      */
     function calcularDebitosPIS(dadosSped, faturamentoMensal) {
+        console.log('SPED-EXTRACTOR: Calculando débitos PIS');
+        console.log('SPED-EXTRACTOR: Estrutura de débitos disponível:', dadosSped.debitos ? Object.keys(dadosSped.debitos) : 'Nenhum');
+
         // PRIORIDADE 1: Dados diretos do SPED Contribuições
         if (dadosSped.debitos?.pis?.length > 0) {
+            console.log(`SPED-EXTRACTOR: Encontrados ${dadosSped.debitos.pis.length} registros de débitos PIS`);
+
+            // Debug dos primeiros registros
+            const amostraDebitos = dadosSped.debitos.pis.slice(0, 2);
+            console.log('SPED-EXTRACTOR: Amostra de débitos PIS:', JSON.stringify(amostraDebitos, null, 2));
+
             const totalDebitos = dadosSped.debitos.pis.reduce((total, debito) => {
-                return total + (debito.valorTotalContribuicao || debito.valorContribuicaoAPagar || 0);
+                const valor = debito.valorTotalContribuicao || debito.valorContribuicaoAPagar || 0;
+                console.log(`SPED-EXTRACTOR: Registro débito PIS com valor: ${valor}`);
+                return total + valor;
             }, 0);
-            
+
             if (totalDebitos > 0) {
                 console.log('SPED-EXTRACTOR: Débitos PIS extraídos do SPED:', totalDebitos);
                 return totalDebitos;
+            } else {
+                console.log('SPED-EXTRACTOR: Registros de débitos PIS encontrados, mas valor total é zero');
+            }
+        } else {
+            console.log('SPED-EXTRACTOR: Nenhum registro de débito PIS encontrado');
+        }
+
+        // PRIORIDADE 2: Verificar totalizações específicas de M200/M600
+        if (dadosSped.debitos?.m200?.length > 0) {
+            const valorM200 = dadosSped.debitos.m200.reduce((total, reg) => 
+                total + (reg.valorContribuicaoAPagar || reg.valorTotalContribuicao || 0), 0);
+
+            if (valorM200 > 0) {
+                console.log('SPED-EXTRACTOR: Débito PIS extraído do registro M200:', valorM200);
+                return valorM200;
             }
         }
 
-        // PRIORIDADE 2: Estimativa baseada no regime e faturamento
+        // PRIORIDADE 3: Estimativa baseada no regime e faturamento
         if (faturamentoMensal > 0) {
             const regime = determinarRegimeTributario(dadosSped);
             const regimePisCofins = determinarRegimePisCofins(dadosSped);
-            
+
             let aliquotaPIS = 0;
             if (regime === 'simples') {
                 return 0; // PIS incluído na alíquota única do Simples
@@ -389,7 +605,7 @@ const SpedExtractor = (function() {
             } else {
                 aliquotaPIS = 0.0065; // 0,65%
             }
-            
+
             const debitoEstimado = faturamentoMensal * aliquotaPIS;
             console.log(`SPED-EXTRACTOR: Débito PIS estimado - Regime: ${regimePisCofins}, Alíquota: ${aliquotaPIS * 100}%, Valor: ${debitoEstimado}`);
             return debitoEstimado;
@@ -399,26 +615,52 @@ const SpedExtractor = (function() {
     }
 
     /**
-     * Calcula débitos de COFINS com múltiplas fontes
-     */
+    * Calcula débitos de COFINS com múltiplas fontes
+    */
     function calcularDebitosCOFINS(dadosSped, faturamentoMensal) {
+        console.log('SPED-EXTRACTOR: Calculando débitos COFINS');
+        console.log('SPED-EXTRACTOR: Estrutura de débitos disponível:', dadosSped.debitos ? Object.keys(dadosSped.debitos) : 'Nenhum');
+
         // PRIORIDADE 1: Dados diretos do SPED Contribuições
         if (dadosSped.debitos?.cofins?.length > 0) {
+            console.log(`SPED-EXTRACTOR: Encontrados ${dadosSped.debitos.cofins.length} registros de débitos COFINS`);
+
+            // Debug dos primeiros registros
+            const amostraDebitos = dadosSped.debitos.cofins.slice(0, 2);
+            console.log('SPED-EXTRACTOR: Amostra de débitos COFINS:', JSON.stringify(amostraDebitos, null, 2));
+
             const totalDebitos = dadosSped.debitos.cofins.reduce((total, debito) => {
-                return total + (debito.valorTotalContribuicao || debito.valorContribuicaoAPagar || 0);
+                const valor = debito.valorTotalContribuicao || debito.valorContribuicaoAPagar || 0;
+                console.log(`SPED-EXTRACTOR: Registro débito COFINS com valor: ${valor}`);
+                return total + valor;
             }, 0);
-            
+
             if (totalDebitos > 0) {
                 console.log('SPED-EXTRACTOR: Débitos COFINS extraídos do SPED:', totalDebitos);
                 return totalDebitos;
+            } else {
+                console.log('SPED-EXTRACTOR: Registros de débitos COFINS encontrados, mas valor total é zero');
+            }
+        } else {
+            console.log('SPED-EXTRACTOR: Nenhum registro de débito COFINS encontrado');
+        }
+
+        // PRIORIDADE 2: Verificar totalizações específicas de M600
+        if (dadosSped.debitos?.m600?.length > 0) {
+            const valorM600 = dadosSped.debitos.m600.reduce((total, reg) => 
+                total + (reg.valorContribuicaoAPagar || reg.valorTotalContribuicao || 0), 0);
+
+            if (valorM600 > 0) {
+                console.log('SPED-EXTRACTOR: Débito COFINS extraído do registro M600:', valorM600);
+                return valorM600;
             }
         }
 
-        // PRIORIDADE 2: Estimativa baseada no regime e faturamento
+        // PRIORIDADE 3: Estimativa baseada no regime e faturamento
         if (faturamentoMensal > 0) {
             const regime = determinarRegimeTributario(dadosSped);
             const regimePisCofins = determinarRegimePisCofins(dadosSped);
-            
+
             let aliquotaCOFINS = 0;
             if (regime === 'simples') {
                 return 0; // COFINS incluído na alíquota única do Simples
@@ -427,7 +669,7 @@ const SpedExtractor = (function() {
             } else {
                 aliquotaCOFINS = 0.03; // 3%
             }
-            
+
             const debitoEstimado = faturamentoMensal * aliquotaCOFINS;
             console.log(`SPED-EXTRACTOR: Débito COFINS estimado - Regime: ${regimePisCofins}, Alíquota: ${aliquotaCOFINS * 100}%, Valor: ${debitoEstimado}`);
             return debitoEstimado;
@@ -440,26 +682,92 @@ const SpedExtractor = (function() {
      * Calcula débitos de ICMS
      */
     function calcularDebitosICMS(dadosSped, faturamentoMensal) {
+        console.log('SPED-EXTRACTOR: Calculando débitos ICMS');
+        console.log('SPED-EXTRACTOR: Estrutura de débitos disponível:', dadosSped.debitos ? Object.keys(dadosSped.debitos) : 'Nenhum');
+
         // PRIORIDADE 1: Dados diretos do SPED Fiscal
         if (dadosSped.debitos?.icms?.length > 0) {
+            console.log(`SPED-EXTRACTOR: Encontrados ${dadosSped.debitos.icms.length} registros de débitos ICMS`);
+
+            // Debug dos primeiros registros
+            const amostraDebitos = dadosSped.debitos.icms.slice(0, 2);
+            console.log('SPED-EXTRACTOR: Amostra de débitos ICMS:', JSON.stringify(amostraDebitos, null, 2));
+
             const totalDebitos = dadosSped.debitos.icms.reduce((total, debito) => {
-                return total + (debito.valorTotalDebitos || 0);
+                const valor = debito.valorTotalDebitos || debito.valorSaldoAPagar || 0;
+                console.log(`SPED-EXTRACTOR: Registro débito ICMS com valor: ${valor}`);
+                return total + valor;
             }, 0);
-            
+
             if (totalDebitos > 0) {
                 console.log('SPED-EXTRACTOR: Débitos ICMS extraídos do SPED:', totalDebitos);
                 return totalDebitos;
+            } else {
+                console.log('SPED-EXTRACTOR: Registros de débitos ICMS encontrados, mas valor total é zero');
+            }
+        } else {
+            console.log('SPED-EXTRACTOR: Nenhum registro de débito ICMS encontrado');
+        }
+
+        // PRIORIDADE 2: Verificar registros E110 ou equivalentes
+        if (dadosSped.impostos?.icms?.length > 0) {
+            const valorE110 = dadosSped.impostos.icms.reduce((total, reg) => 
+                total + (reg.valorTotalDebitos || reg.valorSaldoAPagar || 0), 0);
+
+            if (valorE110 > 0) {
+                console.log('SPED-EXTRACTOR: Débito ICMS extraído dos registros de impostos:', valorE110);
+                return valorE110;
             }
         }
 
-        // PRIORIDADE 2: Estimativa para empresas comerciais/industriais
+        // PRIORIDADE 3: Estimativa para empresas comerciais/industriais
         const tipoEmpresa = determinarTipoEmpresa(dadosSped);
         if (tipoEmpresa !== 'servicos' && faturamentoMensal > 0) {
-            const aliquotaMedia = 0.18; // 18% como média
+            let aliquotaMedia = 0.18; // 18% como média
+
+            // Ajuste da alíquota com base na UF da empresa
+            if (dadosSped.empresa?.uf) {
+                const uf = dadosSped.empresa.uf.toUpperCase();
+                const aliquotasPorUf = {
+                     'AC': 0.19, // Acre
+                      'AL': 0.19, // Alagoas
+                      'AP': 0.18, // Amapá
+                      'AM': 0.20, // Amazonas
+                      'BA': 0.19, // Bahia
+                      'CE': 0.18, // Ceará
+                      'DF': 0.18, // Distrito Federal
+                      'ES': 0.17, // Espírito Santo
+                      'GO': 0.17, // Goiás
+                      'MA': 0.20, // Maranhão
+                      'MT': 0.19, // Mato Grosso
+                      'MS': 0.17, // Mato Grosso do Sul
+                      'MG': 0.18, // Minas Gerais
+                      'PA': 0.19, // Pará
+                      'PB': 0.18, // Paraíba
+                      'PR': 0.19, // Paraná
+                      'PE': 0.18, // Pernambuco
+                      'PI': 0.18, // Piauí
+                      'RJ': 0.20, // Rio de Janeiro
+                      'RN': 0.20, // Rio Grande do Norte
+                      'RS': 0.19, // Rio Grande do Sul
+                      'RO': 0.18, // Rondônia
+                      'RR': 0.20, // Roraima
+                      'SC': 0.17, // Santa Catarina
+                      'SP': 0.18, // São Paulo
+                      'SE': 0.18, // Sergipe
+                      'TO': 0.18  // Tocantins
+                };
+
+                if (aliquotasPorUf[uf]) {
+                    aliquotaMedia = aliquotasPorUf[uf];
+                    console.log(`SPED-EXTRACTOR: Ajustando alíquota ICMS para UF ${uf}: ${aliquotaMedia * 100}%`);
+                }
+            }
+
             const baseCalculoPercentual = 0.6; // 60% do faturamento sujeito ao ICMS
-            
+
             const debitoEstimado = faturamentoMensal * baseCalculoPercentual * aliquotaMedia;
-            console.log(`SPED-EXTRACTOR: Débito ICMS estimado - Tipo: ${tipoEmpresa}, Valor: ${debitoEstimado}`);
+            console.log(`SPED-EXTRACTOR: Débito ICMS estimado - Tipo: ${tipoEmpresa}, Alíquota: ${aliquotaMedia * 100}%, Valor: ${debitoEstimado}`);
             return debitoEstimado;
         }
 
@@ -470,28 +778,52 @@ const SpedExtractor = (function() {
      * Calcula débitos de IPI
      */
     function calcularDebitosIPI(dadosSped, faturamentoMensal) {
+        console.log('SPED-EXTRACTOR: Calculando débitos IPI');
+
         const tipoEmpresa = determinarTipoEmpresa(dadosSped);
         if (tipoEmpresa !== 'industria') {
+            console.log('SPED-EXTRACTOR: Tipo de empresa não é indústria, débito IPI = 0');
             return 0; // IPI só se aplica à indústria
         }
 
         // PRIORIDADE 1: Dados diretos do SPED Fiscal
         if (dadosSped.impostos?.ipi?.length > 0) {
+            console.log(`SPED-EXTRACTOR: Encontrados ${dadosSped.impostos.ipi.length} registros de IPI`);
+
+            // Debug dos primeiros registros
+            const amostraIpi = dadosSped.impostos.ipi.slice(0, 2);
+            console.log('SPED-EXTRACTOR: Amostra de registros IPI:', JSON.stringify(amostraIpi, null, 2));
+
             const totalDebitos = dadosSped.impostos.ipi.reduce((total, debito) => {
-                return total + (debito.valorTotalDebitos || 0);
+                const valor = debito.valorTotalDebitos || 0;
+                console.log(`SPED-EXTRACTOR: Registro débito IPI com valor: ${valor}`);
+                return total + valor;
             }, 0);
-            
+
             if (totalDebitos > 0) {
                 console.log('SPED-EXTRACTOR: Débitos IPI extraídos do SPED:', totalDebitos);
                 return totalDebitos;
+            } else {
+                console.log('SPED-EXTRACTOR: Registros de IPI encontrados, mas valor total de débitos é zero');
             }
         }
 
-        // PRIORIDADE 2: Estimativa baseada no faturamento
+        // PRIORIDADE 2: Verificar registros E210 ou equivalentes
+        if (dadosSped.debitos?.ipi?.length > 0) {
+            const valorE210 = dadosSped.debitos.ipi.reduce((total, reg) => 
+                total + (reg.valorTotalDebitos || reg.valorTotalAPagar || 0), 0);
+
+            if (valorE210 > 0) {
+                console.log('SPED-EXTRACTOR: Débito IPI extraído dos registros de débitos:', valorE210);
+                return valorE210;
+            }
+        }
+
+        // PRIORIDADE 3: Estimativa baseada no faturamento
         if (faturamentoMensal > 0) {
             const aliquotaMedia = 0.10; // 10% como média
             const baseCalculoPercentual = 0.4; // 40% do faturamento sujeito ao IPI
-            
+
             const debitoEstimado = faturamentoMensal * baseCalculoPercentual * aliquotaMedia;
             console.log(`SPED-EXTRACTOR: Débito IPI estimado - Valor: ${debitoEstimado}`);
             return debitoEstimado;
@@ -504,16 +836,63 @@ const SpedExtractor = (function() {
      * Calcula débitos de ISS
      */
     function calcularDebitosISS(dadosSped, faturamentoMensal) {
+        console.log('SPED-EXTRACTOR: Calculando débitos ISS');
+
         const tipoEmpresa = determinarTipoEmpresa(dadosSped);
         if (tipoEmpresa !== 'servicos') {
+            console.log('SPED-EXTRACTOR: Tipo de empresa não é serviços, débito ISS = 0');
             return 0; // ISS só se aplica a serviços
         }
 
-        // ISS não consta no SPED, então sempre estimamos
+        // ISS não consta no SPED, verificar se há alguma fonte alternativa
+        if (dadosSped.impostos?.iss?.length > 0) {
+            const totalIss = dadosSped.impostos.iss.reduce((total, registro) => 
+                total + (registro.valorIss || registro.valorTotal || 0), 0);
+
+            if (totalIss > 0) {
+                console.log('SPED-EXTRACTOR: Valores de ISS encontrados em registros específicos:', totalIss);
+                return totalIss;
+            }
+        }
+
+        // Verificar se há registros A100 (serviços) no SPED Contribuições
+        let baseCalculoServicos = 0;
+        if (dadosSped.detalhamento?.receita_servico?.length > 0) {
+            baseCalculoServicos = dadosSped.detalhamento.receita_servico.reduce((total, serv) => 
+                total + (serv.valorOperacao || serv.valorServico || 0), 0);
+
+            console.log('SPED-EXTRACTOR: Base de cálculo de serviços encontrada:', baseCalculoServicos);
+        }
+
+        // Estimativa por faturamento se não houver informação específica
         if (faturamentoMensal > 0) {
-            const aliquotaMedia = 0.05; // 5% como média
-            const debitoEstimado = faturamentoMensal * aliquotaMedia;
-            console.log(`SPED-EXTRACTOR: Débito ISS estimado - Valor: ${debitoEstimado}`);
+            // Utilizar base de cálculo específica de serviços se disponível
+            const baseCalculo = baseCalculoServicos > 0 ? baseCalculoServicos : faturamentoMensal;
+
+            // Tentar determinar a alíquota com base no município
+            let aliquotaMedia = 0.05; // 5% como padrão
+
+            // Ajustar alíquota para municípios conhecidos se disponível
+            if (dadosSped.empresa?.codMunicipio) {
+                const codMunicipio = dadosSped.empresa.codMunicipio;
+                // Alguns exemplos de alíquotas municipais
+                const aliquotasPorMunicipio = {
+                    '3550308': 0.05, // São Paulo-SP
+                    '3304557': 0.05, // Rio de Janeiro-RJ
+                    '5300108': 0.05, // Brasília-DF
+                    '2611606': 0.05, // Recife-PE
+                    '4106902': 0.05  // Curitiba-PR
+                    // Adicionar outros conforme necessário
+                };
+
+                if (aliquotasPorMunicipio[codMunicipio]) {
+                    aliquotaMedia = aliquotasPorMunicipio[codMunicipio];
+                    console.log(`SPED-EXTRACTOR: Ajustando alíquota ISS para município ${codMunicipio}: ${aliquotaMedia * 100}%`);
+                }
+            }
+
+            const debitoEstimado = baseCalculo * aliquotaMedia;
+            console.log(`SPED-EXTRACTOR: Débito ISS estimado - Base: ${baseCalculo}, Alíquota: ${aliquotaMedia * 100}%, Valor: ${debitoEstimado}`);
             return debitoEstimado;
         }
 
@@ -524,31 +903,63 @@ const SpedExtractor = (function() {
      * Calcula créditos de PIS com dados do SPED
      */
     function calcularCreditosPIS(dadosSped) {
+        console.log('SPED-EXTRACTOR: Calculando créditos PIS');
+        console.log('SPED-EXTRACTOR: Estrutura de créditos disponível:', dadosSped.creditos ? Object.keys(dadosSped.creditos) : 'Nenhum');
+
         let totalCreditos = 0;
 
         // PRIORIDADE 1: Registros M100/M105 do SPED Contribuições
         if (dadosSped.creditos?.pis?.length > 0) {
+            console.log(`SPED-EXTRACTOR: Encontrados ${dadosSped.creditos.pis.length} registros de créditos PIS`);
+
+            // Debug dos primeiros registros
+            const amostraCreditos = dadosSped.creditos.pis.slice(0, 2);
+            console.log('SPED-EXTRACTOR: Amostra de créditos PIS:', JSON.stringify(amostraCreditos, null, 2));
+
             totalCreditos = dadosSped.creditos.pis.reduce((total, credito) => {
-                return total + (credito.valorCredito || 0);
+                const valor = credito.valorCredito || credito.valorCreditoDisp || 0;
+                console.log(`SPED-EXTRACTOR: Registro crédito PIS com valor: ${valor}`);
+                return total + valor;
             }, 0);
-            
+
             if (totalCreditos > 0) {
                 console.log('SPED-EXTRACTOR: Créditos PIS extraídos do SPED:', totalCreditos);
                 return totalCreditos;
+            } else {
+                console.log('SPED-EXTRACTOR: Registros de créditos PIS encontrados, mas valor total é zero');
+            }
+        } else {
+            console.log('SPED-EXTRACTOR: Nenhum registro de crédito PIS encontrado');
+        }
+
+        // PRIORIDADE 2: Verificar outras estruturas de crédito
+        if (dadosSped.detalhamento?.credito_pis?.length > 0) {
+            const valorCreditos = dadosSped.detalhamento.credito_pis.reduce((total, cred) => 
+                total + (cred.valorCredito || cred.valorCreditoDisp || 0), 0);
+
+            if (valorCreditos > 0) {
+                console.log('SPED-EXTRACTOR: Créditos PIS encontrados em estrutura alternativa:', valorCreditos);
+                return valorCreditos;
             }
         }
 
-        // PRIORIDADE 2: Estimativa baseada no regime não-cumulativo
+        // PRIORIDADE 3: Estimativa baseada no regime não-cumulativo
         const regimePisCofins = determinarRegimePisCofins(dadosSped);
         if (regimePisCofins === 'nao-cumulativo') {
-            const faturamentoAnual = calcularFaturamentoMensal(dadosSped) * 12;
-            const baseCalculoEstimada = faturamentoAnual * 0.6; // 60% do faturamento
-            const aliquotaPIS = 0.0165; // 1,65%
-            const aproveitamentoEstimado = 0.8; // 80%
-            
-            const creditoEstimado = (baseCalculoEstimada * aliquotaPIS * aproveitamentoEstimado) / 12;
-            console.log(`SPED-EXTRACTOR: Crédito PIS estimado - Regime: ${regimePisCofins}, Valor: ${creditoEstimado}`);
-            return creditoEstimado;
+            // Tentar estimar com base no faturamento
+            const faturamentoAnual = calcularFaturamentoMensal(dadosSped.documentos || []) * 12;
+
+            if (faturamentoAnual > 0) {
+                const baseCalculoEstimada = faturamentoAnual * 0.6; // 60% do faturamento
+                const aliquotaPIS = 0.0165; // 1,65%
+                const aproveitamentoEstimado = 0.8; // 80%
+
+                const creditoEstimado = (baseCalculoEstimada * aliquotaPIS * aproveitamentoEstimado) / 12;
+                console.log(`SPED-EXTRACTOR: Crédito PIS estimado - Regime: ${regimePisCofins}, Base: ${baseCalculoEstimada}, Valor: ${creditoEstimado}`);
+                return creditoEstimado;
+            }
+        } else {
+            console.log(`SPED-EXTRACTOR: Regime PIS/COFINS é ${regimePisCofins}, não gera créditos ou gera créditos reduzidos`);
         }
 
         return 0;
@@ -558,31 +969,63 @@ const SpedExtractor = (function() {
      * Calcula créditos de COFINS com dados do SPED
      */
     function calcularCreditosCOFINS(dadosSped) {
+        console.log('SPED-EXTRACTOR: Calculando créditos COFINS');
+        console.log('SPED-EXTRACTOR: Estrutura de créditos disponível:', dadosSped.creditos ? Object.keys(dadosSped.creditos) : 'Nenhum');
+
         let totalCreditos = 0;
 
         // PRIORIDADE 1: Registros M500/M505 do SPED Contribuições
         if (dadosSped.creditos?.cofins?.length > 0) {
+            console.log(`SPED-EXTRACTOR: Encontrados ${dadosSped.creditos.cofins.length} registros de créditos COFINS`);
+
+            // Debug dos primeiros registros
+            const amostraCreditos = dadosSped.creditos.cofins.slice(0, 2);
+            console.log('SPED-EXTRACTOR: Amostra de créditos COFINS:', JSON.stringify(amostraCreditos, null, 2));
+
             totalCreditos = dadosSped.creditos.cofins.reduce((total, credito) => {
-                return total + (credito.valorCredito || 0);
+                const valor = credito.valorCredito || credito.valorCreditoDisp || 0;
+                console.log(`SPED-EXTRACTOR: Registro crédito COFINS com valor: ${valor}`);
+                return total + valor;
             }, 0);
-            
+
             if (totalCreditos > 0) {
                 console.log('SPED-EXTRACTOR: Créditos COFINS extraídos do SPED:', totalCreditos);
                 return totalCreditos;
+            } else {
+                console.log('SPED-EXTRACTOR: Registros de créditos COFINS encontrados, mas valor total é zero');
+            }
+        } else {
+            console.log('SPED-EXTRACTOR: Nenhum registro de crédito COFINS encontrado');
+        }
+
+        // PRIORIDADE 2: Verificar outras estruturas de crédito
+        if (dadosSped.detalhamento?.credito_cofins?.length > 0) {
+            const valorCreditos = dadosSped.detalhamento.credito_cofins.reduce((total, cred) => 
+                total + (cred.valorCredito || cred.valorCreditoDisp || 0), 0);
+
+            if (valorCreditos > 0) {
+                console.log('SPED-EXTRACTOR: Créditos COFINS encontrados em estrutura alternativa:', valorCreditos);
+                return valorCreditos;
             }
         }
 
-        // PRIORIDADE 2: Estimativa baseada no regime não-cumulativo
+        // PRIORIDADE 3: Estimativa baseada no regime não-cumulativo
         const regimePisCofins = determinarRegimePisCofins(dadosSped);
         if (regimePisCofins === 'nao-cumulativo') {
-            const faturamentoAnual = calcularFaturamentoMensal(dadosSped) * 12;
-            const baseCalculoEstimada = faturamentoAnual * 0.6; // 60% do faturamento
-            const aliquotaCOFINS = 0.076; // 7,6%
-            const aproveitamentoEstimado = 0.8; // 80%
-            
-            const creditoEstimado = (baseCalculoEstimada * aliquotaCOFINS * aproveitamentoEstimado) / 12;
-            console.log(`SPED-EXTRACTOR: Crédito COFINS estimado - Regime: ${regimePisCofins}, Valor: ${creditoEstimado}`);
-            return creditoEstimado;
+            // Tentar estimar com base no faturamento
+            const faturamentoAnual = calcularFaturamentoMensal(dadosSped.documentos || []) * 12;
+
+            if (faturamentoAnual > 0) {
+                const baseCalculoEstimada = faturamentoAnual * 0.6; // 60% do faturamento
+                const aliquotaCOFINS = 0.076; // 7,6%
+                const aproveitamentoEstimado = 0.8; // 80%
+
+                const creditoEstimado = (baseCalculoEstimada * aliquotaCOFINS * aproveitamentoEstimado) / 12;
+                console.log(`SPED-EXTRACTOR: Crédito COFINS estimado - Regime: ${regimePisCofins}, Base: ${baseCalculoEstimada}, Valor: ${creditoEstimado}`);
+                return creditoEstimado;
+            }
+        } else {
+            console.log(`SPED-EXTRACTOR: Regime PIS/COFINS é ${regimePisCofins}, não gera créditos ou gera créditos reduzidos`);
         }
 
         return 0;
@@ -592,31 +1035,96 @@ const SpedExtractor = (function() {
      * Calcula créditos de ICMS
      */
     function calcularCreditosICMS(dadosSped) {
+        console.log('SPED-EXTRACTOR: Calculando créditos ICMS');
         let totalCreditos = 0;
 
         // PRIORIDADE 1: Dados do SPED Fiscal (E110)
         if (dadosSped.debitos?.icms?.length > 0) {
+            console.log(`SPED-EXTRACTOR: Encontrados ${dadosSped.debitos.icms.length} registros de apuração ICMS`);
+
+            // Debug dos primeiros registros
+            const amostraApuracoes = dadosSped.debitos.icms.slice(0, 2);
+            console.log('SPED-EXTRACTOR: Amostra de apurações ICMS:', JSON.stringify(amostraApuracoes, null, 2));
+
             totalCreditos = dadosSped.debitos.icms.reduce((total, apuracao) => {
-                return total + (apuracao.valorTotalCreditos || 0);
+                const valor = apuracao.valorTotalCreditos || 0;
+                console.log(`SPED-EXTRACTOR: Registro apuração ICMS com crédito: ${valor}`);
+                return total + valor;
             }, 0);
-            
+
             if (totalCreditos > 0) {
                 console.log('SPED-EXTRACTOR: Créditos ICMS extraídos do SPED:', totalCreditos);
                 return totalCreditos;
+            } else {
+                console.log('SPED-EXTRACTOR: Registros de apuração ICMS encontrados, mas valor total de créditos é zero');
+            }
+        } else {
+            console.log('SPED-EXTRACTOR: Nenhum registro de apuração ICMS encontrado');
+        }
+
+        // PRIORIDADE 2: Verificar registros de créditos específicos
+        if (dadosSped.creditos?.icms?.length > 0) {
+            const valorCreditos = dadosSped.creditos.icms.reduce((total, cred) => 
+                total + (cred.valorCredito || cred.valorTotalCreditos || 0), 0);
+
+            if (valorCreditos > 0) {
+                console.log('SPED-EXTRACTOR: Créditos ICMS encontrados em registros específicos:', valorCreditos);
+                return valorCreditos;
             }
         }
 
-        // PRIORIDADE 2: Estimativa para empresas comerciais/industriais
+        // PRIORIDADE 3: Verificar registros de compras (documentos de entrada)
+        let creditosDocumentos = 0;
+        if (dadosSped.documentos?.length > 0) {
+            // Filtrar documentos de entrada com ICMS
+            const documentosEntrada = dadosSped.documentos.filter(doc => 
+                doc && doc.indOper === '0' && doc.valorTotal > 0
+            );
+
+            console.log(`SPED-EXTRACTOR: Encontrados ${documentosEntrada.length} documentos de entrada para análise de créditos ICMS`);
+
+            if (documentosEntrada.length > 0) {
+                // Tentar estimar créditos com base nos documentos
+                // Se houver itens com valores de ICMS, usar a soma
+                if (dadosSped.itensAnaliticos?.length > 0) {
+                    const itensEntrada = dadosSped.itensAnaliticos.filter(item => 
+                        item && item.valorIcms > 0 && (
+                            item.cfop?.startsWith('1') || 
+                            item.cfop?.startsWith('2') || 
+                            item.cfop?.startsWith('3')
+                        )
+                    );
+
+                    if (itensEntrada.length > 0) {
+                        creditosDocumentos = itensEntrada.reduce((total, item) => 
+                            total + (item.valorIcms || 0), 0);
+
+                        console.log(`SPED-EXTRACTOR: Créditos ICMS calculados a partir de ${itensEntrada.length} itens de entrada: ${creditosDocumentos}`);
+
+                        if (creditosDocumentos > 0) {
+                            return creditosDocumentos;
+                        }
+                    }
+                }
+            }
+        }
+
+        // PRIORIDADE 4: Estimativa para empresas comerciais/industriais
         const tipoEmpresa = determinarTipoEmpresa(dadosSped);
         if (tipoEmpresa !== 'servicos') {
-            const faturamentoAnual = calcularFaturamentoMensal(dadosSped) * 12;
-            const aliquotaMedia = 0.18; // 18%
-            const baseCalculoCompras = faturamentoAnual * 0.7; // 70% do faturamento em compras
-            const aproveitamentoICMS = 0.85; // 85% de aproveitamento típico
-            
-            const creditoEstimado = (baseCalculoCompras * aliquotaMedia * aproveitamentoICMS) / 12;
-            console.log(`SPED-EXTRACTOR: Crédito ICMS estimado - Tipo: ${tipoEmpresa}, Valor: ${creditoEstimado}`);
-            return creditoEstimado;
+            const faturamentoAnual = calcularFaturamentoMensal(dadosSped.documentos || []) * 12;
+
+            if (faturamentoAnual > 0) {
+                const aliquotaMedia = 0.18; // 18%
+                const baseCalculoCompras = faturamentoAnual * 0.7; // 70% do faturamento em compras
+                const aproveitamentoICMS = 0.85; // 85% de aproveitamento típico
+
+                const creditoEstimado = (baseCalculoCompras * aliquotaMedia * aproveitamentoICMS) / 12;
+                console.log(`SPED-EXTRACTOR: Crédito ICMS estimado - Tipo: ${tipoEmpresa}, Base: ${baseCalculoCompras}, Valor: ${creditoEstimado}`);
+                return creditoEstimado;
+            }
+        } else {
+            console.log('SPED-EXTRACTOR: Empresa de serviços, créditos de ICMS tipicamente não aplicáveis');
         }
 
         return 0;
@@ -626,32 +1134,94 @@ const SpedExtractor = (function() {
      * Calcula créditos de IPI
      */
     function calcularCreditosIPI(dadosSped) {
+        console.log('SPED-EXTRACTOR: Calculando créditos IPI');
+
         const tipoEmpresa = determinarTipoEmpresa(dadosSped);
         if (tipoEmpresa !== 'industria') {
+            console.log('SPED-EXTRACTOR: Tipo de empresa não é indústria, crédito IPI = 0');
             return 0; // IPI só se aplica à indústria
         }
 
         // PRIORIDADE 1: Dados do SPED Fiscal
         if (dadosSped.impostos?.ipi?.length > 0) {
+            console.log(`SPED-EXTRACTOR: Encontrados ${dadosSped.impostos.ipi.length} registros de IPI`);
+
+            // Debug dos primeiros registros
+            const amostraIpi = dadosSped.impostos.ipi.slice(0, 2);
+            console.log('SPED-EXTRACTOR: Amostra de registros IPI:', JSON.stringify(amostraIpi, null, 2));
+
             const totalCreditos = dadosSped.impostos.ipi.reduce((total, apuracao) => {
-                return total + (apuracao.valorTotalCreditos || 0);
+                const valor = apuracao.valorTotalCreditos || 0;
+                console.log(`SPED-EXTRACTOR: Registro IPI com crédito: ${valor}`);
+                return total + valor;
             }, 0);
-            
+
             if (totalCreditos > 0) {
                 console.log('SPED-EXTRACTOR: Créditos IPI extraídos do SPED:', totalCreditos);
                 return totalCreditos;
+            } else {
+                console.log('SPED-EXTRACTOR: Registros de IPI encontrados, mas valor total de créditos é zero');
+            }
+        } else {
+            console.log('SPED-EXTRACTOR: Nenhum registro de IPI encontrado');
+        }
+
+        // PRIORIDADE 2: Verificar registros de créditos específicos
+        if (dadosSped.creditos?.ipi?.length > 0) {
+            const valorCreditos = dadosSped.creditos.ipi.reduce((total, cred) => 
+                total + (cred.valorCredito || cred.valorTotalCreditos || 0), 0);
+
+            if (valorCreditos > 0) {
+                console.log('SPED-EXTRACTOR: Créditos IPI encontrados em registros específicos:', valorCreditos);
+                return valorCreditos;
             }
         }
 
-        // PRIORIDADE 2: Estimativa baseada no faturamento
-        const faturamentoAnual = calcularFaturamentoMensal(dadosSped) * 12;
-        const aliquotaMediaIPI = 0.10; // 10%
-        const baseCalculoCompras = faturamentoAnual * 0.4; // 40% para matérias-primas
-        const aproveitamentoIPI = 0.90; // 90% de aproveitamento
-        
-        const creditoEstimado = (baseCalculoCompras * aliquotaMediaIPI * aproveitamentoIPI) / 12;
-        console.log(`SPED-EXTRACTOR: Crédito IPI estimado - Valor: ${creditoEstimado}`);
-        return creditoEstimado;
+        // PRIORIDADE 3: Verificar registros de documentos de entrada
+        let creditosDocumentos = 0;
+        if (dadosSped.documentos?.length > 0) {
+            // Filtrar documentos de entrada com IPI
+            const documentosEntrada = dadosSped.documentos.filter(doc => 
+                doc && doc.indOper === '0' && doc.valorTotal > 0
+            );
+
+            if (documentosEntrada.length > 0 && dadosSped.itensAnaliticos?.length > 0) {
+                // Tentar estimar créditos com base nos documentos
+                const itensEntrada = dadosSped.itensAnaliticos.filter(item => 
+                    item && item.valorIpi > 0 && (
+                        item.cfop?.startsWith('1') || 
+                        item.cfop?.startsWith('2') || 
+                        item.cfop?.startsWith('3')
+                    )
+                );
+
+                if (itensEntrada.length > 0) {
+                    creditosDocumentos = itensEntrada.reduce((total, item) => 
+                        total + (item.valorIpi || 0), 0);
+
+                    console.log(`SPED-EXTRACTOR: Créditos IPI calculados a partir de ${itensEntrada.length} itens de entrada: ${creditosDocumentos}`);
+
+                    if (creditosDocumentos > 0) {
+                        return creditosDocumentos;
+                    }
+                }
+            }
+        }
+
+        // PRIORIDADE 4: Estimativa baseada no faturamento
+        const faturamentoAnual = calcularFaturamentoMensal(dadosSped.documentos || []) * 12;
+
+        if (faturamentoAnual > 0) {
+            const aliquotaMediaIPI = 0.10; // 10%
+            const baseCalculoCompras = faturamentoAnual * 0.4; // 40% para matérias-primas
+            const aproveitamentoIPI = 0.90; // 90% de aproveitamento
+
+            const creditoEstimado = (baseCalculoCompras * aliquotaMediaIPI * aproveitamentoIPI) / 12;
+            console.log(`SPED-EXTRACTOR: Crédito IPI estimado - Base: ${baseCalculoCompras}, Valor: ${creditoEstimado}`);
+            return creditoEstimado;
+        }
+
+        return 0;
     }
 
     /**

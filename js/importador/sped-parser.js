@@ -5,36 +5,41 @@
  */
 
 function parseValorMonetario(valorString) {
-    // Log de debug - REMOVER após correção
-    if (valorString && valorString !== '0') {
-        console.log('Valor recebido para parsing:', valorString);
-    }
-    
-    if (!valorString || valorString === '' || valorString === '0') {
+    // Verificar se valor é válido
+    if (!valorString || valorString === '' || valorString === '0' || valorString === 'null') {
         return 0;
     }
     
-    let valor = valorString.toString().trim();
-    
-    if (valor.includes(',')) {
-        const partes = valor.split(',');
-        const parteInteira = partes[0].replace(/\./g, '');
-        const parteDecimal = partes[1] || '00';
-        valor = parteInteira + '.' + parteDecimal;
-    } else {
-        valor = valor.replace(/\./g, '');
+    try {
+        let valor = valorString.toString().trim();
+        
+        // Tratar formato brasileiro: 1.234.567,89
+        if (valor.includes(',')) {
+            const partes = valor.split(',');
+            if (partes.length === 2) {
+                // Remover separadores de milhar da parte inteira
+                const parteInteira = partes[0].replace(/\./g, '');
+                const parteDecimal = partes[1];
+                valor = parteInteira + '.' + parteDecimal;
+            }
+        } else {
+            // Se não tem vírgula, verificar se tem pontos
+            const pontos = valor.split('.');
+            if (pontos.length > 2) {
+                // Múltiplos pontos = separadores de milhar
+                valor = valor.replace(/\./g, '');
+            }
+            // Se tem apenas um ponto, pode ser decimal em formato americano
+        }
+        
+        const resultado = parseFloat(valor);
+        return isNaN(resultado) ? 0 : resultado;
+        
+    } catch (erro) {
+        console.warn('Erro ao converter valor monetário:', valorString, erro);
+        return 0;
     }
-    
-    const resultado = parseFloat(valor);
-    
-    // Log de debug - REMOVER após correção
-    if (resultado > 0) {
-        console.log('Valor convertido:', valorString, '->', resultado);
-    }
-    
-    return isNaN(resultado) ? 0 : resultado;
 }
-
 
 const SpedParser = (function() {
     // Mapeamento completo de registros por tipo de SPED
@@ -67,6 +72,7 @@ const SpedParser = (function() {
             // Registros de inventário - BLOCO H
             'H010': parseRegistroH010,  // Inventário
             'H020': parseRegistroH020,  // Informações do estoque
+            'K100': parseRegistroK100Fiscal,
             
             // Registros de controle e encerramento
             '9900': parseRegistro9900,
@@ -248,45 +254,60 @@ const SpedParser = (function() {
      */
     function processarArquivo(arquivo, tipo) {
         return new Promise((resolve, reject) => {
-            if (!arquivo) {
-                reject(new Error('Arquivo não fornecido'));
-                return;
+            try {
+                // Inicializar o FileReader corretamente
+                const reader = new FileReader();
+
+                // Configurar o manipulador de evento para quando o arquivo for carregado
+                reader.onload = function(e) {
+                    try {
+                        // Extrair o conteúdo do resultado do leitor
+                        const conteudo = e.target.result;
+
+                        // Dividir o conteúdo em linhas
+                        const linhas = conteudo.split('\n');
+
+                        // Determinar o tipo de SPED com base no conteúdo, se não foi especificado
+                        const tipoEfetivo = tipo || determinarTipoSped(linhas, arquivo.name);
+
+                        // Extrair dados das linhas
+                        const dadosExtraidos = extrairDados(linhas, tipoEfetivo);
+
+                        // Adicionar metadados do arquivo
+                        dadosExtraidos.metadados = {
+                            ...(dadosExtraidos.metadados || {}),
+                            nomeArquivo: arquivo.name,
+                            tamanhoBytes: arquivo.size,
+                            tipoArquivo: tipoEfetivo,
+                            dataProcessamento: new Date().toISOString()
+                        };
+
+                        // Adicionar cálculo de ciclos após processamento
+                        const ciclos = calcularCiclosFinanceiros(dadosExtraidos);
+                        if (ciclos) {
+                            dadosExtraidos.ciclosFinanceiros = ciclos;
+                        }
+
+                        resolve(dadosExtraidos);
+                    } catch (erro) {
+                        console.error('SPED-PARSER: Erro ao processar conteúdo do arquivo:', erro);
+                        reject(erro);
+                    }
+                };
+
+                // Configurar o manipulador de erro
+                reader.onerror = function(e) {
+                    console.error('SPED-PARSER: Erro na leitura do arquivo:', e.target.error);
+                    reject(new Error('Erro ao ler o arquivo: ' + e.target.error));
+                };
+
+                // Iniciar a leitura do arquivo como texto
+                reader.readAsText(arquivo);
+
+            } catch (erro) {
+                console.error('SPED-PARSER: Erro ao configurar leitor de arquivo:', erro);
+                reject(erro);
             }
-
-            const reader = new FileReader();
-
-            reader.onload = function(e) {
-                try {
-                    console.log(`SPED-PARSER: Iniciando processamento de arquivo ${arquivo.name} (${tipo})`);
-                    
-                    const conteudo = e.target.result;
-                    const linhas = conteudo.split(/\r?\n/).filter(linha => linha.trim().length > 0);
-                    
-                    console.log(`SPED-PARSER: ${linhas.length} linhas encontradas no arquivo`);
-                    
-                    const dadosExtraidos = extrairDados(linhas, tipo);
-                    
-                    console.log('SPED-PARSER: Dados extraídos com sucesso:', {
-                        empresa: !!dadosExtraidos.empresa,
-                        documentos: dadosExtraidos.documentos?.length || 0,
-                        itens: dadosExtraidos.itens?.length || 0,
-                        creditos: Object.keys(dadosExtraidos.creditos || {}).length,
-                        debitos: Object.keys(dadosExtraidos.debitos || {}).length,
-                        impostos: Object.keys(dadosExtraidos.impostos || {}).length
-                    });
-                    
-                    resolve(dadosExtraidos);
-                } catch (erro) {
-                    console.error('SPED-PARSER: Erro no processamento:', erro);
-                    reject(erro);
-                }
-            };
-
-            reader.onerror = function() {
-                reject(new Error('Erro ao ler o arquivo SPED'));
-            };
-
-            reader.readAsText(arquivo, 'UTF-8');
         });
     }
 
@@ -427,37 +448,237 @@ const SpedParser = (function() {
     }
 
     /**
-     * Determina o tipo de SPED baseado no conteúdo
+     * Determina o tipo de SPED baseado no conteúdo E nome do arquivo
+     * @param {Array} linhas - Linhas do arquivo SPED
+     * @param {String} nomeArquivo - Nome do arquivo (opcional)
+     * @returns {String} - Tipo do SPED detectado
      */
-    function determinarTipoSped(linhas) {
+    function determinarTipoSped(linhas, nomeArquivo = '') {
         if (!Array.isArray(linhas) || linhas.length === 0) {
             return 'fiscal';
         }
 
-        // Analisa as primeiras linhas para determinar o tipo
-        for (let i = 0; i < Math.min(50, linhas.length); i++) {
+        // PRIMEIRO: Tentar determinar pelo nome do arquivo
+        if (nomeArquivo && nomeArquivo.trim() !== '') {
+            const tipoArquivo = determinarTipoPorNomeArquivo(nomeArquivo);
+            if (tipoArquivo !== 'indefinido') {
+                console.log(`SPED-PARSER: Tipo detectado pelo nome do arquivo "${nomeArquivo}": ${tipoArquivo}`);
+                return tipoArquivo;
+            }
+        }
+
+        // SEGUNDO: Registros identificadores COMPLETOS por tipo de SPED
+        const identificadores = {
+            contribuicoes: [
+                // Bloco 0
+                '0110', '0140',
+                // Bloco A  
+                'A100', 'A110', 'A111',
+                // Bloco C
+                'C180', 'C181', 'C185', 'C188',
+                // Bloco D
+                'D100', 'D101', 'D105', 'D111',
+                // Bloco F
+                'F100', 'F111', 'F120', 'F129', 'F130', 'F139', 'F150', 'F200', 'F205', 'F210', 'F211',
+                // Bloco I
+                'I100', 'I199',
+                // Bloco M
+                'M100', 'M105', 'M110', 'M115', 'M200', 'M205', 'M210', 'M220', 'M225', 'M400', 'M410',
+                'M500', 'M505', 'M510', 'M515', 'M600', 'M605', 'M610', 'M620', 'M625', 'M800', 'M810',
+                // Bloco P
+                'P100', 'P110', 'P199', 'P200', 'P210',
+                // Blocos de totalização
+                '1001', '1100', '1200', '1300', '1500'
+            ],
+            ecf: [
+                // Bloco 0
+                '0010', '0020',
+                // Bloco J
+                'J001', 'J050', 'J051', 'J100',
+                // Bloco K
+                'K001', 'K030', 'K155', 'K156',
+                // Bloco L
+                'L001', 'L030', 'L100',
+                // Bloco M
+                'M001', 'M010', 'M300', 'M350',
+                // Bloco N
+                'N001', 'N500', 'N600', 'N610', 'N620', 'N630', 'N650', 'N660', 'N670',
+                // Bloco P
+                'P001', 'P030', 'P100', 'P130', 'P150', 'P200', 'P230',
+                // Bloco T
+                'T001', 'T030', 'T120', 'T150',
+                // Bloco U
+                'U001', 'U030', 'U100',
+                // Registros especiais
+                'Y540'
+            ],
+            ecd: [
+                // Bloco 0
+                '0007', '0020',
+                // Bloco I
+                'I001', 'I010', 'I012', 'I015', 'I020', 'I030', 'I050', 'I051', 'I052', 'I053', 
+                'I100', 'I150', 'I155', 'I200', 'I250', 'I300', 'I310', 'I350', 'I355',
+                // Bloco J
+                'J001', 'J005', 'J100', 'J150',
+                // Bloco K
+                'K001', 'K030', 'K100', 'K155', 'K156', 'K200', 'K220', 'K230', 'K300'
+            ],
+            fiscal: [
+                // Bloco 0
+                '0001', '0005', '0150', '0190', '0200',
+                // Bloco C
+                'C100', 'C170', 'C190', 'C197',
+                // Bloco E
+                'E110', 'E111', 'E116', 'E200', 'E210', 'E220',
+                // Bloco H
+                'H010', 'H020',
+                // Bloco 9 (controle)
+                '9900', '9990', '9999'
+            ]
+        };
+
+        // Contadores para cada tipo
+        const contadores = {
+            contribuicoes: 0,
+            ecf: 0,
+            ecd: 0,
+            fiscal: 0
+        };
+
+        // Analisar até 100 primeiras linhas para maior precisão
+        const limiteLinha = Math.min(100, linhas.length);
+
+        for (let i = 0; i < limiteLinha; i++) {
             const linha = linhas[i];
+            if (!linha || linha.trim().length === 0) continue;
+
             const campos = linha.split('|');
-            
             if (campos.length < 2) continue;
-            
+
             const registro = campos[1];
-            
-            // Identificadores específicos para cada tipo
-            if (['M100', 'M105', 'M200', 'M500', 'M505', 'M600'].includes(registro)) {
+
+            // Contar ocorrências por tipo
+            Object.keys(identificadores).forEach(tipo => {
+                if (identificadores[tipo].includes(registro)) {
+                    contadores[tipo]++;
+                }
+            });
+        }
+
+        // Determinar tipo baseado no maior contador
+        let tipoDetectado = 'fiscal'; // padrão
+        let maiorContador = contadores.fiscal;
+
+        Object.keys(contadores).forEach(tipo => {
+            if (contadores[tipo] > maiorContador) {
+                maiorContador = contadores[tipo];
+                tipoDetectado = tipo;
+            }
+        });
+
+        console.log('SPED-PARSER: Detecção por conteúdo:', contadores, '→', tipoDetectado);
+        return tipoDetectado;
+    }
+
+    /**
+     * Determina o tipo de SPED baseado no nome do arquivo
+     * @param {String} nomeArquivo - Nome do arquivo
+     * @returns {String} - Tipo detectado ou 'indefinido'
+     */
+    function determinarTipoPorNomeArquivo(nomeArquivo) {
+        if (!nomeArquivo || typeof nomeArquivo !== 'string') {
+            return 'indefinido';
+        }
+
+        // Converter para minúsculas para comparação case-insensitive
+        const nome = nomeArquivo.toLowerCase();
+
+        // Padrões para EFD Contribuições (PIS/COFINS)
+        const padroesPisConfins = [
+            /contribuic(o|ã)es/i,
+            /pis[_\-]?cofins/i,
+            /efd[_\-]?contribuic/i,
+            /efd[_\-]?pis/i,
+            /sped[_\-]?contribuic/i,
+            /sped[_\-]?pis/i
+        ];
+
+        // Padrões para ECF (Escrituração Contábil Fiscal)
+        const padroesEcf = [
+            /^ecf[_\-]/i,
+            /[_\-]ecf[_\-]/i,
+            /escriturac(a|ã)o[_\-]?contabil[_\-]?fiscal/i,
+            /sped[_\-]?ecf/i,
+            /ecd[_\-]?fiscal/i
+        ];
+
+        // Padrões para ECD (Escrituração Contábil Digital)
+        const padroesEcd = [
+            /^ecd[_\-]/i,
+            /[_\-]ecd[_\-]/i,
+            /escriturac(a|ã)o[_\-]?contabil[_\-]?digital/i,
+            /sped[_\-]?ecd/i,
+            /contabil[_\-]?digital/i
+        ];
+
+        // Padrões para EFD ICMS/IPI (Fiscal)
+        const padroesFiscal = [
+            /^efd[_\-]/i,
+            /fiscal/i,
+            /icms[_\-]?ipi/i,
+            /sped[_\-]?fiscal/i,
+            /efd[_\-]?icms/i,
+            /nota[_\-]?fiscal/i
+        ];
+
+        // Verificar padrões na ordem de especificidade
+        // 1. EFD Contribuições (mais específico)
+        for (const padrao of padroesPisConfins) {
+            if (padrao.test(nome)) {
                 return 'contribuicoes';
             }
-            
-            if (['J001', 'J050', 'J100', 'K001', 'L001'].includes(registro)) {
+        }
+
+        // 2. ECF
+        for (const padrao of padroesEcf) {
+            if (padrao.test(nome)) {
                 return 'ecf';
             }
-            
-            if (['I001', 'I010', 'I050', 'I100'].includes(registro)) {
+        }
+
+        // 3. ECD
+        for (const padrao of padroesEcd) {
+            if (padrao.test(nome)) {
                 return 'ecd';
             }
         }
-        
-        return 'fiscal'; // Padrão
+
+        // 4. EFD ICMS/IPI (Fiscal) - mais genérico
+        for (const padrao of padroesFiscal) {
+            if (padrao.test(nome)) {
+                return 'fiscal';
+            }
+        }
+
+        // Verificação adicional por extensões específicas com padrões
+        const extensao = nome.split('.').pop();
+
+        // Alguns sistemas usam extensões específicas
+        if (extensao === 'efd' || extensao === 'sped') {
+            // Se contém palavras-chave específicas
+            if (nome.includes('pis') || nome.includes('cofins') || nome.includes('contribuic')) {
+                return 'contribuicoes';
+            } else if (nome.includes('ecf')) {
+                return 'ecf';
+            } else if (nome.includes('ecd')) {
+                return 'ecd';
+            } else {
+                return 'fiscal'; // padrão para .efd/.sped genéricos
+            }
+        }
+
+        // Não foi possível determinar pelo nome
+        return 'indefinido';
     }
 
     /**
@@ -659,22 +880,28 @@ const SpedParser = (function() {
     // Registro 0000 - Abertura do arquivo e identificação da entidade
     function parseRegistro0000(campos) {
         if (!validarEstruturaRegistro(campos, 15)) {
-            console.warn('Registro 0000 com estrutura insuficiente');
+            console.warn('Registro 0000 com estrutura insuficiente:', campos.length, 'campos encontrados');
             return null;
         }
 
         try {
             return {
                 tipo: 'empresa',
-                cnpj: validarCampo(campos, 8),
-                nome: validarCampo(campos, 9),
-                ie: validarCampo(campos, 11),
-                municipio: validarCampo(campos, 13),
-                uf: validarCampo(campos, 14),
-                codMunicipio: validarCampo(campos, 15),
+                categoria: 'identificacao',
+                versaoLeiaute: validarCampo(campos, 3),
+                finalidade: validarCampo(campos, 4),
                 dataInicial: validarCampo(campos, 5),
                 dataFinal: validarCampo(campos, 6),
-                versaoLeiaute: validarCampo(campos, 3)
+                nomeEmpresarial: validarCampo(campos, 7),
+                cnpj: validarCampo(campos, 8),
+                nome: validarCampo(campos, 9),           // CORRIGIDO: índice 9
+                uf: validarCampo(campos, 14),            // CORRIGIDO: índice 14
+                ie: validarCampo(campos, 11),
+                codMunicipio: validarCampo(campos, 13),
+                im: validarCampo(campos, 15),
+                suframa: validarCampo(campos, 16),
+                perfil: validarCampo(campos, 17),
+                atividade: validarCampo(campos, 18)
             };
         } catch (erro) {
             console.warn('Erro ao processar registro 0000:', erro.message);
@@ -776,40 +1003,66 @@ const SpedParser = (function() {
 
     // Registro C170 - Item do Documento
     function parseRegistroC170(campos) {
-        return {
-            tipo: 'item',
-            numItem: campos[2],
-            codItem: campos[3],
-            descricao: campos[4],
-            quantidade: parseFloat(campos[5].replace(',', '.')) || 0,
-            unidade: campos[6],
-            valorUnitario: parseValorMonetario(campos[7]), // Corrigido
-            valorTotal: parseValorMonetario(campos[8]), // Corrigido
-            valorDesconto: parseValorMonetario(campos[9]), // Corrigido
-            indMov: campos[10],
-            cstIcms: campos[11],
-            cfop: campos[12],
-            codNat: campos[13],
-            valorBcIcms: parseValorMonetario(campos[14]), // Corrigido
-            aliqIcms: parseFloat(campos[15].replace(',', '.')) || 0,
-            valorIcms: parseValorMonetario(campos[16]) // Corrigido
-        };
+        if (!validarEstruturaRegistro(campos, 17)) {
+            console.warn('Registro C170 com estrutura insuficiente:', campos.length);
+            return null;
+        }
+
+        try {
+            return {
+                tipo: 'item_documento',
+                categoria: 'item',
+                numItem: validarCampo(campos, 2),
+                codItem: validarCampo(campos, 3),
+                descrItem: validarCampo(campos, 4),
+                qtd: parseFloat(validarCampo(campos, 5, '0').replace(',', '.')) || 0,
+                unid: validarCampo(campos, 6),
+                valorItem: parseValorMonetario(validarCampo(campos, 7, '0')),     // CORRIGIDO: índice 7
+                valorTotal: parseValorMonetario(validarCampo(campos, 8, '0')),    // CORRIGIDO: índice 8
+                valorDesc: parseValorMonetario(validarCampo(campos, 9, '0')),
+                indMov: validarCampo(campos, 10),
+                cstIcms: validarCampo(campos, 11),
+                cfop: validarCampo(campos, 12),
+                codNat: validarCampo(campos, 13),
+                valorBcIcms: parseValorMonetario(validarCampo(campos, 14, '0')),
+                aliqIcms: parseFloat(validarCampo(campos, 15, '0').replace(',', '.')) || 0,
+                valorIcms: parseValorMonetario(validarCampo(campos, 16, '0')),    // CORRIGIDO: índice 16
+                valorBcIcmsSt: parseValorMonetario(validarCampo(campos, 17, '0')),
+                aliqIcmsSt: parseFloat(validarCampo(campos, 18, '0').replace(',', '.')) || 0,
+                valorIcmsSt: parseValorMonetario(validarCampo(campos, 19, '0'))
+            };
+        } catch (erro) {
+            console.warn('Erro ao processar registro C170:', erro.message);
+            return null;
+        }
     }
 
     function parseRegistroC190(campos) {
-        if (!validarEstruturaRegistro(campos, 8)) return null;
-        return {
-            tipo: 'analitico_icms',
-            categoria: 'icms',
-            cstIcms: validarCampo(campos, 2),
-            cfop: validarCampo(campos, 3),
-            aliqIcms: converterValorMonetario(validarCampo(campos, 4, '0')),
-            valorOpr: converterValorMonetario(validarCampo(campos, 5, '0')),
-            valorBcIcms: converterValorMonetario(validarCampo(campos, 6, '0')),
-            valorIcms: converterValorMonetario(validarCampo(campos, 7, '0')),
-            valorBcIcmsSt: converterValorMonetario(validarCampo(campos, 8, '0')),
-            valorIcmsSt: converterValorMonetario(validarCampo(campos, 9, '0'))
-        };
+        if (!validarEstruturaRegistro(campos, 9)) {
+            console.warn('Registro C190 com estrutura insuficiente:', campos.length);
+            return null;
+        }
+
+        try {
+            return {
+                tipo: 'analitico_icms',
+                categoria: 'icms',
+                cstIcms: validarCampo(campos, 2),
+                cfop: validarCampo(campos, 3),
+                aliqIcms: parseFloat(validarCampo(campos, 4, '0').replace(',', '.')) || 0,  // CORRIGIDO: formatação decimal
+                valorOpr: parseValorMonetario(validarCampo(campos, 5, '0')),
+                valorBcIcms: parseValorMonetario(validarCampo(campos, 6, '0')),
+                valorIcms: parseValorMonetario(validarCampo(campos, 7, '0')),
+                valorBcIcmsSt: parseValorMonetario(validarCampo(campos, 8, '0')),
+                valorIcmsSt: parseValorMonetario(validarCampo(campos, 9, '0')),
+                valorRedBc: parseValorMonetario(validarCampo(campos, 10, '0')),
+                valorIpi: parseValorMonetario(validarCampo(campos, 11, '0')),
+                codObs: validarCampo(campos, 12)
+            };
+        } catch (erro) {
+            console.warn('Erro ao processar registro C190:', erro.message);
+            return null;
+        }
     }
 
     function parseRegistroC197(campos) {
@@ -945,13 +1198,44 @@ const SpedParser = (function() {
     }
 
     function parseRegistro0110(campos) {
-        if (!validarEstruturaRegistro(campos, 4)) return null;
-        return {
-            tipo: 'regime',
-            categoria: 'pis_cofins',
-            codigoIncidencia: validarCampo(campos, 2),
-            codigoIncidenciaAnterior: validarCampo(campos, 3)
+        if (!validarEstruturaRegistro(campos, 4)) {
+            console.warn('Registro 0110 com estrutura insuficiente:', campos.length);
+            return null;
+        }
+
+        try {
+            const codigoIncidencia = validarCampo(campos, 2);
+
+            // Validar código de incidência
+            const regimesValidos = ['1', '2', '3'];
+            if (!regimesValidos.includes(codigoIncidencia)) {
+                console.warn('Código de incidência inválido no registro 0110:', codigoIncidencia);
+            }
+
+            return {
+                tipo: 'regime',
+                categoria: 'pis_cofins',
+                codigoIncidencia: codigoIncidencia,
+                descricaoRegime: obterDescricaoRegime(codigoIncidencia),
+                codigoIncidenciaAnterior: validarCampo(campos, 3),
+                indAproCred: validarCampo(campos, 4),
+                codTipoContrib: validarCampo(campos, 5),
+                indRegCum: validarCampo(campos, 6)
+            };
+        } catch (erro) {
+            console.warn('Erro ao processar registro 0110:', erro.message);
+            return null;
+        }
+    }
+
+    // Função auxiliar para descrição do regime
+    function obterDescricaoRegime(codigo) {
+        const regimes = {
+            '1': 'Apuração com base nos registros de consolidação das operações (Registro C180)',
+            '2': 'Apuração com base no registro individualizado de NF (Registro C100)',
+            '3': 'Apuração com base nos registros de consolidação das operações (Registro C180) e Registro individualizado de NF (Registro C100)'
         };
+        return regimes[codigo] || 'Regime não identificado';
     }
 
     function parseRegistro0140(campos) {
@@ -1347,22 +1631,25 @@ const SpedParser = (function() {
     }
 
     function parseRegistroM105(campos) {
-        if (!validarEstruturaRegistro(campos, 12)) return null;
+        if (!validarEstruturaRegistro(campos, 12)) {
+            console.warn('Registro M105 com estrutura insuficiente:', campos.length);
+            return null;
+        }
+
         try {
-            const baseCalculo = converterValorMonetario(validarCampo(campos, 6, '0'));
-            const aliquota = converterValorMonetario(validarCampo(campos, 7, '0'));
-            const valorCredito = converterValorMonetario(validarCampo(campos, 8, '0'));
             return {
                 tipo: 'credito_detalhe',
                 categoria: 'pis',
-                codigoCredito: validarCampo(campos, 3),
-                indicadorCreditoOriundo: validarCampo(campos, 4),
-                valorOperacao: converterValorMonetario(validarCampo(campos, 5, '0')),
-                baseCalculoCredito: baseCalculo,
-                aliquotaCredito: aliquota,
-                valorCredito: valorCredito,
-                descricaoItemServico: validarCampo(campos, 9),
-                codigoContaContabil: validarCampo(campos, 10)
+                natBcCred: validarCampo(campos, 2),
+                cstPis: validarCampo(campos, 3),
+                valorBcPis: parseValorMonetario(validarCampo(campos, 4, '0')),
+                aliqPis: parseFloat(validarCampo(campos, 5, '0').replace(',', '.')) || 0,
+                valorPis: parseValorMonetario(validarCampo(campos, 6, '0')),
+                codCred: validarCampo(campos, 7),                                     // CORRIGIDO: índice 7
+                aliquotaCredito: parseFloat(validarCampo(campos, 8, '0').replace(',', '.')) || 0,  // CORRIGIDO: índice 8
+                valorCredito: parseValorMonetario(validarCampo(campos, 9, '0')),      // CORRIGIDO: índice 9
+                descrCompl: validarCampo(campos, 10),
+                codCta: validarCampo(campos, 11)
             };
         } catch (erro) {
             console.warn('Erro ao processar registro M105:', erro.message);
@@ -2580,16 +2867,118 @@ const SpedParser = (function() {
     }
 
     function parseRegistroK100ECD(campos) {
-        if (!validarEstruturaRegistro(campos, 12)) return null;
+        if (!validarEstruturaRegistro(campos, 5)) {
+            console.warn('Registro K100 ECD com estrutura insuficiente:', campos.length);
+            return null;
+        }
+
+        try {
+            const dataInicial = validarCampo(campos, 3);
+            const dataFinal = validarCampo(campos, 4);
+
+            return {
+                tipo: 'periodo_apuracao',
+                categoria: 'ciclo_financeiro',
+                dataInicial: dataInicial,
+                dataFinal: dataFinal,
+                diasPeriodo: calcularDiasPeriodo(dataInicial, dataFinal),
+                origem: 'K100_ECD'
+            };
+        } catch (erro) {
+            console.warn('Erro ao processar registro K100 ECD:', erro.message);
+            return null;
+        }
+    }
+
+    // Função auxiliar para calcular dias do período
+    function calcularDiasPeriodo(dataIni, dataFim) {
+        if (!dataIni || !dataFim || dataIni.length !== 8 || dataFim.length !== 8) {
+            return 0;
+        }
+
+        try {
+            const inicio = new Date(
+                dataIni.substr(0, 4),
+                parseInt(dataIni.substr(4, 2)) - 1,
+                dataIni.substr(6, 2)
+            );
+            const fim = new Date(
+                dataFim.substr(0, 4),
+                parseInt(dataFim.substr(4, 2)) - 1,
+                dataFim.substr(6, 2)
+            );
+
+            return Math.ceil((fim - inicio) / (1000 * 60 * 60 * 24));
+        } catch (erro) {
+            console.warn('Erro ao calcular dias do período:', erro.message);
+            return 0;
+        }
+    }
+    
+    function calcularCiclosFinanceiros(resultado) {
+        try {
+            const dadosK100 = resultado.detalhamento?.periodo_apuracao || [];
+            const dadosH005 = resultado.inventario || [];
+            const dadosC170 = resultado.itens || [];
+
+            if (dadosK100.length === 0) {
+                console.warn('Dados K100 não encontrados para cálculo de ciclos');
+                return null;
+            }
+
+            const periodo = dadosK100[0];
+            const diasPeriodo = periodo.diasPeriodo || 30;
+
+            // Calcular PME (Prazo Médio de Estocagem)
+            const estoqueTotal = dadosH005.reduce((acc, item) => acc + (item.valorItem || 0), 0);
+            const cmv = dadosC170.reduce((acc, item) => acc + (item.valorTotal || 0), 0);
+            const pme = cmv > 0 ? (estoqueTotal / cmv) * diasPeriodo : 0;
+
+            // Calcular PMR (Prazo Médio de Recebimento) - baseado em vendas a prazo
+            const vendasTotal = dadosC170.reduce((acc, item) => acc + (item.valorTotal || 0), 0);
+            const contasReceber = vendasTotal * 0.7; // Estimativa de 70% a prazo
+            const pmr = vendasTotal > 0 ? (contasReceber / vendasTotal) * diasPeriodo : 0;
+
+            // Calcular PMP (Prazo Médio de Pagamento) - baseado em compras
+            const comprasTotal = dadosC170
+                .filter(item => item.indMov === '0') // Apenas entradas
+                .reduce((acc, item) => acc + (item.valorTotal || 0), 0);
+            const contasPagar = comprasTotal * 0.6; // Estimativa de 60% a prazo
+            const pmp = comprasTotal > 0 ? (contasPagar / comprasTotal) * diasPeriodo : 0;
+
+            // Calcular Ciclo Financeiro
+            const cicloFinanceiro = pme + pmr - pmp;
+
+            return {
+                pme: Math.round(pme),
+                pmr: Math.round(pmr),
+                pmp: Math.round(pmp),
+                cicloFinanceiro: Math.round(cicloFinanceiro),
+                diasPeriodo: diasPeriodo,
+                observacoes: {
+                    estoqueTotal: estoqueTotal,
+                    cmv: cmv,
+                    vendasTotal: vendasTotal,
+                    comprasTotal: comprasTotal
+                }
+            };
+
+        } catch (erro) {
+            console.warn('Erro ao calcular ciclos financeiros:', erro.message);
+            return null;
+        }
+    }
+  
+    // Adicionalmente, implementar K100 para EFD ICMS/IPI
+    function parseRegistroK100Fiscal(campos) {
+        if (!validarEstruturaRegistro(campos, 5)) return null;
+
         return {
-            tipo: 'empresa_consolidada',
-            categoria: 'consolidacao',
-            codEmpresa: validarCampo(campos, 2),
-            nomeEmpresa: validarCampo(campos, 3),
-            cnpjEmpresa: validarCampo(campos, 4),
-            codCcm: validarCampo(campos, 5),
-            codScp: validarCampo(campos, 6),
-            percentualPart: converterValorMonetario(validarCampo(campos, 7, '0'))
+            tipo: 'periodo_apuracao_fiscal',
+            categoria: 'icms_ipi',
+            dataInicial: validarCampo(campos, 3),
+            dataFinal: validarCampo(campos, 4),
+            origem: 'K100_FISCAL'
         };
     }
 
