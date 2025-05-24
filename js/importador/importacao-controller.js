@@ -559,6 +559,152 @@ const ImportacaoController = (function() {
         return combinado;
     }
     
+    /**
+     * Processa relações entre diferentes tipos de dados no resultado combinado
+     * @param {Object} combinado - Objeto com dados combinados
+     * @returns {Object} O mesmo objeto com relações estabelecidas
+     */
+    function processarRelacoesEntreDados(combinado) {
+        console.log('IMPORTACAO-CONTROLLER: Processando relações entre dados combinados');
+
+        try {
+            // Relacionar participantes com documentos
+            if (combinado.participantes.length > 0 && combinado.documentos.length > 0) {
+                console.log(`IMPORTACAO-CONTROLLER: Relacionando ${combinado.participantes.length} participantes com ${combinado.documentos.length} documentos`);
+
+                // Criar mapa de participantes por código para acesso rápido
+                const participantesPorCodigo = {};
+                combinado.participantes.forEach(participante => {
+                    if (participante.codigo) {
+                        participantesPorCodigo[participante.codigo] = participante;
+                    }
+                });
+
+                // Associar participantes aos documentos
+                let documentosRelacionados = 0;
+                combinado.documentos.forEach(doc => {
+                    if (doc.codPart && participantesPorCodigo[doc.codPart]) {
+                        doc.participante = participantesPorCodigo[doc.codPart];
+                        documentosRelacionados++;
+                    }
+                });
+
+                console.log(`IMPORTACAO-CONTROLLER: ${documentosRelacionados} documentos relacionados com participantes`);
+            }
+
+            // Relacionar itens com documentos
+            if (combinado.itens.length > 0 && combinado.documentos.length > 0) {
+                console.log(`IMPORTACAO-CONTROLLER: Relacionando ${combinado.itens.length} itens com documentos`);
+
+                // Agrupar itens por documento
+                const itensPorDocumento = {};
+                combinado.itens.forEach(item => {
+                    if (item.numDoc) {
+                        if (!itensPorDocumento[item.numDoc]) {
+                            itensPorDocumento[item.numDoc] = [];
+                        }
+                        itensPorDocumento[item.numDoc].push(item);
+                    }
+                });
+
+                // Associar itens aos documentos
+                let documentosComItens = 0;
+                combinado.documentos.forEach(doc => {
+                    if (doc.numero && itensPorDocumento[doc.numero]) {
+                        doc.itens = itensPorDocumento[doc.numero];
+                        documentosComItens++;
+                    }
+                });
+
+                console.log(`IMPORTACAO-CONTROLLER: ${documentosComItens} documentos associados com seus itens`);
+            }
+
+            // Relacionar registros analíticos com seus respectivos totalizadores
+            if (combinado.itensAnaliticos.length > 0) {
+                console.log(`IMPORTACAO-CONTROLLER: Processando ${combinado.itensAnaliticos.length} itens analíticos`);
+
+                // Agrupar itens analíticos por tipo de imposto
+                const analiticosPorImposto = {};
+                combinado.itensAnaliticos.forEach(item => {
+                    const categoria = item.categoria || 'outros';
+                    if (!analiticosPorImposto[categoria]) {
+                        analiticosPorImposto[categoria] = [];
+                    }
+                    analiticosPorImposto[categoria].push(item);
+                });
+
+                // Adicionar informação resumida ao objeto combinado
+                combinado.resumoAnalitico = analiticosPorImposto;
+                console.log(`IMPORTACAO-CONTROLLER: Itens analíticos agrupados em ${Object.keys(analiticosPorImposto).length} categorias`);
+            }
+
+            // Processar dados do balanço patrimonial, se disponível
+            if (combinado.balancoPatrimonial.length > 0) {
+                console.log(`IMPORTACAO-CONTROLLER: Processando ${combinado.balancoPatrimonial.length} contas do balanço patrimonial`);
+
+                // Classificar contas por grupo (Ativo, Passivo, etc.)
+                const contasPorGrupo = {};
+                combinado.balancoPatrimonial.forEach(conta => {
+                    let grupo = 'Outros';
+
+                    // Tentar determinar o grupo pela estrutura do código da conta
+                    const codConta = conta.codigoConta || conta.codigo || conta.numeroConta || '';
+                    if (codConta.startsWith('1')) {
+                        grupo = 'Ativo';
+                    } else if (codConta.startsWith('2')) {
+                        grupo = 'Passivo';
+                    } else if (codConta.startsWith('3')) {
+                        grupo = 'Patrimônio Líquido';
+                    }
+
+                    if (!contasPorGrupo[grupo]) {
+                        contasPorGrupo[grupo] = [];
+                    }
+                    contasPorGrupo[grupo].push(conta);
+                });
+
+                // Adicionar classificação ao objeto combinado
+                combinado.classificacaoContabil = contasPorGrupo;
+                console.log(`IMPORTACAO-CONTROLLER: Contas classificadas em ${Object.keys(contasPorGrupo).length} grupos contábeis`);
+            }
+
+            // Processar dados fiscais para obtenção de indicadores
+            if (combinado.debitos || combinado.creditos) {
+                console.log('IMPORTACAO-CONTROLLER: Processando dados fiscais para indicadores');
+
+                // Estrutura para armazenar os indicadores fiscais
+                const indicadoresFiscais = {
+                    relacaoCreditoDebito: {},
+                    aliquotasEfetivas: {}
+                };
+
+                // Calcular relação crédito/débito para cada tipo de imposto
+                const impostos = ['pis', 'cofins', 'icms', 'ipi'];
+
+                impostos.forEach(imposto => {
+                    const debitos = combinado.debitos && combinado.debitos[imposto] ? 
+                        combinado.debitos[imposto].reduce((sum, d) => sum + (d.valorTotalDebitos || d.valorTotalContribuicao || 0), 0) : 0;
+
+                    const creditos = combinado.creditos && combinado.creditos[imposto] ? 
+                        combinado.creditos[imposto].reduce((sum, c) => sum + (c.valorCredito || 0), 0) : 0;
+
+                    if (debitos > 0) {
+                        indicadoresFiscais.relacaoCreditoDebito[imposto] = creditos / debitos;
+                        console.log(`IMPORTACAO-CONTROLLER: Relação crédito/débito ${imposto.toUpperCase()}: ${(indicadoresFiscais.relacaoCreditoDebito[imposto] * 100).toFixed(2)}%`);
+                    }
+                });
+
+                // Adicionar indicadores ao objeto combinado
+                combinado.indicadoresFiscais = indicadoresFiscais;
+            }
+
+            return combinado;
+        } catch (erro) {
+            console.error('IMPORTACAO-CONTROLLER: Erro ao processar relações entre dados:', erro);
+            return combinado; // Retorna o objeto original em caso de erro
+        }
+    }
+    
     function validarConsistenciaEntreFontes(combinado) {
         console.log('IMPORTACAO-CONTROLLER: Validando consistência entre fontes de dados');
 
