@@ -700,6 +700,229 @@ const SpedExtractor = (function() {
         const cfops = extrairCFOPs(dadosSped);
         return analisarCFOPs(cfops);
     }
+    
+    /**
+     * Determina o setor IVA da empresa baseado nos dados SPED
+     * @param {Object} dadosEmpresa - Dados da empresa extraídos do SPED
+     * @param {Object} dadosFiscais - Dados fiscais extraídos
+     * @returns {Object} Configuração do setor IVA
+     */
+    function determinarSetorIVA(dadosEmpresa, dadosFiscais) {
+        // Configurações padrão do IVA
+        const configuracaoPadrao = {
+            codigoSetor: 'standard',
+            categoriaIva: 'standard',
+            cbs: 0.088, // 8,8% - alíquota padrão CBS
+            ibs: 0.177, // 17,7% - alíquota padrão IBS
+            reducaoEspecial: 0,
+            fonteClassificacao: 'automatica'
+        };
+
+        try {
+            // Se não há dados suficientes, retornar configuração padrão
+            if (!dadosEmpresa || !dadosFiscais) {
+                console.warn('SPED-EXTRACTOR: Dados insuficientes para determinação do setor IVA. Usando configuração padrão.');
+                return configuracaoPadrao;
+            }
+
+            // Analisar CNAE principal se disponível
+            if (dadosEmpresa.cnae) {
+                const setorPorCnae = classificarSetorPorCnae(dadosEmpresa.cnae);
+                if (setorPorCnae) {
+                    return {
+                        ...configuracaoPadrao,
+                        ...setorPorCnae,
+                        codigoSetor: setorPorCnae.codigo,
+                        fonteClassificacao: 'cnae'
+                    };
+                }
+            }
+
+            // Analisar tipo de empresa se disponível
+            if (dadosEmpresa.tipoEmpresa) {
+                const setorPorTipo = classificarSetorPorTipo(dadosEmpresa.tipoEmpresa);
+                if (setorPorTipo) {
+                    return {
+                        ...configuracaoPadrao,
+                        ...setorPorTipo,
+                        fonteClassificacao: 'tipo_empresa'
+                    };
+                }
+            }
+
+            // Analisar composição tributária para inferir setor
+            if (dadosFiscais.composicaoTributaria) {
+                const setorPorTributacao = classificarSetorPorTributacao(dadosFiscais.composicaoTributaria);
+                if (setorPorTributacao) {
+                    return {
+                        ...configuracaoPadrao,
+                        ...setorPorTributacao,
+                        fonteClassificacao: 'tributacao'
+                    };
+                }
+            }
+
+            console.log('SPED-EXTRACTOR: Não foi possível determinar setor específico. Usando configuração padrão.');
+            return configuracaoPadrao;
+
+        } catch (erro) {
+            console.error('SPED-EXTRACTOR: Erro ao determinar setor IVA:', erro);
+            return configuracaoPadrao;
+        }
+    }
+
+    /**
+     * Classifica setor baseado no CNAE
+     * @param {string} cnae - Código CNAE principal
+     * @returns {Object|null} Configuração específica do setor
+     */
+    function classificarSetorPorCnae(cnae) {
+        if (!cnae) return null;
+
+        const codigoCnae = cnae.replace(/[^0-9]/g, '').substring(0, 4);
+
+        // Setores com tratamento diferenciado
+        const setoresEspeciais = {
+            // Agronegócio (01xx-03xx)
+            agronegocio: {
+                codigo: 'agronegocio',
+                categoria: 'agronegocio',
+                cbs: 0.088,
+                ibs: 0.088, // Redução significativa para agronegócio
+                reducaoEspecial: 0.6,
+                pattern: /^(01|02|03)/
+            },
+            // Indústria (05xx-33xx)
+            industria: {
+                codigo: 'industria',
+                categoria: 'industria',
+                cbs: 0.088,
+                ibs: 0.155, // Redução moderada
+                reducaoEspecial: 0.2,
+                pattern: /^(05|06|07|08|09|10|11|12|13|14|15|16|17|18|19|20|21|22|23|24|25|26|27|28|29|30|31|32|33)/
+            },
+            // Serviços de saúde (86xx)
+            saude: {
+                codigo: 'saude',
+                categoria: 'saude',
+                cbs: 0.088,
+                ibs: 0.088, // Redução significativa
+                reducaoEspecial: 0.5,
+                pattern: /^86/
+            },
+            // Educação (85xx)
+            educacao: {
+                codigo: 'educacao',
+                categoria: 'educacao',
+                cbs: 0.088,
+                ibs: 0.088, // Redução significativa
+                reducaoEspecial: 0.5,
+                pattern: /^85/
+            }
+        };
+
+        for (const [nomeSetor, config] of Object.entries(setoresEspeciais)) {
+            if (config.pattern.test(codigoCnae)) {
+                console.log(`SPED-EXTRACTOR: Setor identificado por CNAE: ${nomeSetor} (${cnae})`);
+                return {
+                    codigo: config.codigo,
+                    categoriaIva: config.categoria,
+                    cbs: config.cbs,
+                    ibs: config.ibs,
+                    reducaoEspecial: config.reducaoEspecial
+                };
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Classifica setor baseado no tipo de empresa
+     * @param {string} tipoEmpresa - Tipo da empresa
+     * @returns {Object|null} Configuração específica do setor
+     */
+    function classificarSetorPorTipo(tipoEmpresa) {
+        const tiposEspeciais = {
+            'servicos': {
+                codigo: 'servicos',
+                categoriaIva: 'servicos',
+                cbs: 0.088,
+                ibs: 0.177,
+                reducaoEspecial: 0
+            },
+            'industria': {
+                codigo: 'industria',
+                categoriaIva: 'industria',
+                cbs: 0.088,
+                ibs: 0.155,
+                reducaoEspecial: 0.2
+            },
+            'comercio': {
+                codigo: 'comercio',
+                categoriaIva: 'comercio',
+                cbs: 0.088,
+                ibs: 0.177,
+                reducaoEspecial: 0
+            }
+        };
+
+        const config = tiposEspeciais[tipoEmpresa?.toLowerCase()];
+        if (config) {
+            console.log(`SPED-EXTRACTOR: Setor identificado por tipo: ${tipoEmpresa}`);
+            return config;
+        }
+
+        return null;
+    }
+
+    /**
+     * Classifica setor baseado na composição tributária
+     * @param {Object} composicao - Composição tributária
+     * @returns {Object|null} Configuração específica do setor
+     */
+    function classificarSetorPorTributacao(composicao) {
+        const { debitos, aliquotasEfetivas } = composicao;
+
+        // Se há ISS significativo, provavelmente é empresa de serviços
+        if (debitos.iss > 0 && debitos.iss > (debitos.icms || 0)) {
+            console.log('SPED-EXTRACTOR: Setor identificado por tributação: serviços (ISS predominante)');
+            return {
+                codigo: 'servicos',
+                categoriaIva: 'servicos',
+                cbs: 0.088,
+                ibs: 0.177,
+                reducaoEspecial: 0
+            };
+        }
+
+        // Se há IPI significativo, provavelmente é indústria
+        if (debitos.ipi > 0) {
+            console.log('SPED-EXTRACTOR: Setor identificado por tributação: indústria (IPI presente)');
+            return {
+                codigo: 'industria',
+                categoriaIva: 'industria',
+                cbs: 0.088,
+                ibs: 0.155,
+                reducaoEspecial: 0.2
+            };
+        }
+
+        // Se há ICMS predominante sem IPI, provavelmente é comércio
+        if (debitos.icms > 0 && !debitos.ipi) {
+            console.log('SPED-EXTRACTOR: Setor identificado por tributação: comércio (ICMS sem IPI)');
+            return {
+                codigo: 'comercio',
+                categoriaIva: 'comercio',
+                cbs: 0.088,
+                ibs: 0.177,
+                reducaoEspecial: 0
+            };
+        }
+
+        return null;
+    }
+
 
     /**
      * Extrai CFOPs dos documentos
