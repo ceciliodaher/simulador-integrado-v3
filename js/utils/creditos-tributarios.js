@@ -1,465 +1,428 @@
 /**
- * @fileoverview Módulo para cálculo de créditos tributários
- * Responsável por calcular os créditos de PIS, COFINS, ICMS e IPI
- * baseado nos parâmetros configurados pelo usuário
- * 
- * @module creditos-tributarios
- * @author Expertzy Inteligência Tributária
- * @version 1.0.0
+ * Módulo de Cálculo de Créditos Tributários
+ * Responsável por calcular os créditos de impostos com base nos dados do formulário
+ * VERSÃO CORRIGIDA - Janeiro 2025
  */
-
-// Controle de variáveis globais para cálculos tributários
-let calculandoCreditos = false;
-let calculandoAliquota = false;
 
 /**
  * Função principal para calcular créditos tributários
- * Atualiza os campos de créditos na interface
- */
-/**
- * Calcula créditos tributários baseado nos parâmetros configurados
+ * Esta função é chamada quando há mudanças nos campos do formulário
  */
 function calcularCreditosTributarios() {
-    if (calculandoCreditos) return; // Evita loops de recálculo
-    
-    calculandoCreditos = true;
+    console.log('CREDITOS-TRIBUTARIOS: Iniciando cálculo dos créditos');
     
     try {
-        // Verificar se DataManager está disponível
-        const extrairValorNumerico = window.DataManager ? 
-            window.DataManager.extrairValorNumerico : 
-            function(id) {
-                const elemento = document.getElementById(id);
-                if (!elemento) return 0;
-                
-                const valor = elemento.value || elemento.dataset.rawValue || '0';
-                return parseFloat(valor.toString().replace(/[^\d,.-]/g, '').replace(',', '.')) || 0;
-            };
+        // Obter valores base
+        const faturamento = obterFaturamentoMensal();
+        const regime = document.getElementById('regime')?.value || '';
+        const tipoEmpresa = document.getElementById('tipo-empresa')?.value || '';
         
-        const formatarMoeda = window.DataManager ? 
-            window.DataManager.formatarMoeda : 
-            function(valor) {
-                return new Intl.NumberFormat('pt-BR', {
-                    style: 'currency',
-                    currency: 'BRL'
-                }).format(valor || 0);
-            };
-        
-        // Obter faturamento base
-        const faturamento = extrairValorNumerico('faturamento');
-        
-        if (faturamento <= 0) {
-            limparCamposCreditos();
+        if (!faturamento || faturamento <= 0) {
+            console.warn('CREDITOS-TRIBUTARIOS: Faturamento não informado ou inválido');
+            zerarCamposCreditos();
             return;
         }
         
-        // Calcular créditos PIS/COFINS
-        calcularCreditosPisCofins(faturamento, extrairValorNumerico, formatarMoeda);
+        console.log(`CREDITOS-TRIBUTARIOS: Regime: ${regime}, Tipo: ${tipoEmpresa}, Faturamento: ${faturamento}`);
         
-        // Calcular créditos ICMS
-        calcularCreditosICMS(faturamento, extrairValorNumerico, formatarMoeda);
+        // Limpar campos primeiro
+        zerarCamposCreditos();
         
-        // Calcular créditos IPI
-        calcularCreditosIPI(faturamento, extrairValorNumerico, formatarMoeda);
-        
-        // Atualizar totais
-        atualizarTotaisCreditos(formatarMoeda);
-        
-        console.log('Créditos tributários calculados com sucesso');
-        
-    } catch (error) {
-        console.error('Erro ao calcular créditos tributários:', error);
-    } finally {
-        calculandoCreditos = false;
-    }
-}
-
-/**
- * Calcula créditos PIS/COFINS
- */
-function calcularCreditosPisCofins(faturamento, extrairValor, formatarMoeda) {
-    const regime = document.getElementById('pis-cofins-regime')?.value;
-    
-    if (regime !== 'nao-cumulativo') {
-        // Regime cumulativo não tem direito a créditos
-        document.getElementById('credito-pis').value = formatarMoeda(0);
-        document.getElementById('credito-cofins').value = formatarMoeda(0);
-        document.getElementById('creditos-pis-cofins-calc').value = formatarMoeda(0);
-        return;
-    }
-    
-    // Obter parâmetros
-    const baseCalc = extrairValor('pis-cofins-base-calc') / 100; // Converter % para decimal
-    const percCredito = extrairValor('pis-cofins-perc-credito') / 100;
-    const aliquotaPIS = extrairValor('pis-aliquota') / 100;
-    const aliquotaCOFINS = extrairValor('cofins-aliquota') / 100;
-    
-    // Calcular base de crédito
-    const baseCredito = faturamento * baseCalc * percCredito;
-    
-    // Calcular créditos
-    const creditoPIS = baseCredito * aliquotaPIS;
-    const creditoCOFINS = baseCredito * aliquotaCOFINS;
-    const creditoTotal = creditoPIS + creditoCOFINS;
-    
-    // Atualizar campos
-    document.getElementById('credito-pis').value = formatarMoeda(creditoPIS);
-    document.getElementById('credito-cofins').value = formatarMoeda(creditoCOFINS);
-    document.getElementById('creditos-pis-cofins-calc').value = formatarMoeda(creditoTotal);
-}
-
-/**
- * Calcula créditos ICMS
- */
-function calcularCreditosICMS(faturamento, extrairValor, formatarMoeda) {
-    const camposICMS = document.getElementById('campos-icms');
-    if (!camposICMS || camposICMS.style.display === 'none') {
-        document.getElementById('credito-icms').value = formatarMoeda(0);
-        document.getElementById('creditos-icms-calc').value = formatarMoeda(0);
-        return;
-    }
-    
-    // Obter parâmetros
-    const baseCalc = extrairValor('icms-base-calc') / 100;
-    const percCredito = extrairValor('icms-perc-credito') / 100;
-    const aliquotaICMS = extrairValor('aliquota-icms') / 100;
-    const incentivo = document.getElementById('possui-incentivo-icms')?.checked ? 
-                     (extrairValor('incentivo-icms') / 100) : 0;
-    
-    // Calcular base de crédito
-    const baseCredito = faturamento * baseCalc * percCredito;
-    
-    // Calcular crédito bruto
-    let creditoICMS = baseCredito * aliquotaICMS;
-    
-    // Aplicar incentivo se houver
-    if (incentivo > 0) {
-        creditoICMS = creditoICMS * (1 - incentivo);
-    }
-    
-    // Atualizar campos
-    document.getElementById('credito-icms').value = formatarMoeda(creditoICMS);
-    document.getElementById('creditos-icms-calc').value = formatarMoeda(creditoICMS);
-}
-
-/**
- * Calcula créditos IPI
- */
-function calcularCreditosIPI(faturamento, extrairValor, formatarMoeda) {
-    const camposIPI = document.getElementById('campos-ipi');
-    if (!camposIPI || camposIPI.style.display === 'none') {
-        document.getElementById('credito-ipi').value = formatarMoeda(0);
-        document.getElementById('creditos-ipi-calc').value = formatarMoeda(0);
-        return;
-    }
-    
-    // Obter parâmetros
-    const baseCalc = extrairValor('ipi-base-calc') / 100;
-    const percCredito = extrairValor('ipi-perc-credito') / 100;
-    const aliquotaIPI = extrairValor('aliquota-ipi') / 100;
-    
-    // Calcular base de crédito
-    const baseCredito = faturamento * baseCalc * percCredito;
-    
-    // Calcular crédito
-    const creditoIPI = baseCredito * aliquotaIPI;
-    
-    // Atualizar campos
-    document.getElementById('credito-ipi').value = formatarMoeda(creditoIPI);
-    document.getElementById('creditos-ipi-calc').value = formatarMoeda(creditoIPI);
-}
-
-/**
- * Atualiza totais de créditos
- */
-function atualizarTotaisCreditos(formatarMoeda) {
-    const extrairValorMonetario = function(id) {
-        const elemento = document.getElementById(id);
-        if (!elemento) return 0;
-        
-        const valor = elemento.value || '0';
-        return parseFloat(valor.replace(/[^\d,.-]/g, '').replace(',', '.')) || 0;
-    };
-    
-    // Calcular total de créditos
-    const totalCreditos = 
-        extrairValorMonetario('credito-pis') +
-        extrairValorMonetario('credito-cofins') +
-        extrairValorMonetario('credito-icms') +
-        extrairValorMonetario('credito-ipi') +
-        extrairValorMonetario('credito-iss');
-    
-    // Atualizar campo de total
-    const campoTotalCreditos = document.getElementById('total-creditos');
-    if (campoTotalCreditos) {
-        campoTotalCreditos.value = formatarMoeda(totalCreditos);
-    }
-}
-
-/**
- * Limpa campos de créditos
- */
-function limparCamposCreditos() {
-    const campos = [
-        'credito-pis', 'credito-cofins', 'credito-icms', 
-        'credito-ipi', 'credito-iss', 'total-creditos',
-        'creditos-pis-cofins-calc', 'creditos-icms-calc', 'creditos-ipi-calc'
-    ];
-    
-    campos.forEach(id => {
-        const campo = document.getElementById(id);
-        if (campo) {
-            campo.value = 'R$ 0,00';
+        // Calcular créditos baseado no regime
+        switch(regime) {
+            case 'simples':
+                calcularCreditosSimples(faturamento);
+                break;
+            case 'presumido':
+            case 'real':
+                calcularCreditosLucroPresumidoReal(faturamento, tipoEmpresa);
+                break;
+            default:
+                console.warn('CREDITOS-TRIBUTARIOS: Regime tributário não reconhecido ou não selecionado');
+                break;
         }
-    });
+        
+        // Calcular totais e alíquotas efetivas
+        calcularTotaisEAliquotasEfetivas(faturamento);
+        
+        console.log('CREDITOS-TRIBUTARIOS: Cálculo concluído com sucesso');
+        
+    } catch (erro) {
+        console.error('CREDITOS-TRIBUTARIOS: Erro durante o cálculo:', erro);
+        zerarCamposCreditos();
+    }
+}
+
+/**
+ * Obtém o faturamento mensal do formulário
+ */
+function obterFaturamentoMensal() {
+    const campoFaturamento = document.getElementById('faturamento');
+    if (!campoFaturamento) return 0;
+    
+    let valorFaturamento = 0;
+    
+    // Se há dataset.rawValue (do CurrencyFormatter), usar ele
+    if (campoFaturamento.dataset?.rawValue) {
+        valorFaturamento = parseFloat(campoFaturamento.dataset.rawValue);
+    } else {
+        // Extrair valor do campo formatado
+        const valorTexto = campoFaturamento.value;
+        if (valorTexto) {
+            valorFaturamento = parseFloat(valorTexto.replace(/[^\d,.-]/g, '').replace(',', '.'));
+        }
+    }
+    
+    return isNaN(valorFaturamento) ? 0 : valorFaturamento;
 }
 
 /**
  * Calcula créditos para empresas do Simples Nacional
  */
-function calcularCreditosSimples() {
-    // No Simples Nacional, normalmente não há créditos tributários
-    limparCamposCreditos();
+function calcularCreditosSimples(faturamento) {
+    console.log('CREDITOS-TRIBUTARIOS: Calculando créditos para Simples Nacional');
     
-    // Atualizar campos de débitos com base na alíquota do Simples
-    const aliquotaSimples = parseFloat(document.getElementById('aliquota-simples')?.value) || 0;
-    const faturamento = extrairValorNumericoDeElemento('faturamento');
+    // No Simples Nacional, geralmente não há créditos de PIS/COFINS/ICMS/IPI
+    // pois os impostos são pagos em regime de recolhimento unificado
     
-    if (faturamento > 0 && aliquotaSimples > 0) {
-        const impostoTotal = faturamento * (aliquotaSimples / 100);
+    // Preencher débitos estimados com base na alíquota do Simples
+    const aliquotaSimples = parseFloat(document.getElementById('aliquota-simples')?.value || '0') / 100;
+    
+    if (aliquotaSimples > 0) {
+        const debitoTotal = faturamento * aliquotaSimples;
         
         // Distribuir proporcionalmente entre os impostos
-        atualizarCampoMonetario('debito-pis', impostoTotal * 0.05); // ~5% do Simples
-        atualizarCampoMonetario('debito-cofins', impostoTotal * 0.23); // ~23% do Simples
-        atualizarCampoMonetario('debito-icms', impostoTotal * 0.34); // ~34% do Simples
-        atualizarCampoMonetario('debito-ipi', 0);
-        atualizarCampoMonetario('debito-iss', impostoTotal * 0.05); // ~5% do Simples se for serviço
+        // Distribuição típica do Simples Nacional:
+        // PIS ≈ 2.5%, COFINS ≈ 12%, ICMS ≈ 35%, ISS ≈ 16%, IRPJ ≈ 5.5%, CSLL ≈ 3.5%
+        const distribuicao = {
+            pis: 0.025,
+            cofins: 0.12,
+            icms: 0.35,
+            ipi: 0.02,
+            iss: 0.16
+        };
+        
+        // Ajustar distribuição baseada no tipo de empresa
+        const tipoEmpresa = document.getElementById('tipo-empresa')?.value || '';
+        if (tipoEmpresa === 'servicos') {
+            distribuicao.icms = 0;
+            distribuicao.ipi = 0;
+            distribuicao.iss = 0.53; // Aumenta ISS para serviços
+        } else if (tipoEmpresa === 'industria') {
+            distribuicao.iss = 0;
+            distribuicao.ipi = 0.18; // Aumenta IPI para indústria
+        } else {
+            distribuicao.iss = 0;
+            distribuicao.ipi = 0.02;
+        }
+        
+        Object.keys(distribuicao).forEach(imposto => {
+            const valorDebito = debitoTotal * distribuicao[imposto];
+            preencherCampoValor(`debito-${imposto}`, valorDebito);
+            
+            // Calcular alíquota efetiva
+            const aliquotaEfetiva = (valorDebito / faturamento) * 100;
+            preencherCampoValor(`aliquota-efetiva-${imposto}`, aliquotaEfetiva, false);
+        });
+        
+        console.log('CREDITOS-TRIBUTARIOS: Débitos do Simples Nacional calculados');
     }
 }
 
 /**
- * Calcula créditos para empresas do Lucro Presumido ou Real
- * @param {number} faturamento - Faturamento mensal
- * @param {string} tipoEmpresa - Tipo da empresa (comercio, industria, servicos)
+ * Calcula créditos para Lucro Presumido e Real
  */
-function calcularCreditosLucro(faturamento, tipoEmpresa) {
-    const pisCofinsBegime = document.getElementById('pis-cofins-regime')?.value;
+function calcularCreditosLucroPresumidoReal(faturamento, tipoEmpresa) {
+    console.log('CREDITOS-TRIBUTARIOS: Calculando créditos para Lucro Presumido/Real');
     
-    // Calcular créditos PIS/COFINS
-    calcularCreditosPisCofins(faturamento, pisCofinsBegime);
+    // Calcular PIS/COFINS
+    calcularPisCofins(faturamento);
     
-    // Calcular créditos ICMS (se aplicável)
-    if (tipoEmpresa === 'comercio' || tipoEmpresa === 'industria') {
-        calcularCreditosICMS(faturamento);
-    } else {
-        atualizarCampoMonetario('credito-icms', 0);
-        atualizarCampoMonetario('debito-icms', 0);
+    // Calcular ICMS (exceto para serviços)
+    if (tipoEmpresa !== 'servicos') {
+        calcularICMS(faturamento);
     }
     
-    // Calcular créditos IPI (se aplicável)
+    // Calcular IPI (apenas para indústria)
     if (tipoEmpresa === 'industria') {
-        calcularCreditosIPI(faturamento);
-    } else {
-        atualizarCampoMonetario('credito-ipi', 0);
-        atualizarCampoMonetario('debito-ipi', 0);
+        calcularIPI(faturamento);
     }
     
-    // Calcular ISS (se aplicável)
+    // Calcular ISS (apenas para serviços)
     if (tipoEmpresa === 'servicos') {
         calcularISS(faturamento);
-    } else {
-        atualizarCampoMonetario('debito-iss', 0);
-        atualizarCampoMonetario('credito-iss', 0);
     }
-    
-    // Calcular débitos PIS/COFINS
-    calcularDebitosPisCofins(faturamento, pisCofinsBegime);
 }
 
 /**
- * Calcula débitos de PIS/COFINS
- * @param {number} faturamento - Faturamento mensal
- * @param {string} regime - Regime de PIS/COFINS
+ * Calcula débitos e créditos de PIS/COFINS
  */
-function calcularDebitosPisCofins(faturamento, regime) {
+function calcularPisCofins(faturamento) {
+    const regimePisCofins = document.getElementById('pis-cofins-regime')?.value || 'cumulativo';
+    
     let aliquotaPIS, aliquotaCOFINS;
     
-    if (regime === 'cumulativo') {
-        aliquotaPIS = 0.65;
-        aliquotaCOFINS = 3.0;
+    if (regimePisCofins === 'nao-cumulativo') {
+        aliquotaPIS = 0.0165; // 1,65%
+        aliquotaCOFINS = 0.076; // 7,6%
+        
+        // Calcular créditos no regime não-cumulativo
+        const baseCalculoCreditos = parseFloat(document.getElementById('pis-cofins-base-calc')?.value || '0') / 100;
+        const percentualAproveitamento = parseFloat(document.getElementById('pis-cofins-perc-credito')?.value || '0') / 100;
+        
+        if (baseCalculoCreditos > 0 && percentualAproveitamento > 0) {
+            const valorBaseCreditos = faturamento * baseCalculoCreditos;
+            
+            const creditoPIS = valorBaseCreditos * aliquotaPIS * percentualAproveitamento;
+            const creditoCOFINS = valorBaseCreditos * aliquotaCOFINS * percentualAproveitamento;
+            
+            preencherCampoValor('credito-pis', creditoPIS);
+            preencherCampoValor('credito-cofins', creditoCOFINS);
+            
+            // Atualizar campo de créditos calculados
+            const totalCreditos = creditoPIS + creditoCOFINS;
+            preencherCampoValor('creditos-pis-cofins-calc', totalCreditos);
+        }
     } else {
-        aliquotaPIS = parseFloat(document.getElementById('pis-aliquota')?.value) || 1.65;
-        aliquotaCOFINS = parseFloat(document.getElementById('cofins-aliquota')?.value) || 7.6;
+        aliquotaPIS = 0.0065; // 0,65%
+        aliquotaCOFINS = 0.03; // 3%
     }
     
-    const debitoPIS = faturamento * (aliquotaPIS / 100);
-    const debitoCOFINS = faturamento * (aliquotaCOFINS / 100);
+    // Calcular débitos
+    const debitoPIS = faturamento * aliquotaPIS;
+    const debitoCOFINS = faturamento * aliquotaCOFINS;
     
-    atualizarCampoMonetario('debito-pis', debitoPIS);
-    atualizarCampoMonetario('debito-cofins', debitoCOFINS);
+    preencherCampoValor('debito-pis', debitoPIS);
+    preencherCampoValor('debito-cofins', debitoCOFINS);
+    
+    // Atualizar alíquotas nos campos readonly
+    document.getElementById('pis-aliquota').value = (aliquotaPIS * 100).toFixed(2);
+    document.getElementById('cofins-aliquota').value = (aliquotaCOFINS * 100).toFixed(2);
+    
+    console.log(`CREDITOS-TRIBUTARIOS: PIS/COFINS calculados - Regime: ${regimePisCofins}`);
 }
 
 /**
- * Calcula ISS para empresas de serviços
- * @param {number} faturamento - Faturamento mensal
+ * Calcula débitos e créditos de ICMS
+ */
+function calcularICMS(faturamento) {
+    const aliquotaICMS = parseFloat(document.getElementById('aliquota-icms')?.value || '0') / 100;
+    const baseCalculoCreditos = parseFloat(document.getElementById('icms-base-calc')?.value || '0') / 100;
+    const percentualAproveitamento = parseFloat(document.getElementById('icms-perc-credito')?.value || '0') / 100;
+    const possuiIncentivo = document.getElementById('possui-incentivo-icms')?.checked || false;
+    const percentualIncentivo = possuiIncentivo ? parseFloat(document.getElementById('incentivo-icms')?.value || '0') / 100 : 0;
+    
+    if (aliquotaICMS > 0) {
+        // Calcular débito com base no faturamento (assumindo que parte é sujeita ao ICMS)
+        const baseCalculoDebito = 0.8; // 80% do faturamento sujeito ao ICMS (estimativa)
+        let aliquotaEfetiva = aliquotaICMS;
+        
+        // Aplicar incentivo fiscal se houver
+        if (possuiIncentivo && percentualIncentivo > 0) {
+            aliquotaEfetiva = aliquotaICMS * (1 - percentualIncentivo);
+        }
+        
+        const debitoICMS = faturamento * baseCalculoDebito * aliquotaEfetiva;
+        preencherCampoValor('debito-icms', debitoICMS);
+        
+        // Calcular créditos
+        if (baseCalculoCreditos > 0 && percentualAproveitamento > 0) {
+            const valorBaseCreditos = faturamento * baseCalculoCreditos;
+            const creditoICMS = valorBaseCreditos * aliquotaICMS * percentualAproveitamento;
+            
+            preencherCampoValor('credito-icms', creditoICMS);
+            preencherCampoValor('creditos-icms-calc', creditoICMS);
+        }
+        
+        console.log('CREDITOS-TRIBUTARIOS: ICMS calculado');
+    }
+}
+
+/**
+ * Calcula débitos e créditos de IPI
+ */
+function calcularIPI(faturamento) {
+    const aliquotaIPI = parseFloat(document.getElementById('aliquota-ipi')?.value || '0') / 100;
+    const baseCalculoCreditos = parseFloat(document.getElementById('ipi-base-calc')?.value || '0') / 100;
+    const percentualAproveitamento = parseFloat(document.getElementById('ipi-perc-credito')?.value || '0') / 100;
+    
+    if (aliquotaIPI > 0) {
+        // Calcular débito (assumindo que parte da produção é sujeita ao IPI)
+        const baseCalculoDebito = 0.6; // 60% da produção sujeita ao IPI (estimativa)
+        const debitoIPI = faturamento * baseCalculoDebito * aliquotaIPI;
+        
+        preencherCampoValor('debito-ipi', debitoIPI);
+        
+        // Calcular créditos
+        if (baseCalculoCreditos > 0 && percentualAproveitamento > 0) {
+            const valorBaseCreditos = faturamento * baseCalculoCreditos;
+            const creditoIPI = valorBaseCreditos * aliquotaIPI * percentualAproveitamento;
+            
+            preencherCampoValor('credito-ipi', creditoIPI);
+            preencherCampoValor('creditos-ipi-calc', creditoIPI);
+        }
+        
+        console.log('CREDITOS-TRIBUTARIOS: IPI calculado');
+    }
+}
+
+/**
+ * Calcula débitos de ISS
  */
 function calcularISS(faturamento) {
-    const aliquotaISS = parseFloat(document.getElementById('aliquota-iss')?.value) || 5;
-    const debitoISS = faturamento * (aliquotaISS / 100);
+    const aliquotaISS = parseFloat(document.getElementById('aliquota-iss')?.value || '0') / 100;
     
-    atualizarCampoMonetario('debito-iss', debitoISS);
-    // ISS geralmente não tem créditos
-    atualizarCampoMonetario('credito-iss', 0);
-}
-
-/**
- * Atualiza totais de débitos
- */
-function atualizarTotaisDebitos() {
-    const debitos = [
-        'debito-pis', 'debito-cofins', 'debito-icms', 
-        'debito-ipi', 'debito-iss'
-    ];
-    
-    let totalDebitos = 0;
-    debitos.forEach(id => {
-        const valor = extrairValorNumericoDeElemento(id);
-        totalDebitos += valor;
-    });
-    
-    atualizarCampoMonetario('total-debitos', totalDebitos);
-}
-
-/**
- * Calcula alíquota efetiva total
- */
-function calcularAliquotaEfetivaTotal() {
-    if (calculandoAliquota) return;
-    
-    calculandoAliquota = true;
-    
-    try {
-        const faturamento = extrairValorNumericoDeElemento('faturamento');
-        const totalDebitos = extrairValorNumericoDeElemento('total-debitos');
+    if (aliquotaISS > 0) {
+        // ISS incide sobre toda a receita de serviços
+        const debitoISS = faturamento * aliquotaISS;
+        preencherCampoValor('debito-iss', debitoISS);
         
-        if (faturamento > 0) {
-            const aliquotaEfetiva = (totalDebitos / faturamento) * 100;
-            
-            const campoAliquota = document.getElementById('aliquota-efetiva-total');
-            if (campoAliquota) {
-                campoAliquota.value = aliquotaEfetiva.toFixed(3);
-            }
-            
-            // Calcular alíquotas efetivas individuais
-            calcularAliquotasEfetivasIndividuais(faturamento);
-        }
-    } catch (erro) {
-        console.error('Erro ao calcular alíquota efetiva total:', erro);
-    } finally {
-        calculandoAliquota = false;
+        // ISS não gera créditos
+        preencherCampoValor('credito-iss', 0);
+        
+        console.log('CREDITOS-TRIBUTARIOS: ISS calculado');
     }
 }
 
 /**
- * Calcula alíquotas efetivas individuais
- * @param {number} faturamento - Faturamento mensal
+ * Calcula totais e alíquotas efetivas
  */
-function calcularAliquotasEfetivasIndividuais(faturamento) {
+function calcularTotaisEAliquotasEfetivas(faturamento) {
     const impostos = ['pis', 'cofins', 'icms', 'ipi', 'iss'];
     
+    let totalDebitos = 0;
+    let totalCreditos = 0;
+    
+    // Calcular totais e alíquotas efetivas por imposto
     impostos.forEach(imposto => {
-        const debito = extrairValorNumericoDeElemento(`debito-${imposto}`);
-        const aliquotaEfetiva = faturamento > 0 ? (debito / faturamento) * 100 : 0;
+        const debito = obterValorCampo(`debito-${imposto}`);
+        const credito = obterValorCampo(`credito-${imposto}`);
         
-        const campoAliquota = document.getElementById(`aliquota-efetiva-${imposto}`);
-        if (campoAliquota) {
-            campoAliquota.value = aliquotaEfetiva.toFixed(3);
+        totalDebitos += debito;
+        totalCreditos += credito;
+        
+        // Calcular alíquota efetiva (débito líquido / faturamento)
+        const debitoLiquido = Math.max(0, debito - credito);
+        const aliquotaEfetiva = faturamento > 0 ? (debitoLiquido / faturamento) * 100 : 0;
+        
+        preencherCampoValor(`aliquota-efetiva-${imposto}`, aliquotaEfetiva, false);
+    });
+    
+    // Preencher totais
+    preencherCampoValor('total-debitos', totalDebitos);
+    preencherCampoValor('total-creditos', totalCreditos);
+    
+    // Calcular alíquota efetiva total
+    const debitoLiquidoTotal = Math.max(0, totalDebitos - totalCreditos);
+    const aliquotaEfetivaTotal = faturamento > 0 ? (debitoLiquidoTotal / faturamento) * 100 : 0;
+    preencherCampoValor('aliquota-efetiva-total', aliquotaEfetivaTotal, false);
+    
+    console.log(`CREDITOS-TRIBUTARIOS: Totais calculados - Débitos: ${totalDebitos.toFixed(2)}, Créditos: ${totalCreditos.toFixed(2)}, Alíquota Efetiva: ${aliquotaEfetivaTotal.toFixed(3)}%`);
+}
+
+/**
+ * Preenche um campo com valor formatado
+ */
+function preencherCampoValor(campoId, valor, formatarMoeda = true) {
+    const elemento = document.getElementById(campoId);
+    if (!elemento) return;
+    
+    let valorFormatado;
+    if (formatarMoeda) {
+        valorFormatado = formatarComoMoeda(valor);
+    } else {
+        valorFormatado = valor.toFixed(3);
+    }
+    
+    elemento.value = valorFormatado;
+}
+
+/**
+ * Obtém valor numérico de um campo
+ */
+function obterValorCampo(campoId) {
+    const elemento = document.getElementById(campoId);
+    if (!elemento) return 0;
+    
+    const valorTexto = elemento.value;
+    if (!valorTexto) return 0;
+    
+    // Limpar formatação monetária
+    const valorLimpo = valorTexto.replace(/[^\d,.-]/g, '').replace(',', '.');
+    const valor = parseFloat(valorLimpo);
+    
+    return isNaN(valor) ? 0 : valor;
+}
+
+/**
+ * Formata valor como moeda
+ */
+function formatarComoMoeda(valor) {
+    if (isNaN(valor) || valor === null || valor === undefined) {
+        valor = 0;
+    }
+
+    // Usar CurrencyFormatter se disponível
+    if (window.CurrencyFormatter && typeof window.CurrencyFormatter.formatarValorMonetario === 'function') {
+        try {
+            return window.CurrencyFormatter.formatarValorMonetario(Math.round(valor * 100).toString());
+        } catch (erro) {
+            console.warn('CREDITOS-TRIBUTARIOS: Erro ao usar CurrencyFormatter:', erro);
+        }
+    }
+
+    // Fallback para formatação padrão
+    return new Intl.NumberFormat('pt-BR', {
+        style: 'currency',
+        currency: 'BRL',
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+    }).format(valor);
+}
+
+/**
+ * Zera todos os campos de créditos e débitos
+ */
+function zerarCamposCreditos() {
+    const campos = [
+        'debito-pis', 'credito-pis', 'aliquota-efetiva-pis',
+        'debito-cofins', 'credito-cofins', 'aliquota-efetiva-cofins',
+        'debito-icms', 'credito-icms', 'aliquota-efetiva-icms',
+        'debito-ipi', 'credito-ipi', 'aliquota-efetiva-ipi',
+        'debito-iss', 'credito-iss', 'aliquota-efetiva-iss',
+        'total-debitos', 'total-creditos', 'aliquota-efetiva-total',
+        'creditos-pis-cofins-calc', 'creditos-icms-calc', 'creditos-ipi-calc'
+    ];
+    
+    campos.forEach(campoId => {
+        const elemento = document.getElementById(campoId);
+        if (elemento) {
+            if (campoId.includes('aliquota-efetiva')) {
+                elemento.value = '0.000';
+            } else {
+                elemento.value = formatarComoMoeda(0);
+            }
         }
     });
 }
 
 /**
- * Atualiza campo monetário com formatação
- * @param {string} id - ID do elemento
- * @param {number} valor - Valor a ser atualizado
- */
-function atualizarCampoMonetario(id, valor) {
-    const elemento = document.getElementById(id);
-    if (elemento) {
-        elemento.value = formatarMoeda(valor);
-    }
-}
-
-/**
- * Extrai valor numérico de um elemento
- * @param {string} id - ID do elemento
- * @returns {number} Valor numérico extraído
- */
-function extrairValorNumericoDeElemento(id) {
-    const elemento = document.getElementById(id);
-    if (!elemento || !elemento.value) {
-        return 0;
-    }
-    
-    // Se o DataManager estiver disponível, usar sua função
-    if (window.DataManager && typeof window.DataManager.extrairValorNumerico === 'function') {
-        return window.DataManager.extrairValorNumerico(id);
-    }
-    
-    // Fallback: extrair valor manualmente
-    const valor = elemento.value.toString();
-    
-    // Se for campo monetário (contém R$)
-    if (valor.includes('R$')) {
-        return parseFloat(valor.replace(/[R$\s.]/g, '').replace(',', '.')) || 0;
-    }
-    
-    // Se for percentual
-    if (valor.includes('%')) {
-        return parseFloat(valor.replace('%', '')) || 0;
-    }
-    
-    // Valor numérico normal
-    return parseFloat(valor.replace(/[^\d,.-]/g, '').replace(',', '.')) || 0;
-}
-
-/**
- * Formata valor como moeda brasileira
- * @param {number} valor - Valor a ser formatado
- * @returns {string} Valor formatado como moeda
- */
-function formatarMoeda(valor) {
-    // Se o DataManager estiver disponível, usar sua função
-    if (window.DataManager && typeof window.DataManager.formatarMoeda === 'function') {
-        return window.DataManager.formatarMoeda(valor);
-    }
-    
-    // Fallback: formatação básica
-    return 'R$ ' + valor.toLocaleString('pt-BR', {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2
-    });
-}
-
-/**
- * Função para ajustar alíquotas PIS/COFINS conforme regime
+ * Função auxiliar para ajustar alíquotas PIS/COFINS baseado no regime
  */
 function ajustarAliquotasPisCofins() {
-    const regime = document.getElementById('pis-cofins-regime')?.value;
-    const camposPisCofinsMeditos = document.getElementById('campos-pis-cofins-creditos');
-    const pisAliquota = document.getElementById('pis-aliquota');
-    const cofinsAliquota = document.getElementById('cofins-aliquota');
+    const regimePisCofins = document.getElementById('pis-cofins-regime')?.value || 'cumulativo';
+    const campoPIS = document.getElementById('pis-aliquota');
+    const campoCOFINS = document.getElementById('cofins-aliquota');
+    const camposCreditos = document.getElementById('campos-pis-cofins-creditos');
     
-    if (regime === 'nao-cumulativo') {
-        // Regime não-cumulativo: alíquotas maiores, com direito a crédito
-        if (pisAliquota) pisAliquota.value = '1.65';
-        if (cofinsAliquota) cofinsAliquota.value = '7.6';
-        if (camposPisCofinsMeditos) camposPisCofinsMeditos.style.display = 'block';
+    if (regimePisCofins === 'nao-cumulativo') {
+        if (campoPIS) campoPIS.value = '1.65';
+        if (campoCOFINS) campoCOFINS.value = '7.60';
+        if (camposCreditos) camposCreditos.style.display = 'block';
     } else {
-        // Regime cumulativo: alíquotas menores, sem direito a crédito
-        if (pisAliquota) pisAliquota.value = '0.65';
-        if (cofinsAliquota) cofinsAliquota.value = '3.0';
-        if (camposPisCofinsMeditos) camposPisCofinsMeditos.style.display = 'none';
+        if (campoPIS) campoPIS.value = '0.65';
+        if (campoCOFINS) campoCOFINS.value = '3.00';
+        if (camposCreditos) camposCreditos.style.display = 'none';
     }
     
     // Recalcular créditos após mudança de regime
@@ -473,156 +436,19 @@ function toggleCamposIncentivoICMS() {
     const checkbox = document.getElementById('possui-incentivo-icms');
     const campoIncentivo = document.getElementById('campo-incentivo-icms');
     
-    if (checkbox && campoIncentivo) {
-        campoIncentivo.style.display = checkbox.checked ? 'block' : 'none';
-        
-        // Recalcular se houver mudança
-        if (typeof calcularCreditosTributarios === 'function') {
-            calcularCreditosTributarios();
-        }
+    if (campoIncentivo) {
+        campoIncentivo.style.display = checkbox?.checked ? 'block' : 'none';
     }
+    
+    // Recalcular após mudança
+    calcularCreditosTributarios();
 }
 
-/**
- * Ajusta os campos tributários conforme o regime selecionado
- */
-function ajustarCamposTributarios() {
-    if (calculandoCreditos) return; // Evita loops de recalculo
+// Disponibilizar funções globalmente
+if (typeof window !== 'undefined') {
+    window.calcularCreditosTributarios = calcularCreditosTributarios;
+    window.ajustarAliquotasPisCofins = ajustarAliquotasPisCofins;
+    window.toggleCamposIncentivoICMS = toggleCamposIncentivoICMS;
     
-    const regime = document.getElementById('regime')?.value;
-    
-    // Esconder todos os campos específicos inicialmente
-    const camposSimples = document.getElementById('campos-simples');
-    const camposLucro = document.getElementById('campos-lucro');
-    const camposPisCofinsCreditos = document.getElementById('campos-pis-cofins-creditos');
-    
-    if (camposSimples) camposSimples.style.display = 'none';
-    if (camposLucro) camposLucro.style.display = 'none';
-    if (camposPisCofinsCreditos) camposPisCofinsCreditos.style.display = 'none';
-    
-    // Mostrar campos apropriados baseado no regime
-    switch (regime) {
-        case 'simples':
-            if (camposSimples) camposSimples.style.display = 'block';
-            break;
-            
-        case 'presumido':
-            if (camposLucro) camposLucro.style.display = 'block';
-            // Configurar para regime cumulativo por padrão
-            const pisCofinsRegime = document.getElementById('pis-cofins-regime');
-            if (pisCofinsRegime) {
-                pisCofinsRegime.value = 'cumulativo';
-                ajustarAliquotasPisCofins();
-            }
-            break;
-            
-        case 'real':
-            if (camposLucro) camposLucro.style.display = 'block';
-            // Configurar para regime não-cumulativo por padrão
-            const pisCofinsRegimeReal = document.getElementById('pis-cofins-regime');
-            if (pisCofinsRegimeReal) {
-                pisCofinsRegimeReal.value = 'nao-cumulativo';
-                ajustarAliquotasPisCofins();
-            }
-            break;
-            
-        default:
-            // Não mostrar campos específicos se nenhum regime selecionado
-            break;
-    }
-    
-    // Ajustar campos de operação após ajustar regime
-    ajustarCamposOperacao();
-    
-    // Recalcular créditos tributários
-    if (typeof calcularCreditosTributarios === 'function') {
-        calcularCreditosTributarios();
-    }
+    console.log('CREDITOS-TRIBUTARIOS: Módulo carregado com sucesso');
 }
-
-/**
- * Ajusta alíquotas PIS/COFINS baseado no regime selecionado
- */
-function ajustarAliquotasPisCofins() {
-    if (calculandoAliquota) return; // Evita loops
-    
-    const regime = document.getElementById('pis-cofins-regime')?.value;
-    const pisAliquota = document.getElementById('pis-aliquota');
-    const cofinsAliquota = document.getElementById('cofins-aliquota');
-    const camposPisCofinsCreditos = document.getElementById('campos-pis-cofins-creditos');
-    
-    if (!pisAliquota || !cofinsAliquota) return;
-    
-    calculandoAliquota = true;
-    
-    try {
-        if (regime === 'cumulativo') {
-            pisAliquota.value = '0.65';
-            cofinsAliquota.value = '3.00';
-            if (camposPisCofinsCreditos) camposPisCofinsCreditos.style.display = 'none';
-        } else if (regime === 'nao-cumulativo') {
-            pisAliquota.value = '1.65';
-            cofinsAliquota.value = '7.60';
-            if (camposPisCofinsCreditos) camposPisCofinsCreditos.style.display = 'block';
-        }
-        
-        // Recalcular créditos após ajustar alíquotas
-        if (typeof calcularCreditosTributarios === 'function') {
-            setTimeout(() => calcularCreditosTributarios(), 100);
-        }
-        
-    } finally {
-        calculandoAliquota = false;
-    }
-}
-
-/**
- * Ajusta campos de operação baseado no tipo de empresa e operação
- */
-function ajustarCamposOperacao() {
-    const tipoOperacao = document.getElementById('tipo-operacao')?.value;
-    const tipoEmpresa = document.getElementById('tipo-empresa')?.value;
-    
-    // Obter referências aos campos de impostos
-    const camposIcms = document.getElementById('campos-icms');
-    const camposIpi = document.getElementById('campos-ipi');
-    const camposIss = document.getElementById('campos-iss');
-    
-    // Esconder todos os campos primeiro
-    if (camposIcms) camposIcms.style.display = 'none';
-    if (camposIpi) camposIpi.style.display = 'none';
-    if (camposIss) camposIss.style.display = 'none';
-    
-    // Verificar se tanto operação quanto empresa foram selecionados
-    if (!tipoOperacao || !tipoEmpresa) return;
-    
-    // Exibir campos baseado no tipo de empresa
-    switch (tipoEmpresa) {
-        case 'servicos':
-            if (camposIss) camposIss.style.display = 'block';
-            break;
-            
-        case 'comercio':
-            if (camposIcms) camposIcms.style.display = 'block';
-            break;
-            
-        case 'industria':
-            if (camposIcms) camposIcms.style.display = 'block';
-            if (camposIpi) camposIpi.style.display = 'block';
-            break;
-    }
-    
-    // Recalcular créditos após ajustar campos
-    if (typeof calcularCreditosTributarios === 'function') {
-        setTimeout(() => calcularCreditosTributarios(), 100);
-    }
-}
-
-// Expor funções globalmente
-window.calcularCreditosTributarios = calcularCreditosTributarios;
-window.ajustarAliquotasPisCofins = ajustarAliquotasPisCofins;
-window.toggleCamposIncentivoICMS = toggleCamposIncentivoICMS;
-window.extrairValorNumericoDeElemento = extrairValorNumericoDeElemento;
-window.ajustarCamposTributarios = ajustarCamposTributarios;
-window.ajustarAliquotasPisCofins = ajustarAliquotasPisCofins;
-window.ajustarCamposOperacao = ajustarCamposOperacao;

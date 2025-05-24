@@ -1,993 +1,2668 @@
 /**
- * @fileoverview Parser SPED Aprimorado - Extração completa de dados tributários e financeiros
- * Versão corrigida que extrai todos os dados necessários para o simulador
- * @version 2.1.0 - Versão funcional completa e corrigida
+ * SpedParser - Módulo corrigido e completo para processamento de arquivos SPED
+ * Responsável por ler e analisar arquivos SPED de diferentes tipos
+ * VERSÃO CORRIGIDA E COMPLETA - Janeiro 2025
  */
-
-window.SpedParser = (function() {
-    
-    // Configurações do parser
-    const CONFIG = {
-        separadorCampo: '|',
-        terminadorLinha: /\r?\n/,
-        tamanhoMaximoArquivo: 500 * 1024 * 1024, // 500MB
-        timeoutProcessamento: 300000, // 5 minutos
-        
-        // Mapeamento AMPLIADO e CORRIGIDO de registros por tipo de SPED
-        registrosFiscal: {
-            // Dados da empresa
-            '0000': ['REG', 'COD_VER', 'COD_FIN', 'DT_INI', 'DT_FIN', 'NOME', 'CNPJ', 'CPF', 'UF', 'IE', 'COD_MUN', 'IM', 'SUFRAMA'],
-            '0001': ['REG', 'IND_MOV'],
-            '0005': ['REG', 'FANTASIA', 'CEP', 'END', 'NUM', 'COMPL', 'BAIRRO', 'FONE', 'FAX', 'EMAIL'],
+const SpedParser = (function() {
+    // Mapeamento completo de registros por tipo de SPED
+    const registrosMapeados = {
+        fiscal: {
+            // Registros de abertura e identificação
+            '0000': parseRegistro0000,
+            '0001': parseRegistro0001,
+            '0005': parseRegistro0005,
+            '0150': parseRegistro0150,  // Participantes
+            '0190': parseRegistro0190,  // Unidades de medida
+            '0200': parseRegistro0200,  // Itens
             
-            // Produtos
-            '0200': ['REG', 'COD_ITEM', 'DESCR_ITEM', 'COD_BARRA', 'COD_ANT_ITEM', 'UNID_INV', 'TIPO_ITEM', 'COD_NCM', 'EX_IPI', 'COD_GEN', 'COD_LST', 'ALIQ_ICMS'],
+            // Registros de documentos fiscais - BLOCO C
+            'C100': parseRegistroC100,  // Nota fiscal
+            'C170': parseRegistroC170,  // Itens da nota
+            'C190': parseRegistroC190,  // Registro analítico ICMS
+            'C197': parseRegistroC197,  // Outras obrigações
             
-            // Documentos fiscais de entrada (CRÍTICO PARA CRÉDITOS)
-            'C100': ['REG', 'IND_OPER', 'IND_EMIT', 'COD_PART', 'COD_MOD', 'COD_SIT', 'SER', 'NUM_DOC', 'CHV_NFE', 'DT_DOC', 'DT_E_S', 'VL_DOC', 'IND_PGTO', 'VL_DESC', 'VL_ABAT_NT', 'VL_MERC', 'IND_FRT', 'VL_FRT', 'VL_SEG', 'VL_OUT_DA', 'VL_BC_ICMS', 'VL_ICMS', 'VL_BC_ICMS_ST', 'VL_ICMS_ST', 'VL_IPI', 'VL_PIS', 'VL_COFINS', 'VL_PIS_ST', 'VL_COFINS_ST'],
-            'C170': ['REG', 'NUM_ITEM', 'COD_ITEM', 'DESCR_COMPL', 'QTD', 'UNID', 'VL_ITEM', 'VL_DESC', 'IND_MOV', 'CST_ICMS', 'CFOP', 'COD_NAT', 'VL_BC_ICMS', 'ALIQ_ICMS', 'VL_ICMS', 'VL_BC_ICMS_ST', 'ALIQ_ST', 'VL_ICMS_ST', 'IND_APUR', 'CST_IPI', 'COD_ENQ', 'VL_BC_IPI', 'ALIQ_IPI', 'VL_IPI', 'CST_PIS', 'VL_BC_PIS', 'ALIQ_PIS', 'QUANT_BC_PIS', 'ALIQ_PIS_QUANT', 'VL_PIS', 'CST_COFINS', 'VL_BC_COFINS', 'ALIQ_COFINS', 'QUANT_BC_COFINS', 'ALIQ_COFINS_QUANT', 'VL_COFINS', 'COD_CTA'],
+            // Registros de apuração ICMS - BLOCO E
+            'E110': parseRegistroE110,  // Apuração ICMS
+            'E111': parseRegistroE111,  // Ajustes ICMS
+            'E116': parseRegistroE116,  // Obrigações ICMS
             
-            // Documentos de saída (CRÍTICO PARA RECEITAS)
-            'C300': ['REG', 'COD_MOD', 'SER', 'SUB', 'NUM_DOC_INI', 'NUM_DOC_FIN', 'DT_DOC', 'VL_DOC', 'VL_PIS', 'VL_COFINS', 'COD_CTA'],
-            'C370': ['REG', 'NUM_ITEM', 'COD_ITEM', 'QTD', 'UNID', 'VL_ITEM', 'VL_DESC', 'CST_ICMS', 'CFOP', 'VL_BC_ICMS', 'ALIQ_ICMS', 'VL_ICMS', 'VL_BC_ICMS_ST', 'ALIQ_ST', 'VL_ICMS_ST', 'VL_BC_IPI', 'ALIQ_IPI', 'VL_IPI', 'CST_PIS', 'VL_BC_PIS', 'ALIQ_PIS', 'VL_PIS', 'CST_COFINS', 'VL_BC_COFINS', 'ALIQ_COFINS', 'VL_COFINS'],
+            // Registros de apuração IPI - BLOCO E
+            'E200': parseRegistroE200,  // Apuração IPI
+            'E210': parseRegistroE210,  // Ajustes IPI
+            'E220': parseRegistroE220,  // Outras informações IPI
             
-            // Apuração ICMS (CRÍTICO PARA DÉBITOS E CRÉDITOS)
-            'E110': ['REG', 'VL_TOT_DEBITOS', 'VL_AJ_DEBITOS', 'VL_TOT_AJ_DEBITOS', 'VL_ESTORNOS_CRED', 'VL_TOT_CREDITOS', 'VL_AJ_CREDITOS', 'VL_TOT_AJ_CREDITOS', 'VL_ESTORNOS_DEB', 'VL_SLD_CREDOR_ANT', 'VL_SLD_APURADO', 'VL_TOT_DED', 'VL_ICMS_RECOLHER', 'VL_SLD_CREDOR_TRANSPORTAR', 'DEB_ESP'],
-            'E111': ['REG', 'COD_AJ_APUR', 'DESCR_COMPL_AJ', 'VL_AJ_APUR'],
-            'E116': ['REG', 'COD_OR', 'VL_OR', 'DT_VCTO', 'COD_REC', 'NUM_PROC', 'IND_PROC', 'PROC', 'TXT_COMPL', 'MES_REF'],
+            // Registros de inventário - BLOCO H
+            'H010': parseRegistroH010,  // Inventário
+            'H020': parseRegistroH020,  // Informações do estoque
             
-            // Apuração IPI (CRÍTICO PARA INDÚSTRIAS)
-            'E200': ['REG', 'UF', 'DT_INI', 'DT_FIN'],
-            'E210': ['REG', 'IND_MOV_IPI', 'VL_SLD_CRED_ANT_IPI', 'VL_TOT_DEBITOS_IPI', 'VL_OUT_DEB_IPI', 'VL_TOT_CREDITOS_IPI', 'VL_OUT_CRED_IPI', 'VL_SLD_DEVEDOR_IPI', 'VL_SLD_CRED_IPI_A_TRANSP', 'DEB_ESP_IPI']
+            // Registros de controle e encerramento
+            '9900': parseRegistro9900,
+            '9990': parseRegistro9990,
+            '9999': parseRegistro9999
         },
         
-        registrosContribuicoes: {
-            // Dados da empresa
-            '0000': ['REG', 'COD_VER', 'TIPO_ESCRIT', 'IND_SIT_ESP', 'NUM_REC_ANTERIOR', 'DT_INI', 'DT_FIN', 'NOME', 'CNPJ', 'UF', 'IE', 'COD_MUN', 'SUFRAMA', 'IND_NAT_PJ', 'IND_ATIV'],
+        contribuicoes: {
+            // Registros de abertura
+            '0000': parseRegistro0000Contribuicoes,
+            '0001': parseRegistro0001Contribuicoes,
+            '0110': parseRegistro0110,  // Regime PIS/COFINS
+            '0140': parseRegistro0140,  // Tabela de cadastro de participantes
+            '0150': parseRegistro0150Contribuicoes,  // Dados dos participantes
             
-            // Receitas (CRÍTICO PARA RECEITA BRUTA)
-            'A100': ['REG', 'IND_OPER', 'IND_EMIT', 'COD_PART', 'COD_SIT', 'SER', 'SUB', 'NUM_DOC', 'CHV_NFSE', 'DT_DOC', 'DT_E_S', 'VL_DOC', 'IND_PGTO', 'VL_DESC', 'VL_SERV', 'VL_SERV_NT', 'VL_TERC', 'VL_DA', 'VL_BC_ICMS', 'VL_ICMS', 'VL_BC_ICMS_ST', 'VL_ICMS_ST', 'COD_INF_COMPL', 'VL_PIS', 'VL_COFINS'],
-            'A110': ['REG', 'COD_INF', 'TXT_COMPL'],
-            'A120': ['REG', 'VL_TOT_SERV', 'VL_BC_PIS', 'VL_PIS_IMP', 'DT_PAG_PIS', 'VL_BC_COFINS', 'VL_COFINS_IMP', 'DT_PAG_COFINS', 'LOC_EXE_SERV'],
+            // BLOCO A - Receitas
+            'A100': parseRegistroA100,  // Receitas
+            'A110': parseRegistroA110,  // Complemento da receita
+            'A111': parseRegistroA111,  // Processo referenciado
             
-            // NOVO: Receitas Detalhadas por Natureza
-            'A200': ['REG', 'NUM_CAMPO', 'COD_REC', 'VL_REC_BRT', 'VL_BC_CONT', 'VL_AJUS_ACRES', 'VL_AJUS_REDUC', 'VL_BC_CONT_AJUS', 'ALIQ_PIS', 'QUANT_BC_PIS', 'ALIQ_PIS_QUANT', 'VL_CONT', 'VL_AJUS_ACRES', 'VL_AJUS_REDUC', 'VL_CONT_DIFER', 'VL_CONT_DIFER_ANT', 'VL_CONT_PER'],
+            // BLOCO C - Créditos
+            'C100': parseRegistroC100Contribuicoes,  // Documentos/operações
+            'C180': parseRegistroC180,  // Consolidação operações
+            'C181': parseRegistroC181,  // Detalhamento consolidação
+            'C185': parseRegistroC185,  // Detalhamento da consolidação - PIS
+            'C188': parseRegistroC188,  // Processo referenciado
             
-            // Créditos PIS/COFINS (CRÍTICO)
-            'C100': ['REG', 'IND_OPER', 'IND_EMIT', 'COD_PART', 'COD_MOD', 'COD_SIT', 'SER', 'NUM_DOC', 'CHV_NFE', 'DT_DOC', 'DT_E_S', 'VL_DOC', 'IND_PGTO', 'VL_DESC', 'VL_ABAT_NT', 'VL_MERC', 'IND_FRT', 'VL_FRT', 'VL_SEG', 'VL_OUT_DA', 'VL_BC_ICMS', 'VL_ICMS', 'VL_BC_ICMS_ST', 'VL_ICMS_ST', 'VL_IPI', 'VL_PIS', 'VL_COFINS', 'VL_PIS_ST', 'VL_COFINS_ST'],
-            'C170': ['REG', 'NUM_ITEM', 'COD_ITEM', 'DESCR_COMPL', 'QTD', 'UNID', 'VL_ITEM', 'VL_DESC', 'IND_MOV', 'CST_ICMS', 'CFOP', 'COD_NAT', 'VL_BC_ICMS', 'ALIQ_ICMS', 'VL_ICMS', 'VL_BC_ICMS_ST', 'ALIQ_ST', 'VL_ICMS_ST', 'IND_APUR', 'CST_IPI', 'COD_ENQ', 'VL_BC_IPI', 'ALIQ_IPI', 'VL_IPI', 'CST_PIS', 'VL_BC_PIS', 'ALIQ_PIS', 'QUANT_BC_PIS', 'ALIQ_PIS_QUANT', 'VL_PIS', 'VL_CRED_PIS', 'CST_COFINS', 'VL_BC_COFINS', 'ALIQ_COFINS', 'QUANT_BC_COFINS', 'ALIQ_COFINS_QUANT', 'VL_COFINS', 'VL_CRED_COFINS', 'COD_CTA'],
+            // BLOCO D - Créditos de bens do ativo imobilizado
+            'D100': parseRegistroD100,  // Aquisição de serviços
+            'D101': parseRegistroD101,  // Detalhamento crédito PIS
+            'D105': parseRegistroD105,  // Detalhamento crédito COFINS
+            'D111': parseRegistroD111,  // Processo referenciado
             
-            // Apuração PIS (CRÍTICO)
-            'M100': ['REG', 'COD_CRED', 'IND_CRED_ORI', 'VL_BC_PIS', 'ALIQ_PIS', 'QUANT_BC_PIS', 'ALIQ_PIS_QUANT', 'VL_CRED', 'VL_AJUS_ACRES', 'VL_AJUS_REDUC', 'VL_CRED_DIF', 'VL_CRED_DISP', 'IND_DESC_CRED', 'VL_CRED_DESC', 'SLD_CRED'],    
-            'M200': ['REG', 'VL_TOT_CONT_NC_PER', 'VL_TOT_CRED_DESC', 'VL_TOT_CRED_DESC_ANT', 'VL_TOT_CONT_NC_DEV', 'VL_RET_NC', 'VL_OUT_DED_NC', 'VL_CONT_NC_REC', 'VL_TOT_CONT_CUM_PER', 'VL_RET_CUM', 'VL_OUT_DED_CUM', 'VL_CONT_CUM_REC', 'VL_TOT_CONT_REC'],
-            'M210': ['REG', 'COD_CONT', 'VL_REC_BRT', 'VL_BC_CONT', 'ALIQ_PIS', 'QUANT_BC_PIS', 'ALIQ_PIS_QUANT', 'VL_CONT', 'VL_AJUS_ACRES', 'VL_AJUS_REDUC', 'VL_CONT_DIFER', 'VL_CONT_DIFER_ANT', 'VL_CONT_PER'],
+            // BLOCO F - Demais documentos
+            'F100': parseRegistroF100,  // Demais documentos
+            'F111': parseRegistroF111,  // Processo referenciado
+            'F120': parseRegistroF120,  // Bens incorporados ao ativo
+            'F129': parseRegistroF129,  // Processo referenciado
+            'F130': parseRegistroF130,  // Operações da atividade imobiliária
+            'F139': parseRegistroF139,  // Processo referenciado
+            'F150': parseRegistroF150,  // Crédito presumido sobre estoque
+            'F200': parseRegistroF200,  // Operações da atividade imobiliária
+            'F205': parseRegistroF205,  // Operações com cartão de crédito
+            'F210': parseRegistroF210,  // Cide
+            'F211': parseRegistroF211,  // Processo referenciado
             
-            // Apuração COFINS (CRÍTICO)
-            'M600': ['REG', 'VL_TOT_CONT_NC_PER', 'VL_TOT_CRED_DESC', 'VL_TOT_CRED_DESC_ANT', 'VL_TOT_CONT_NC_DEV', 'VL_RET_NC', 'VL_OUT_DED_NC', 'VL_CONT_NC_REC', 'VL_TOT_CONT_CUM_PER', 'VL_RET_CUM', 'VL_OUT_DED_CUM', 'VL_CONT_CUM_REC', 'VL_TOT_CONT_REC'],
-            'M605': ['REG', 'NAT_BC_CRED', 'CST_COFINS', 'VL_BC_COFINS_TOT', 'VL_BC_COFINS_CUM', 'VL_BC_COFINS_NC', 'VL_BC_COFINS', 'QUANT_BC_COFINS_TOT', 'QUANT_BC_COFINS', 'DESC_CRED'],
-            'M610': ['REG', 'COD_CONT', 'VL_REC_BRT', 'VL_BC_CONT', 'ALIQ_COFINS', 'QUANT_BC_COFINS', 'ALIQ_COFINS_QUANT', 'VL_CONT', 'VL_AJUS_ACRES', 'VL_AJUS_REDUC', 'VL_CONT_DIFER', 'VL_CONT_DIFER_ANT', 'VL_CONT_PER'],
+            // BLOCO I - Operações com exterior
+            'I100': parseRegistroI100,  // Operações com exterior
+            'I199': parseRegistroI199,  // Processo referenciado
             
-            // NOVOS REGISTROS PARA CRÉDITOS DETALHADOS
-            'C191': ['REG', 'CNPJ_CPF_PART', 'CST_PIS', 'CFOP', 'VL_ITEM', 'VL_DESC', 'VL_BC_PIS', 'ALIQ_PIS', 'QUANT_BC_PIS', 'ALIQ_PIS_QUANT', 'VL_PIS', 'CST_COFINS', 'VL_BC_COFINS', 'ALIQ_COFINS', 'QUANT_BC_COFINS', 'ALIQ_COFINS_QUANT', 'VL_COFINS', 'COD_CTA'],
-            'C195': ['REG', 'CNPJ_CPF_PART', 'CST_PIS', 'CFOP', 'VL_ITEM', 'VL_DESC', 'VL_BC_PIS', 'ALIQ_PIS', 'QUANT_BC_PIS', 'ALIQ_PIS_QUANT', 'VL_PIS', 'CST_COFINS', 'VL_BC_COFINS', 'ALIQ_COFINS', 'QUANT_BC_COFINS', 'ALIQ_COFINS_QUANT', 'VL_COFINS', 'COD_CTA'],
-
-            // Documentos de Serviços
-            'D100': ['REG', 'IND_OPER', 'IND_EMIT', 'COD_PART', 'COD_MOD', 'COD_SIT', 'SER', 'SUB', 'NUM_DOC', 'CHV_CTE', 'DT_DOC', 'DT_A_P', 'TP_CT_E', 'CHV_CTE_REF', 'VL_DOC', 'VL_DESC', 'IND_FRT', 'VL_SERV', 'VL_BC_ICMS', 'VL_ICMS', 'VL_NT', 'COD_INF', 'COD_CTA'],
-            'D101': ['REG', 'IND_NAT_FRT', 'VL_ITEM', 'CST_PIS', 'NAT_BC_CRED', 'VL_BC_PIS', 'ALIQ_PIS', 'VL_PIS', 'CST_COFINS', 'VL_BC_COFINS', 'ALIQ_COFINS', 'VL_COFINS', 'COD_CTA'],
-
-            // Demais Documentos e Operações
-            'F100': ['REG', 'IND_OPER', 'COD_PART', 'COD_ITEM', 'DT_OPER', 'VL_OPER', 'CST_PIS', 'VL_BC_PIS', 'ALIQ_PIS', 'VL_PIS', 'CST_COFINS', 'VL_BC_COFINS', 'ALIQ_COFINS', 'VL_COFINS', 'NAT_BC_CRED', 'IND_ORIG_CRED', 'COD_CTA', 'COD_CCUS', 'DESC_DOC_OPER'],
-
-            // Apuração de Créditos
-            'M105': ['REG', 'NAT_BC_CRED', 'CST_PIS', 'VL_BC_PIS_TOT', 'VL_BC_PIS_CUM', 'VL_BC_PIS_NC', 'VL_BC_PIS', 'QUANT_BC_PIS_TOT', 'QUANT_BC_PIS', 'DESC_CRED'],
-            'M110': ['REG', 'IND_AJ', 'VL_AJ', 'COD_AJ', 'NUM_DOC', 'DESCR_AJ', 'DT_REF'],
-            'M115': ['REG', 'DET_VALOR_AJ', 'CST_PIS', 'DET_BC_CRED', 'DET_ALIQ', 'DT_OPER_AJ', 'DESC_AJ', 'COD_CTA', 'INFO_COMPL'],
-
-            'M505': ['REG', 'NAT_BC_CRED', 'CST_COFINS', 'VL_BC_COFINS_TOT', 'VL_BC_COFINS_CUM', 'VL_BC_COFINS_NC', 'VL_BC_COFINS', 'QUANT_BC_COFINS_TOT', 'QUANT_BC_COFINS', 'DESC_CRED'],
-            'M510': ['REG', 'IND_AJ', 'VL_AJ', 'COD_AJ', 'NUM_DOC', 'DESCR_AJ', 'DT_REF'],
-            'M515': ['REG', 'DET_VALOR_AJ', 'CST_COFINS', 'DET_BC_CRED', 'DET_ALIQ', 'DT_OPER_AJ', 'DESC_AJ', 'COD_CTA', 'INFO_COMPL']
+            // BLOCO M - Apuração contribuições sociais
+            'M100': parseRegistroM100,  // Crédito PIS
+            'M105': parseRegistroM105,  // Detalhamento crédito PIS
+            'M110': parseRegistroM110,  // Ajustes crédito PIS
+            'M115': parseRegistroM115,  // Detalhamento ajustes crédito PIS
+            'M200': parseRegistroM200,  // Consolidação contribuição PIS
+            'M205': parseRegistroM205,  // Ajustes consolidação PIS
+            'M210': parseRegistroM210,  // Detalhamento consolidação PIS
+            'M220': parseRegistroM220,  // Demonstrativo de saldo credor PIS
+            'M225': parseRegistroM225,  // Detalhamento demonstrativo PIS
+            'M400': parseRegistroM400,  // Receita não tributada PIS
+            'M410': parseRegistroM410,  // Detalhamento receita não tributada PIS
+            
+            // Registros COFINS
+            'M500': parseRegistroM500,  // Crédito COFINS
+            'M505': parseRegistroM505,  // Detalhamento crédito COFINS
+            'M510': parseRegistroM510,  // Ajustes crédito COFINS
+            'M515': parseRegistroM515,  // Detalhamento ajustes crédito COFINS
+            'M600': parseRegistroM600,  // Consolidação contribuição COFINS
+            'M605': parseRegistroM605,  // Ajustes consolidação COFINS
+            'M610': parseRegistroM610,  // Detalhamento consolidação COFINS
+            'M620': parseRegistroM620,  // Demonstrativo de saldo credor COFINS
+            'M625': parseRegistroM625,  // Detalhamento demonstrativo COFINS
+            'M800': parseRegistroM800,  // Receita não tributada COFINS
+            'M810': parseRegistroM810,  // Detalhamento receita não tributada COFINS
+            
+            // BLOCO P - Apuração da contribuição previdenciária
+            'P100': parseRegistroP100,  // Contribuição previdenciária
+            'P110': parseRegistroP110,  // Ajustes contribuição previdenciária
+            'P199': parseRegistroP199,  // Processo referenciado
+            'P200': parseRegistroP200,  // Consolidação contribuição previdenciária
+            'P210': parseRegistroP210,  // Ajustes consolidação previdenciária
+            
+            // Registros de controle e totalização
+            '1001': parseRegistro1001,  // Registro de encerramento
+            '1100': parseRegistro1100,  // Totalização PIS
+            '1200': parseRegistro1200,  // Totalização COFINS
+            '1300': parseRegistro1300,  // Totalização contribuição previdenciária
+            '1500': parseRegistro1500   // Totalização geral
         },
         
-        registrosECF: {
-            // Identificação
-            'J001': ['REG', 'NUM_ORD', 'NAT_LIVR', 'NOME', 'NIRE', 'CNPJ', 'DT_ARQ', 'DT_ARQ_CONV', 'DESC_MUN', 'VL_REC_BRT'],
-            
-            // Demonstrações Financeiras (CRÍTICO PARA DADOS FINANCEIROS)
-            'J100': ['REG', 'COD_AGL', 'NIVEL_AGL', 'IND_GRP_BAL', 'DESCR_COD_AGL', 'VL_CTA_INI_PER', 'IND_DC_INI_PER', 'VL_CTA_FIN_PER', 'IND_DC_FIN_PER'],
-            'J150': ['REG', 'COD_AGL', 'NIVEL_AGL', 'DESCR_COD_AGL', 'VL_CTA', 'IND_VL'],
-            'J200': ['REG', 'COD_HISTR_FAT_GER', 'VAL_FAT_CONT', 'IND_VAL_FAT_CONT', 'VAL_EXC_BC_EAC', 'IND_VAL_EXC_BC_EAC', 'VAL_EXC_BC_SUSP', 'IND_VAL_EXC_BC_SUSP', 'VAL_BC_EAC', 'IND_VAL_BC_EAC', 'VAL_BC_EAC_ADC', 'IND_VAL_BC_EAC_ADC', 'VAL_EAC', 'IND_VAL_EAC', 'VAL_EAC_ADC', 'IND_VAL_EAC_ADC'],
-            'J210': ['REG', 'IND_TIP_INFO_ADIC', 'VL_INF_ADIC', 'DESCR_COMPL_AJ', 'VL_AJ', 'IND_VL_AJ'],
-            
-            // NOVO: Dados específicos de DRE e Balanço para análises financeiras
-            'J930': ['REG', 'IDENT_NOM', 'IDENT_CPF_CNPJ', 'IND_RESP_LEGAL', 'IDENT_QUALIF', 'COD_ASSIN_DIG', 'IND_CRC', 'EMAIL', 'FONE', 'UF_CRC', 'NUM_SEQ_CRC', 'DT_CRC'],
-            
-            // Demonstrações Contábeis Detalhadas
-            'L100': ['REG', 'DT_INI', 'DT_FIN', 'TIPO_ESCR', 'COD_QUAL_PJ', 'COD_FORM_TRIB', 'FORMA_TRIB', 'PERIODO_PREV', 'OPT_REFIS', 'OPT_PAES', 'FORMA_APUR'],
-            'L200': ['REG', 'IND_TIT_UTIL', 'TIT_UTIL'],
-            'L210': ['REG', 'CODIGO', 'DESCRICAO', 'VALOR', 'IND_VALOR'],
-            'L300': ['REG', 'CODIGO', 'DESCRICAO', 'VALOR', 'IND_VALOR']
+        ecf: {
+            '0000': parseRegistro0000ECF,
+            '0010': parseRegistro0010ECF,
+            '0020': parseRegistro0020ECF,
+            'J001': parseRegistroJ001ECF,
+            'J050': parseRegistroJ050ECF,
+            'J051': parseRegistroJ051ECF,
+            'J100': parseRegistroJ100ECF,
+            'K001': parseRegistroK001ECF,
+            'K030': parseRegistroK030ECF,
+            'K155': parseRegistroK155ECF,
+            'K156': parseRegistroK156ECF,
+            'L001': parseRegistroL001ECF,
+            'L030': parseRegistroL030ECF,
+            'L100': parseRegistroL100ECF,
+            'M001': parseRegistroM001ECF,
+            'M010': parseRegistroM010ECF,
+            'M300': parseRegistroM300ECF,
+            'M350': parseRegistroM350ECF,
+            'N001': parseRegistroN001ECF,
+            'N500': parseRegistroN500ECF,
+            'N600': parseRegistroN600ECF,
+            'N610': parseRegistroN610ECF,
+            'N620': parseRegistroN620ECF,
+            'N630': parseRegistroN630ECF,
+            'N650': parseRegistroN650ECF,
+            'N660': parseRegistroN660ECF,
+            'N670': parseRegistroN670ECF,
+            'P001': parseRegistroP001ECF,
+            'P030': parseRegistroP030ECF,
+            'P100': parseRegistroP100ECF,
+            'P130': parseRegistroP130ECF,
+            'P150': parseRegistroP150ECF,
+            'P200': parseRegistroP200ECF,
+            'P230': parseRegistroP230ECF,
+            'T001': parseRegistroT001ECF,
+            'T030': parseRegistroT030ECF,
+            'T120': parseRegistroT120ECF,
+            'T150': parseRegistroT150ECF,
+            'U001': parseRegistroU001ECF,
+            'U030': parseRegistroU030ECF,
+            'U100': parseRegistroU100ECF,
+            'Y540': parseRegistroY540ECF
         },
         
-        registrosECD: {
-            // Identificação
-            'I001': ['REG', 'NUM_ORD', 'NAT_LIVR', 'NOME', 'NIRE', 'CNPJ', 'DT_ARQ', 'DT_ARQ_CONV', 'SIT_ESP', 'MOEDA', 'VL_CAP', 'IND_ATIV', 'QTDE_SCP'],
-            'I010': ['REG', 'IND_ESC', 'COD_VER_LC'],
-            'I012': ['REG', 'NUM_ORD', 'NAT_LIVR', 'TIPO_ESC', 'COD_ESC_DETAL', 'NUM_ESC', 'DESCR_ESC'],
-            
-            // Balanço e DRE (CRÍTICO PARA CICLO FINANCEIRO)
-            'J100': ['REG', 'DT_ALT', 'COD_CCUS', 'COD_CTA', 'COD_CTA_SUP', 'COD_NAT_CC', 'IND_CTA', 'NIVEL', 'COD_GRP_CTA', 'NOME_CTA'],
-            'J150': ['REG', 'NIVEL', 'COD_CTA', 'COD_CTA_SUP', 'COD_CTA_INF', 'VL_SLD_INI', 'IND_DC_INI', 'VL_DEB', 'VL_CRED', 'VL_SLD_FIN', 'IND_DC_FIN'],
-            
-            // NOVO: Fluxo de Caixa para análise de prazos
-            'J800': ['REG', 'ARQ_RTF', 'IND_FIN_RTF'],
-            'J801': ['REG', 'DESCR_UND_HASH', 'HASH_UND'],
-            'J900': ['REG', 'DNRC_ENC', 'DNRC_INI', 'DNRC_FIN', 'NOME_AC', 'COD_QUALIF_AC', 'CNPJ_AC', 'CRC_AC', 'EMAIL_AC', 'FONE_AC', 'UF_CRC_AC', 'NUM_SEQ_CRC_AC', 'DT_CRC_AC'],
-            
-            // Demonstrações Financeiras Detalhadas            
-            'J930': ['REG', 'IDENT_NOM', 'IDENT_CPF_CNPJ', 'IND_CRC', 'EMAIL', 'FONE', 'UF_CRC', 'NUM_SEQ_CRC', 'DT_CRC'],
-
-            // Balancetes e Balanços Analíticos
-            'I050': ['REG', 'DT_ALT', 'COD_NAT', 'IND_CTA', 'NIVEL', 'COD_CTA', 'COD_CTA_SUP', 'CTA'],
-            'I051': ['REG', 'COD_ENT_REF', 'COD_CCUS', 'COD_CTA_REF'],
-            'I052': ['REG', 'COD_CCUS', 'COD_AGL'],
-            'I053': ['REG', 'COD_IDT', 'COD_CNT_CORR', 'NAT_SUB_CNT'],
-
-            // Saldos Periódicos
-            'I155': ['REG', 'COD_CTA', 'COD_CCUS', 'VL_SLD_INI', 'IND_DC_INI', 'VL_DEB', 'VL_CRED', 'VL_SLD_FIN', 'IND_DC_FIN', 'VL_SLD_INI_MF', 'IND_DC_INI_MF', 'VL_DEB_MF', 'VL_CRED_MF', 'VL_SLD_FIN_MF', 'IND_DC_FIN_MF']
+        ecd: {
+            '0000': parseRegistro0000ECD,
+            '0001': parseRegistro0001ECD,
+            '0007': parseRegistro0007ECD,
+            '0020': parseRegistro0020ECD,
+            'I001': parseRegistroI001ECD,
+            'I010': parseRegistroI010ECD,
+            'I012': parseRegistroI012ECD,
+            'I015': parseRegistroI015ECD,
+            'I020': parseRegistroI020ECD,
+            'I030': parseRegistroI030ECD,
+            'I050': parseRegistroI050ECD,
+            'I051': parseRegistroI051ECD,
+            'I052': parseRegistroI052ECD,
+            'I053': parseRegistroI053ECD,
+            'I100': parseRegistroI100ECD,
+            'I150': parseRegistroI150ECD,
+            'I155': parseRegistroI155ECD,
+            'I200': parseRegistroI200ECD,
+            'I250': parseRegistroI250ECD,
+            'I300': parseRegistroI300ECD,
+            'I310': parseRegistroI310ECD,
+            'I350': parseRegistroI350ECD,
+            'I355': parseRegistroI355ECD,
+            'J001': parseRegistroJ001ECD,
+            'J005': parseRegistroJ005ECD,
+            'J100': parseRegistroJ100ECD,
+            'J150': parseRegistroJ150ECD,
+            'K001': parseRegistroK001ECD,
+            'K030': parseRegistroK030ECD,
+            'K100': parseRegistroK100ECD,
+            'K155': parseRegistroK155ECD,
+            'K156': parseRegistroK156ECD,
+            'K200': parseRegistroK200ECD,
+            'K220': parseRegistroK220ECD,
+            'K230': parseRegistroK230ECD,
+            'K300': parseRegistroK300ECD
         }
     };
-    
+
     /**
-     * Classe principal do parser SPED aprimorado
+     * Processa um arquivo SPED e extrai os dados relevantes
      */
-    class SpedParserAprimorado {
-        constructor() {
-            this.registrosExtraidos = {};
-            this.dadosEmpresa = {};
-            this.dadosFinanceiros = {};      // NOVO: Para dados de DRE/Balanço
-            this.dadosTributarios = {};      // NOVO: Para débitos e créditos detalhados
-            this.dadosCicloFinanceiro = {};  // NOVO: Para cálculo de prazos
-            this.estatisticas = {
-                linhasProcessadas: 0,
-                registrosEncontrados: 0,
-                registrosValidos: 0,
-                erros: [],
-                inicioProcessamento: null,
-                fimProcessamento: null
+    function processarArquivo(arquivo, tipo) {
+        return new Promise((resolve, reject) => {
+            if (!arquivo) {
+                reject(new Error('Arquivo não fornecido'));
+                return;
+            }
+
+            const reader = new FileReader();
+
+            reader.onload = function(e) {
+                try {
+                    console.log(`SPED-PARSER: Iniciando processamento de arquivo ${arquivo.name} (${tipo})`);
+                    
+                    const conteudo = e.target.result;
+                    const linhas = conteudo.split(/\r?\n/).filter(linha => linha.trim().length > 0);
+                    
+                    console.log(`SPED-PARSER: ${linhas.length} linhas encontradas no arquivo`);
+                    
+                    const dadosExtraidos = extrairDados(linhas, tipo);
+                    
+                    console.log('SPED-PARSER: Dados extraídos com sucesso:', {
+                        empresa: !!dadosExtraidos.empresa,
+                        documentos: dadosExtraidos.documentos?.length || 0,
+                        itens: dadosExtraidos.itens?.length || 0,
+                        creditos: Object.keys(dadosExtraidos.creditos || {}).length,
+                        debitos: Object.keys(dadosExtraidos.debitos || {}).length,
+                        impostos: Object.keys(dadosExtraidos.impostos || {}).length
+                    });
+                    
+                    resolve(dadosExtraidos);
+                } catch (erro) {
+                    console.error('SPED-PARSER: Erro no processamento:', erro);
+                    reject(erro);
+                }
             };
-            this.tipoSped = null;
-            this.log = [];
-        }
-        
-        /**
-         * Função principal de parsing aprimorada
-         */
-        async parsearArquivo(arquivo, opcoes = {}) {
-            this.log.push(`🚀 Iniciando parsing APRIMORADO do arquivo: ${arquivo.name}`);
-            this.estatisticas.inicioProcessamento = new Date();
-            
-            try {
-                // 1. Ler conteúdo do arquivo
-                const conteudo = await this.lerArquivo(arquivo);
-                
-                // 2. Identificar tipo de SPED
-                this.tipoSped = this.identificarTipoSped(conteudo);
-                if (!this.tipoSped) {
-                    throw new Error('Tipo de SPED não identificado');
-                }
-                
-                this.log.push(`📋 Tipo identificado: ${this.tipoSped.nome}`);
-                
-                // 3. Processar linhas e extrair registros
-                await this.processarLinhas(conteudo);
-                
-                // 4. NOVO: Extrair dados específicos por tipo
-                this.extrairDadosEmpresa();
-                this.extrairDadosFinanceiros();        // NOVO
-                this.extrairDadosTributarios();        // NOVO
-                this.extrairDadosCicloFinanceiro();    // NOVO
-                
-                // 5. Calcular estatísticas finais
-                this.finalizarEstatisticas();
-                
-                return this.gerarResultadoAprimorado();
-                
-            } catch (erro) {
-                this.log.push(`❌ Erro no parsing: ${erro.message}`);
-                throw erro;
-            }
-        }
-        
-        /**
-         * NOVO: Extração específica de dados financeiros
-         */
-        extrairDadosFinanceiros() {
-            this.log.push('💰 Extraindo dados financeiros...');
-            
-            this.dadosFinanceiros = {
-                receitaBruta: 0,
-                receitaLiquida: 0,
-                custoTotal: 0,
-                despesasOperacionais: 0,
-                lucroOperacional: 0,
-                margemOperacional: 0,
-                fonte: []
+
+            reader.onerror = function() {
+                reject(new Error('Erro ao ler o arquivo SPED'));
             };
-            
-            // Para ECF - Demonstrações
-            if (this.tipoSped.tipo === 'ecf') {
-                this.extrairDadosFinanceirosECF();
-            }
-            
-            // Para SPED Contribuições - Receitas
-            if (this.tipoSped.tipo === 'contribuicoes') {
-                this.extrairReceitasContribuicoes();
-            }
-            
-            // Para ECD - Balanço e DRE
-            if (this.tipoSped.tipo === 'ecd') {
-                this.extrairDadosFinanceirosECD();
-            }
-            
-            // Calcular indicadores derivados
-            this.calcularIndicadoresFinanceiros();
-            
-            this.log.push(`✅ Dados financeiros extraídos - Receita Bruta: R$ ${this.dadosFinanceiros.receitaBruta.toFixed(2)}`);
-        }
-        
-        /**
-         * NOVO: Extração de dados tributários detalhados
-         */
-        extrairDadosTributarios() {
-            this.log.push('📊 Extraindo dados tributários detalhados...');
-            
-            this.dadosTributarios = {
-                debitos: {
-                    pis: 0,
-                    cofins: 0,
-                    icms: 0,
-                    ipi: 0,
-                    iss: 0
-                },
-                creditos: {
-                    pis: 0,
-                    cofins: 0,
-                    icms: 0,
-                    ipi: 0,
-                    iss: 0
-                },
-                aliquotasEfetivas: {
-                    pis: 0,
-                    cofins: 0,
-                    icms: 0,
-                    ipi: 0,
-                    iss: 0,
-                    total: 0
-                },
-                fonte: []
-            };
-            
-            // Extrair por tipo de SPED
-            switch (this.tipoSped.tipo) {
-                case 'fiscal':
-                    this.extrairTributariosFiscal();
-                    break;
-                case 'contribuicoes':
-                    this.extrairTributariosContribuicoes();
-                    break;
-            }
-            
-            // Calcular alíquotas efetivas
-            this.calcularAliquotasEfetivas();
-            
-            this.log.push(`✅ Dados tributários extraídos - Alíquota total efetiva: ${this.dadosTributarios.aliquotasEfetivas.total.toFixed(2)}%`);
-        }
-        
-        /**
-     * Extração tributária melhorada do SPED Fiscal
-     */
-    extrairTributariosFiscal() {
-        // ICMS - Registro E110 (Apuração ICMS)
-        if (this.registrosExtraidos.E110) {
-            this.registrosExtraidos.E110.forEach(registro => {
-                this.dadosTributarios.debitos.icms += this.converterParaNumero(registro.VL_TOT_DEBITOS);
-                this.dadosTributarios.creditos.icms += this.converterParaNumero(registro.VL_TOT_CREDITOS);
-            });
-            this.dadosTributarios.fonte.push('SPED Fiscal - E110');
-        }
 
-        // IPI - Registro E210 (Apuração IPI)  
-        if (this.registrosExtraidos.E210) {
-            this.registrosExtraidos.E210.forEach(registro => {
-                this.dadosTributarios.debitos.ipi += this.converterParaNumero(registro.VL_TOT_DEBITOS_IPI);
-                this.dadosTributarios.creditos.ipi += this.converterParaNumero(registro.VL_TOT_CREDITOS_IPI);
-            });
-            this.dadosTributarios.fonte.push('SPED Fiscal - E210');
-        }
-
-        // PROCESSAR C100/C170 CORRETAMENTE
-        if (this.registrosExtraidos.C100) {
-            this.registrosExtraidos.C100.forEach(registro => {
-                const indOperacao = registro.IND_OPER;
-                const situacao = registro.COD_SIT;
-
-                // Ignorar documentos cancelados (situação 02, 03, 04)
-                if (['02', '03', '04'].includes(situacao)) return;
-
-                // ENTRADA (IND_OPER = 0) - CRÉDITOS
-                if (indOperacao === '0') {
-                    this.dadosTributarios.creditos.icms += this.converterParaNumero(registro.VL_ICMS);
-                    this.dadosTributarios.creditos.ipi += this.converterParaNumero(registro.VL_IPI);
-                    this.dadosTributarios.creditos.pis += this.converterParaNumero(registro.VL_PIS);
-                    this.dadosTributarios.creditos.cofins += this.converterParaNumero(registro.VL_COFINS);
-                }
-                // SAÍDA (IND_OPER = 1) - DÉBITOS
-                else if (indOperacao === '1') {
-                    this.dadosTributarios.debitos.pis += this.converterParaNumero(registro.VL_PIS);
-                    this.dadosTributarios.debitos.cofins += this.converterParaNumero(registro.VL_COFINS);
-
-                    // Para saídas, ICMS já está contabilizado no E110
-                    // mas podemos usar para validação
-                }
-            });
-            this.dadosTributarios.fonte.push('SPED Fiscal - C100');
-        }
-
-        // PROCESSAR C170 para detalhamento de créditos por item
-        if (this.registrosExtraidos.C170) {
-            this.registrosExtraidos.C170.forEach(registro => {
-                // Verificar CST para determinar se há direito a crédito
-                const cstPis = registro.CST_PIS;
-                const cstCofins = registro.CST_COFINS;
-                const cstIcms = registro.CST_ICMS;
-                const cstIpi = registro.CST_IPI;
-
-                // PIS - CSTs que geram crédito: 50-66
-                if (cstPis >= '50' && cstPis <= '66') {
-                    this.dadosTributarios.creditos.pis += this.converterParaNumero(registro.VL_PIS);
-                }
-
-                // COFINS - CSTs que geram crédito: 50-66
-                if (cstCofins >= '50' && cstCofins <= '66') {
-                    this.dadosTributarios.creditos.cofins += this.converterParaNumero(registro.VL_COFINS);
-                }
-            });
-        }
+            reader.readAsText(arquivo, 'UTF-8');
+        });
     }
 
     /**
-     * Extração tributária melhorada do SPED Contribuições
+     * Extrai dados relevantes das linhas do arquivo SPED
      */
-    extrairTributariosContribuicoes() {
-        // PIS - Débitos (M200, M210)
-        if (this.registrosExtraidos.M200) {
-            this.registrosExtraidos.M200.forEach(registro => {
-                this.dadosTributarios.debitos.pis += this.converterParaNumero(registro.VL_TOT_CONT_NC_PER);
-                this.dadosTributarios.debitos.pis += this.converterParaNumero(registro.VL_TOT_CONT_CUM_PER);
-            });
-            this.dadosTributarios.fonte.push('SPED Contribuições - M200');
-        }
-
-        // COFINS - Débitos (M600, M610)
-        if (this.registrosExtraidos.M600) {
-            this.registrosExtraidos.M600.forEach(registro => {
-                this.dadosTributarios.debitos.cofins += this.converterParaNumero(registro.VL_TOT_CONT_NC_PER);
-                this.dadosTributarios.debitos.cofins += this.converterParaNumero(registro.VL_TOT_CONT_CUM_PER);
-            });
-            this.dadosTributarios.fonte.push('SPED Contribuições - M600');
-        }
-
-        // CRÉDITOS - M100 (Créditos de PIS)
-        if (this.registrosExtraidos.M100) {
-            this.registrosExtraidos.M100.forEach(registro => {
-                this.dadosTributarios.creditos.pis += this.converterParaNumero(registro.VL_CRED);
-            });
-            this.dadosTributarios.fonte.push('SPED Contribuições - M100');
-        }
-
-        // CRÉDITOS - M500 (Créditos de COFINS) 
-        if (this.registrosExtraidos.M500) {
-            this.registrosExtraidos.M500.forEach(registro => {
-                this.dadosTributarios.creditos.cofins += this.converterParaNumero(registro.VL_CRED);
-            });
-            this.dadosTributarios.fonte.push('SPED Contribuições - M500');
-        }
-
-        // Créditos detalhados - C170
-        if (this.registrosExtraidos.C170) {
-            this.registrosExtraidos.C170.forEach(registro => {
-                // No SPED Contribuições, C170 tem campos específicos para créditos
-                if (registro.VL_CRED_PIS) {
-                    this.dadosTributarios.creditos.pis += this.converterParaNumero(registro.VL_CRED_PIS);
-                }
-                if (registro.VL_CRED_COFINS) {
-                    this.dadosTributarios.creditos.cofins += this.converterParaNumero(registro.VL_CRED_COFINS);
-                }
-            });
-        }
-
-        // Processar F100 - Demais Documentos e Operações
-        if (this.registrosExtraidos.F100) {
-            this.registrosExtraidos.F100.forEach(registro => {
-                const indOperacao = registro.IND_OPER;
-
-                // Entrada (0) - Créditos
-                if (indOperacao === '0') {
-                    this.dadosTributarios.creditos.pis += this.converterParaNumero(registro.VL_PIS);
-                    this.dadosTributarios.creditos.cofins += this.converterParaNumero(registro.VL_COFINS);
-                }
-                // Saída (1) - Débitos
-                else if (indOperacao === '1') {
-                    this.dadosTributarios.debitos.pis += this.converterParaNumero(registro.VL_PIS);
-                    this.dadosTributarios.debitos.cofins += this.converterParaNumero(registro.VL_COFINS);
-                }
-            });
-            this.dadosTributarios.fonte.push('SPED Contribuições - F100');
-        }
-    }      
-    
-        /**
-         * NOVO: Cálculo de alíquotas efetivas
-         */
-        calcularAliquotasEfetivas() {
-            const faturamento = this.dadosFinanceiros.receitaBruta || 
-                              this.dadosEmpresa.receitaBruta || 
-                              this.calcularFaturamentoBase();
-            
-            if (faturamento > 0) {
-                // Calcular alíquotas líquidas (débitos - créditos)
-                const impostoLiquidoPIS = Math.max(0, this.dadosTributarios.debitos.pis - this.dadosTributarios.creditos.pis);
-                const impostoLiquidoCOFINS = Math.max(0, this.dadosTributarios.debitos.cofins - this.dadosTributarios.creditos.cofins);
-                const impostoLiquidoICMS = Math.max(0, this.dadosTributarios.debitos.icms - this.dadosTributarios.creditos.icms);
-                const impostoLiquidoIPI = Math.max(0, this.dadosTributarios.debitos.ipi - this.dadosTributarios.creditos.ipi);
-                const impostoLiquidoISS = Math.max(0, this.dadosTributarios.debitos.iss - this.dadosTributarios.creditos.iss);
-                
-                this.dadosTributarios.aliquotasEfetivas = {
-                    pis: (impostoLiquidoPIS / faturamento) * 100,
-                    cofins: (impostoLiquidoCOFINS / faturamento) * 100,
-                    icms: (impostoLiquidoICMS / faturamento) * 100,
-                    ipi: (impostoLiquidoIPI / faturamento) * 100,
-                    iss: (impostoLiquidoISS / faturamento) * 100,
-                    total: ((impostoLiquidoPIS + impostoLiquidoCOFINS + impostoLiquidoICMS + impostoLiquidoIPI + impostoLiquidoISS) / faturamento) * 100
-                };
+    function extrairDados(linhas, tipo) {
+        const resultado = {
+            empresa: {},
+            documentos: [],
+            itens: [],
+            itensAnaliticos: [],
+            impostos: {},
+            creditos: {},
+            debitos: {},
+            regimes: {},
+            ajustes: {},
+            receitasNaoTributadas: {},
+            balancoPatrimonial: [],
+            demonstracaoResultado: [],
+            lancamentosContabeis: [],
+            partidasLancamento: [],
+            calculoImposto: {},
+            incentivosFiscais: [],
+            participantes: [],
+            inventario: [],
+            discriminacaoReceita: [],
+            totalizacao: {},
+            detalhamento: {},
+            metadados: {
+                tipo: tipo,
+                timestamp: new Date().toISOString(),
+                registrosProcessados: 0,
+                registrosIgnorados: 0,
+                erros: []
             }
-        }
+        };
+
+        let tipoSped = tipo || determinarTipoSped(linhas);
         
-        /**
-         * NOVO: Extração de dados para ciclo financeiro
-         */
-        extrairDadosCicloFinanceiro() {
-            this.log.push('⏱️ Extraindo dados para ciclo financeiro...');
-            
-            this.dadosCicloFinanceiro = {
-                pmr: 30,  // Prazo Médio de Recebimento
-                pme: 30,  // Prazo Médio de Estoque
-                pmp: 30,  // Prazo Médio de Pagamento
-                estimado: true,
-                fonte: []
-            };
-            
-            // Para ECD - usar dados do balanço
-            if (this.tipoSped.tipo === 'ecd') {
-                this.calcularCicloFinanceiroECD();
-            }
-            
-            // Para outros SPEDs - estimativas baseadas em volume de operações
-            this.estimarCicloFinanceiro();
-            
-            this.log.push(`✅ Ciclo financeiro calculado - PMR: ${this.dadosCicloFinanceiro.pmr}, PME: ${this.dadosCicloFinanceiro.pme}, PMP: ${this.dadosCicloFinanceiro.pmp}`);
+        if (!tipoSped || !registrosMapeados[tipoSped]) {
+            console.warn(`SPED-PARSER: Tipo não reconhecido: ${tipoSped}. Usando 'fiscal' como padrão.`);
+            tipoSped = 'fiscal';
         }
+
+        resultado.metadados.tipoDetectado = tipoSped;
+
+        let linhaBemSucedida = 0;
         
-        /**
-         * NOVO: Cálculo de ciclo financeiro baseado no ECD
-         */
-        calcularCicloFinanceiroECD() {
-            // Tentar calcular baseado em contas do balanço
-            if (this.registrosExtraidos.J150) {
-                let contasReceber = 0;
-                let estoques = 0;
-                let contasPagar = 0;
-                let vendas = this.dadosFinanceiros.receitaBruta || 0;
-                let cmv = this.dadosFinanceiros.custoTotal || 0;
+        for (let i = 0; i < linhas.length; i++) {
+            const linha = linhas[i];
+            
+            if (!linha.trim()) continue;
+
+            try {
+                const campos = linha.split('|');
                 
-                this.registrosExtraidos.J150.forEach(registro => {
-                    const codigoConta = registro.COD_CTA;
-                    const valorConta = this.converterParaNumero(registro.VL_SLD_FIN);
-                    
-                    // Contas a Receber (geralmente 1.1.2.x)
-                    if (codigoConta.startsWith('1.1.2')) {
-                        contasReceber += valorConta;
-                    }
-                    // Estoques (geralmente 1.1.3.x)
-                    else if (codigoConta.startsWith('1.1.3')) {
-                        estoques += valorConta;
-                    }
-                    // Contas a Pagar (geralmente 2.1.1.x)
-                    else if (codigoConta.startsWith('2.1.1')) {
-                        contasPagar += valorConta;
-                    }
-                });
-                
-                // Calcular prazos se houver dados suficientes
-                if (vendas > 0) {
-                    this.dadosCicloFinanceiro.pmr = Math.round((contasReceber / vendas) * 365);
-                    this.dadosCicloFinanceiro.estimado = false;
+                if (campos.length < 2) {
+                    resultado.metadados.registrosIgnorados++;
+                    continue;
                 }
-                
-                if (cmv > 0) {
-                    this.dadosCicloFinanceiro.pme = Math.round((estoques / cmv) * 365);
-                    this.dadosCicloFinanceiro.pmp = Math.round((contasPagar / cmv) * 365);
-                }
-                
-                this.dadosCicloFinanceiro.fonte.push('ECD - Balanço');
-            }
-        }
-        
-        /**
-         * NOVO: Estimativa de ciclo baseado em volume de operações
-         */
-        estimarCicloFinanceiro() {
-            // Lógica de estimativa baseada no porte da empresa
-            const faturamento = this.dadosFinanceiros.receitaBruta || this.dadosEmpresa.receitaBruta || 0;
-            const faturamentoAnual = faturamento * 12;
-            
-            if (faturamentoAnual > 0) {
-                // Empresas maiores tendem a ter PMR menor
-                if (faturamentoAnual > 100000000) { // > 100M
-                    this.dadosCicloFinanceiro.pmr = 25;
-                    this.dadosCicloFinanceiro.pmp = 45;
-                } else if (faturamentoAnual > 50000000) { // > 50M
-                    this.dadosCicloFinanceiro.pmr = 30;
-                    this.dadosCicloFinanceiro.pmp = 35;
-                } else {
-                    this.dadosCicloFinanceiro.pmr = 35;
-                    this.dadosCicloFinanceiro.pmp = 30;
-                }
-                
-                this.dadosCicloFinanceiro.fonte.push('Estimativa baseada no porte');
-            }
-        }
-        
-        /**
-         * NOVO: Geração de resultado aprimorado
-         */
-        gerarResultadoAprimorado() {
-            const resultadoBase = this.gerarResultado();
-            
-            // Adicionar dados aprimorados
-            return {
-                ...resultadoBase,
-                dadosFinanceiros: this.dadosFinanceiros,
-                dadosTributarios: this.dadosTributarios,
-                dadosCicloFinanceiro: this.dadosCicloFinanceiro,
-                
-                // Estrutura padronizada para integração
-                dadosIntegracao: {
-                    empresa: {
-                        ...this.dadosEmpresa,
-                        faturamentoMensal: this.dadosFinanceiros.receitaBruta || 0,
-                        margemOperacional: this.dadosFinanceiros.margemOperacional || 0
-                    },
-                    
-                    financeiro: {
-                        receitaBruta: this.dadosFinanceiros.receitaBruta,
-                        receitaLiquida: this.dadosFinanceiros.receitaLiquida,
-                        custoTotal: this.dadosFinanceiros.custoTotal,
-                        despesasOperacionais: this.dadosFinanceiros.despesasOperacionais,
-                        lucroOperacional: this.dadosFinanceiros.lucroOperacional,
-                        margemOperacional: this.dadosFinanceiros.margemOperacional
-                    },
-                    
-                    tributario: {
-                        debitos: this.dadosTributarios.debitos,
-                        creditos: this.dadosTributarios.creditos,
-                        aliquotasEfetivas: this.dadosTributarios.aliquotasEfetivas
-                    },
-                    
-                    cicloFinanceiro: {
-                        pmr: this.dadosCicloFinanceiro.pmr,
-                        pme: this.dadosCicloFinanceiro.pme,
-                        pmp: this.dadosCicloFinanceiro.pmp,
-                        estimado: this.dadosCicloFinanceiro.estimado
-                    }
-                },
-                
-                // Metadados aprimorados
-                metadados: {
-                    ...resultadoBase.metadados,
-                    versaoParser: '2.1.0-aprimorado',
-                    dadosExtraidos: {
-                        empresa: Object.keys(this.dadosEmpresa).length > 0,
-                        financeiro: Object.keys(this.dadosFinanceiros).length > 0,
-                        tributario: Object.keys(this.dadosTributarios).length > 0,
-                        cicloFinanceiro: Object.keys(this.dadosCicloFinanceiro).length > 0
-                    }
-                }
-            };
-        }
-        
-        // Métodos auxiliares existentes mantidos...
-        async lerArquivo(arquivo) {
-            return new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                
-                reader.onload = (evento) => {
-                    resolve(evento.target.result);
-                };
-                
-                reader.onerror = () => {
-                    reject(new Error('Erro ao ler arquivo'));
-                };
-                
-                reader.readAsText(arquivo, 'UTF-8');
-            });
-        }
-        
-        identificarTipoSped(conteudo) {
-            const linhas = conteudo.split(CONFIG.terminadorLinha);
-            
-            for (let i = 0; i < Math.min(linhas.length, 20); i++) {
-                const linha = linhas[i].trim();
-                if (!linha) continue;
-                
-                const campos = linha.split(CONFIG.separadorCampo);
-                if (campos.length < 3) continue;
                 
                 const registro = campos[1];
-                
-                if (registro === '0000') {
-                    const codigoFinalidade = campos[2];
-                    if (codigoFinalidade === '0' || codigoFinalidade === '1') {
-                        return { tipo: 'fiscal', nome: 'SPED Fiscal' };
+
+                if (registrosMapeados[tipoSped] && registrosMapeados[tipoSped][registro]) {
+                    try {
+                        const dadosRegistro = registrosMapeados[tipoSped][registro](campos);
+                        
+                        if (dadosRegistro && dadosRegistro !== null) {
+                            integrarDados(resultado, dadosRegistro, registro);
+                            linhaBemSucedida++;
+                            resultado.metadados.registrosProcessados++;
+                        }
+                    } catch (erroRegistro) {
+                        const mensagemErro = `Erro no registro ${registro} (linha ${i + 1}): ${erroRegistro.message}`;
+                        resultado.metadados.erros.push(mensagemErro);
+                        console.warn('SPED-PARSER:', mensagemErro);
                     }
-                    if (codigoFinalidade === '2' || codigoFinalidade === '3') {
-                        return { tipo: 'contribuicoes', nome: 'SPED Contribuições' };
-                    }
+                } else {
+                    resultado.metadados.registrosIgnorados++;
                 }
-                
-                if (registro === 'J001') {
-                    return { tipo: 'ecf', nome: 'ECF' };
-                }
-                
-                if (registro === 'I001') {
-                    return { tipo: 'ecd', nome: 'ECD' };
-                }
-            }
-            
-            return null;
-        }
-        
-        async processarLinhas(conteudo) {
-            const linhas = conteudo.split(CONFIG.terminadorLinha);
-            const totalLinhas = linhas.length;
-            
-            this.log.push(`📊 Processando ${totalLinhas.toLocaleString()} linhas...`);
-            
-            const mapeamentoRegistros = this.obterMapeamentoRegistros();
-            
-            for (let i = 0; i < linhas.length; i++) {
-                const linha = linhas[i].trim();
-                this.estatisticas.linhasProcessadas++;
-                
-                if (i > 0 && i % 50000 === 0) {
-                    const progresso = ((i / totalLinhas) * 100).toFixed(1);
-                    this.log.push(`⏳ Progresso: ${progresso}% (${i.toLocaleString()}/${totalLinhas.toLocaleString()} linhas)`);
-                }
-                
-                if (!linha || linha.length < 5) continue;
-                
-                try {
-                    const registro = this.processarLinha(linha, mapeamentoRegistros);
-                    if (registro) {
-                        this.adicionarRegistro(registro);
-                        this.estatisticas.registrosValidos++;
-                    }
-                    this.estatisticas.registrosEncontrados++;
-                    
-                } catch (erro) {
-                    this.estatisticas.erros.push({
-                        linha: i + 1,
-                        erro: erro.message,
-                        conteudo: linha.substring(0, 100)
-                    });
-                }
-            }
-            
-            this.log.push(`✅ Processamento concluído: ${this.estatisticas.registrosValidos.toLocaleString()} registros válidos extraídos`);
-        }
-        
-        obterMapeamentoRegistros() {
-            switch (this.tipoSped.tipo) {
-                case 'fiscal':
-                    return CONFIG.registrosFiscal;
-                case 'contribuicoes':
-                    return CONFIG.registrosContribuicoes;
-                case 'ecf':
-                    return CONFIG.registrosECF;
-                case 'ecd':
-                    return CONFIG.registrosECD;
-                default:
-                    return {};
+            } catch (erroLinha) {
+                const mensagemErro = `Erro na linha ${i + 1}: ${erroLinha.message}`;
+                resultado.metadados.erros.push(mensagemErro);
+                console.warn('SPED-PARSER:', mensagemErro);
             }
         }
-        
-        processarLinha(linha, mapeamento) {
-            const campos = linha.split(CONFIG.separadorCampo);
-            if (campos.length < 2) return null;
-            
-            const tipoRegistro = campos[1];
-            const estrutura = mapeamento[tipoRegistro];
-            
-            if (!estrutura) return null;
-            
-            const registro = {
-                tipo: tipoRegistro,
-                linha: linha,
-                dados: {}
-            };
-            
-            for (let i = 0; i < Math.min(campos.length, estrutura.length); i++) {
-                const nomeCampo = estrutura[i];
-                const valorCampo = campos[i] ? campos[i].trim() : '';
-                registro.dados[nomeCampo] = valorCampo;
-            }
-            
-            return registro;
+
+        console.log(`SPED-PARSER: Processamento concluído para ${tipoSped}:`, {
+            totalLinhas: linhas.length,
+            registrosProcessados: resultado.metadados.registrosProcessados,
+            registrosIgnorados: resultado.metadados.registrosIgnorados,
+            erros: resultado.metadados.erros.length,
+            linhaBemSucedida: linhaBemSucedida
+        });
+
+        processarRelacoesEntreDados(resultado, tipoSped);
+
+        return resultado;
+    }
+
+    // =============================
+    // FUNÇÕES UTILITÁRIAS
+    // =============================
+
+    /**
+     * Valida se o registro tem o número mínimo de campos
+     */
+    function validarEstruturaRegistro(campos, minCampos) {
+        return Array.isArray(campos) && campos.length >= minCampos;
+    }
+
+    /**
+     * Valida e retorna um campo do registro
+     */
+    function validarCampo(campos, indice, valorPadrao = '') {
+        if (!Array.isArray(campos) || indice >= campos.length) {
+            return valorPadrao;
         }
+        return campos[indice] ? campos[indice].trim() : valorPadrao;
+    }
+
+    /**
+     * Converte string para valor monetário
+     */
+    function converterValorMonetario(valor) {
+        if (!valor || valor === '') return 0;
         
-        adicionarRegistro(registro) {
-            const tipo = registro.tipo;
-            
-            if (!this.registrosExtraidos[tipo]) {
-                this.registrosExtraidos[tipo] = [];
-            }
-            
-            this.registrosExtraidos[tipo].push(registro.dados);
-        }
-        
-        extrairDadosEmpresa() {
-            if (this.registrosExtraidos['0000'] && this.registrosExtraidos['0000'].length > 0) {
-                const reg0000 = this.registrosExtraidos['0000'][0];
-                
-                this.dadosEmpresa = {
-                    razaoSocial: reg0000.NOME || '',
-                    cnpj: reg0000.CNPJ || '',
-                    uf: reg0000.UF || '',
-                    inscricaoEstadual: reg0000.IE || '',
-                    dataInicialPeriodo: this.formatarData(reg0000.DT_INI),
-                    dataFinalPeriodo: this.formatarData(reg0000.DT_FIN),
-                    codigoMunicipio: reg0000.COD_MUN || ''
-                };
-            }
-            
-            if (this.registrosExtraidos['0005'] && this.registrosExtraidos['0005'].length > 0) {
-                const reg0005 = this.registrosExtraidos['0005'][0];
-                
-                this.dadosEmpresa.nomeFantasia = reg0005.FANTASIA || '';
-                this.dadosEmpresa.endereco = reg0005.END || '';
-                this.dadosEmpresa.cep = reg0005.CEP || '';
-                this.dadosEmpresa.telefone = reg0005.FONE || '';
-                this.dadosEmpresa.email = reg0005.EMAIL || '';
-            }
-            
-            if (this.tipoSped.tipo === 'ecf' && this.registrosExtraidos['J001']) {
-                const regJ001 = this.registrosExtraidos['J001'][0];
-                if (regJ001) {
-                    this.dadosEmpresa.razaoSocial = regJ001.NOME || '';
-                    this.dadosEmpresa.cnpj = regJ001.CNPJ || '';
-                    this.dadosEmpresa.receitaBruta = this.converterParaNumero(regJ001.VL_REC_BRT);
-                }
-            }
-            
-            this.log.push(`🏢 Dados da empresa extraídos: ${this.dadosEmpresa.razaoSocial}`);
-        }
-        
-        extrairDadosFinanceirosECF() {
-            // Implementar extração específica do ECF
-            if (this.registrosExtraidos.J001) {
-                const regJ001 = this.registrosExtraidos.J001[0];
-                if (regJ001) {
-                    this.dadosFinanceiros.receitaBruta = this.converterParaNumero(regJ001.VL_REC_BRT);
-                    this.dadosFinanceiros.fonte.push('ECF - J001');
-                }
-            }
-        }
-        
-        extrairReceitasContribuicoes() {
-            // Somar receitas dos registros A100
-            if (this.registrosExtraidos.A100) {
-                this.registrosExtraidos.A100.forEach(registro => {
-                    this.dadosFinanceiros.receitaBruta += this.converterParaNumero(registro.VL_DOC);
-                });
-                this.dadosFinanceiros.fonte.push('SPED Contribuições - A100');
-            }
-            
-            // Somar receitas dos registros A200
-            if (this.registrosExtraidos.A200) {
-                this.registrosExtraidos.A200.forEach(registro => {
-                    this.dadosFinanceiros.receitaBruta += this.converterParaNumero(registro.VL_REC_BRT);
-                });
-                this.dadosFinanceiros.fonte.push('SPED Contribuições - A200');
-            }
-        }
-        
-        extrairDadosFinanceirosECD() {
-            // Implementar extração do ECD baseado no plano de contas
-            if (this.registrosExtraidos.J150) {
-                this.registrosExtraidos.J150.forEach(registro => {
-                    const codigoConta = registro.COD_CTA;
-                    const valorConta = this.converterParaNumero(registro.VL_SLD_FIN);
-                    
-                    // Receitas (geralmente 3.1.x)
-                    if (codigoConta.startsWith('3.1')) {
-                        this.dadosFinanceiros.receitaBruta += valorConta;
-                    }
-                    // Custos (geralmente 3.2.x)
-                    else if (codigoConta.startsWith('3.2')) {
-                        this.dadosFinanceiros.custoTotal += valorConta;
-                    }
-                    // Despesas (geralmente 3.3.x)
-                    else if (codigoConta.startsWith('3.3')) {
-                        this.dadosFinanceiros.despesasOperacionais += valorConta;
-                    }
-                });
-                this.dadosFinanceiros.fonte.push('ECD - J150');
-            }
-        }
-        
-        calcularIndicadoresFinanceiros() {
-            // Calcular receita líquida (assumindo 5% de deduções se não informado)
-            if (this.dadosFinanceiros.receitaLiquida === 0 && this.dadosFinanceiros.receitaBruta > 0) {
-                this.dadosFinanceiros.receitaLiquida = this.dadosFinanceiros.receitaBruta * 0.95;
-            }
-            
-            // Calcular lucro operacional
-            this.dadosFinanceiros.lucroOperacional = 
-                this.dadosFinanceiros.receitaLiquida - 
-                this.dadosFinanceiros.custoTotal - 
-                this.dadosFinanceiros.despesasOperacionais;
-            
-            // Calcular margem operacional
-            if (this.dadosFinanceiros.receitaLiquida > 0) {
-                this.dadosFinanceiros.margemOperacional = 
-                    (this.dadosFinanceiros.lucroOperacional / this.dadosFinanceiros.receitaLiquida) * 100;
-            }
-        }
-        
-        calcularFaturamentoBase() {
-            // Tentar calcular um faturamento base para alíquotas efetivas
-            let faturamento = 0;
-            
-            // Priorizar dados financeiros
-            if (this.dadosFinanceiros.receitaBruta > 0) {
-                faturamento = this.dadosFinanceiros.receitaBruta;
-            }
-            // Usar dados da empresa
-            else if (this.dadosEmpresa.receitaBruta > 0) {
-                faturamento = this.dadosEmpresa.receitaBruta;
-            }
-            // Estimar baseado em documentos fiscais
-            else if (this.registrosExtraidos.C100) {
-                this.registrosExtraidos.C100.forEach(registro => {
-                    if (registro.IND_OPER === '1') { // Saídas
-                        faturamento += this.converterParaNumero(registro.VL_DOC);
-                    }
-                });
-            }
-            
-            return faturamento;
-        }
-        
-        formatarData(dataStr) {
-            if (!dataStr || dataStr.length !== 8) return '';
-            
-            const dia = dataStr.substring(0, 2);
-            const mes = dataStr.substring(2, 4);
-            const ano = dataStr.substring(4, 8);
-            
-            return `${ano}-${mes}-${dia}`;
-        }
-        
-        converterParaNumero(valorStr) {
-            if (!valorStr) return 0;
-            
-            const numeroLimpo = valorStr.replace(/\./g, '').replace(',', '.');
-            const numero = parseFloat(numeroLimpo);
-            
+        try {
+            // Remove espaços e substitui vírgula por ponto
+            const valorLimpo = valor.toString().replace(/\s/g, '').replace(',', '.');
+            const numero = parseFloat(valorLimpo);
             return isNaN(numero) ? 0 : numero;
+        } catch (erro) {
+            console.warn('Erro ao converter valor monetário:', valor, erro);
+            return 0;
+        }
+    }
+
+    /**
+     * Determina o tipo de SPED baseado no conteúdo
+     */
+    function determinarTipoSped(linhas) {
+        if (!Array.isArray(linhas) || linhas.length === 0) {
+            return 'fiscal';
+        }
+
+        // Analisa as primeiras linhas para determinar o tipo
+        for (let i = 0; i < Math.min(50, linhas.length); i++) {
+            const linha = linhas[i];
+            const campos = linha.split('|');
+            
+            if (campos.length < 2) continue;
+            
+            const registro = campos[1];
+            
+            // Identificadores específicos para cada tipo
+            if (['M100', 'M105', 'M200', 'M500', 'M505', 'M600'].includes(registro)) {
+                return 'contribuicoes';
+            }
+            
+            if (['J001', 'J050', 'J100', 'K001', 'L001'].includes(registro)) {
+                return 'ecf';
+            }
+            
+            if (['I001', 'I010', 'I050', 'I100'].includes(registro)) {
+                return 'ecd';
+            }
         }
         
-        finalizarEstatisticas() {
-            this.estatisticas.fimProcessamento = new Date();
-            this.estatisticas.tempoProcessamento = 
-                this.estatisticas.fimProcessamento - this.estatisticas.inicioProcessamento;
-            
-            this.estatisticas.tiposRegistroEncontrados = Object.keys(this.registrosExtraidos).length;
-            this.estatisticas.registrosPorTipo = {};
-            
-            Object.keys(this.registrosExtraidos).forEach(tipo => {
-                this.estatisticas.registrosPorTipo[tipo] = this.registrosExtraidos[tipo].length;
+        return 'fiscal'; // Padrão
+    }
+
+    /**
+     * Integra dados do registro no resultado final
+     */
+    function integrarDados(resultado, dadosRegistro, registro) {
+        if (!dadosRegistro || !dadosRegistro.tipo) return;
+
+        switch (dadosRegistro.tipo) {
+            case 'empresa':
+                Object.assign(resultado.empresa, dadosRegistro);
+                break;
+                
+            case 'documento':
+                resultado.documentos.push(dadosRegistro);
+                break;
+                
+            case 'item':
+            case 'item_documento':
+                resultado.itens.push(dadosRegistro);
+                break;
+                
+            case 'analitico_icms':
+                resultado.itensAnaliticos.push(dadosRegistro);
+                break;
+                
+            case 'participante':
+                resultado.participantes.push(dadosRegistro);
+                break;
+                
+            case 'credito':
+            case 'credito_detalhe':
+                if (dadosRegistro.categoria) {
+                    if (!resultado.creditos[dadosRegistro.categoria]) {
+                        resultado.creditos[dadosRegistro.categoria] = [];
+                    }
+                    resultado.creditos[dadosRegistro.categoria].push(dadosRegistro);
+                }
+                break;
+                
+            case 'debito':
+                if (dadosRegistro.categoria) {
+                    if (!resultado.debitos[dadosRegistro.categoria]) {
+                        resultado.debitos[dadosRegistro.categoria] = [];
+                    }
+                    resultado.debitos[dadosRegistro.categoria].push(dadosRegistro);
+                }
+                break;
+                
+            case 'regime':
+                if (dadosRegistro.categoria) {
+                    resultado.regimes[dadosRegistro.categoria] = dadosRegistro;
+                }
+                break;
+                
+            case 'ajuste':
+                if (dadosRegistro.categoria) {
+                    if (!resultado.ajustes[dadosRegistro.categoria]) {
+                        resultado.ajustes[dadosRegistro.categoria] = [];
+                    }
+                    resultado.ajustes[dadosRegistro.categoria].push(dadosRegistro);
+                }
+                break;
+                
+            case 'receita_nao_tributada':
+                if (dadosRegistro.categoria) {
+                    if (!resultado.receitasNaoTributadas[dadosRegistro.categoria]) {
+                        resultado.receitasNaoTributadas[dadosRegistro.categoria] = [];
+                    }
+                    resultado.receitasNaoTributadas[dadosRegistro.categoria].push(dadosRegistro);
+                }
+                break;
+                
+            case 'balanco_patrimonial':
+            case 'dados_balancos':
+                resultado.balancoPatrimonial.push(dadosRegistro);
+                break;
+                
+            case 'dre':
+            case 'dre_comparativo':
+                resultado.demonstracaoResultado.push(dadosRegistro);
+                break;
+                
+            case 'inventario_abertura':
+            case 'inventario_info':
+                resultado.inventario.push(dadosRegistro);
+                break;
+                
+            case 'totalizacao':
+                if (dadosRegistro.categoria) {
+                    if (!resultado.totalizacao[dadosRegistro.categoria]) {
+                        resultado.totalizacao[dadosRegistro.categoria] = [];
+                    }
+                    resultado.totalizacao[dadosRegistro.categoria].push(dadosRegistro);
+                }
+                break;
+                
+            default:
+                // Para outros tipos, armazenar em detalhamento
+                if (!resultado.detalhamento[dadosRegistro.tipo]) {
+                    resultado.detalhamento[dadosRegistro.tipo] = [];
+                }
+                resultado.detalhamento[dadosRegistro.tipo].push(dadosRegistro);
+                break;
+        }
+    }
+
+    /**
+     * Processa relações entre dados após a extração
+     */
+    function processarRelacoesEntreDados(resultado, tipoSped) {
+        // Relacionar participantes com documentos
+        if (resultado.participantes.length > 0 && resultado.documentos.length > 0) {
+            const participantesPorCodigo = {};
+            resultado.participantes.forEach(participante => {
+                if (participante.codigo) {
+                    participantesPorCodigo[participante.codigo] = participante;
+                }
+            });
+
+            resultado.documentos.forEach(doc => {
+                if (doc.codPart && participantesPorCodigo[doc.codPart]) {
+                    doc.participante = participantesPorCodigo[doc.codPart];
+                }
             });
         }
-        
-        gerarResultado() {
-            const resultado = {
-                sucesso: true,
-                tipoSped: {
-                    tipo: this.tipoSped.tipo,
-                    nome: this.tipoSped.nome,
-                    detalhes: {
-                        codigo: this.tipoSped.tipo,
-                        descricao: this.tipoSped.nome
-                    }
-                },
-                dadosEmpresa: this.dadosEmpresa,
-                registros: this.registrosExtraidos,
-                resumo: {
-                    totalTiposRegistro: this.estatisticas.tiposRegistroEncontrados,
-                    registrosPorTipo: this.estatisticas.registrosPorTipo
-                },
-                estatisticas: {
-                    linhasProcessadas: this.estatisticas.linhasProcessadas,
-                    registrosEncontrados: this.estatisticas.registrosEncontrados,
-                    registrosValidos: this.estatisticas.registrosValidos,
-                    tempoProcessamento: this.estatisticas.tempoProcessamento,
-                    erros: this.estatisticas.erros.slice(0, 50)
-                },
-                log: this.log,
-                metadados: {
-                    timestampProcessamento: new Date().toISOString(),
-                    versaoParser: '2.1.0-aprimorado'
+
+        // Relacionar itens com documentos
+        if (resultado.itens.length > 0 && resultado.documentos.length > 0) {
+            const itensPorCodigo = {};
+            resultado.itens.forEach(item => {
+                if (item.codItem || item.codigo) {
+                    itensPorCodigo[item.codItem || item.codigo] = item;
                 }
+            });
+
+            resultado.itens.forEach(item => {
+                if (item.codItem && itensPorCodigo[item.codItem]) {
+                    item.detalhesItem = itensPorCodigo[item.codItem];
+                }
+            });
+        }
+
+        // Calcular totais por categoria
+        calcularTotaisPorCategoria(resultado);
+    }
+
+    /**
+     * Calcula totais por categoria de impostos
+     */
+    function calcularTotaisPorCategoria(resultado) {
+        // Calcular totais de créditos
+        Object.keys(resultado.creditos).forEach(categoria => {
+            const creditos = resultado.creditos[categoria];
+            let total = 0;
+            
+            creditos.forEach(credito => {
+                if (credito.valorCredito) {
+                    total += credito.valorCredito;
+                }
+            });
+            
+            if (total > 0) {
+                if (!resultado.calculoImposto[categoria]) {
+                    resultado.calculoImposto[categoria] = {};
+                }
+                resultado.calculoImposto[categoria].totalCreditos = total;
+            }
+        });
+
+        // Calcular totais de débitos
+        Object.keys(resultado.debitos).forEach(categoria => {
+            const debitos = resultado.debitos[categoria];
+            let total = 0;
+            
+            debitos.forEach(debito => {
+                if (debito.valorTotalDebitos) {
+                    total += debito.valorTotalDebitos;
+                } else if (debito.valorTotalContribuicao) {
+                    total += debito.valorTotalContribuicao;
+                } else if (debito.valorContribuicaoAPagar) {
+                    total += debito.valorContribuicaoAPagar;
+                }
+            });
+            
+            if (total > 0) {
+                if (!resultado.calculoImposto[categoria]) {
+                    resultado.calculoImposto[categoria] = {};
+                }
+                resultado.calculoImposto[categoria].totalDebitos = total;
+            }
+        });
+    }
+
+    // =============================
+    // FUNÇÕES DE PARSING ESPECÍFICAS - SPED FISCAL
+    // =============================
+
+    // Registro 0000 - Abertura do arquivo e identificação da entidade
+    function parseRegistro0000(campos) {
+        if (!validarEstruturaRegistro(campos, 15)) {
+            console.warn('Registro 0000 com estrutura insuficiente');
+            return null;
+        }
+
+        try {
+            return {
+                tipo: 'empresa',
+                cnpj: validarCampo(campos, 8),
+                nome: validarCampo(campos, 9),
+                ie: validarCampo(campos, 11),
+                municipio: validarCampo(campos, 13),
+                uf: validarCampo(campos, 14),
+                codMunicipio: validarCampo(campos, 15),
+                dataInicial: validarCampo(campos, 5),
+                dataFinal: validarCampo(campos, 6),
+                versaoLeiaute: validarCampo(campos, 3)
             };
-            
-            this.log.push(`🎉 Parsing APRIMORADO concluído! ${this.estatisticas.registrosValidos} registros extraídos`);
-            
-            return resultado;
+        } catch (erro) {
+            console.warn('Erro ao processar registro 0000:', erro.message);
+            return null;
         }
     }
-    
-    /**
-     * Função principal de parsing aprimorada
-     */
-    async function parsearArquivoSped(arquivo, opcoes = {}) {
-        const parser = new SpedParserAprimorado();
-        return await parser.parsearArquivo(arquivo, opcoes);
-    }
-    
-    /**
-     * Função de validação de arquivo (mantida)
-     */
-    function validarArquivoSped(arquivo) {
-        const validacao = {
-            valido: true,
-            erros: [],
-            avisos: []
+
+    function parseRegistro0001(campos) {
+        if (!validarEstruturaRegistro(campos, 3)) return null;
+        return {
+            tipo: 'abertura_bloco',
+            bloco: '0',
+            indicadorMovimento: validarCampo(campos, 2)
         };
-        
-        if (arquivo.size === 0) {
-            validacao.valido = false;
-            validacao.erros.push('Arquivo vazio');
-        }
-        
-        if (arquivo.size > CONFIG.tamanhoMaximoArquivo) {
-            validacao.valido = false;
-            validacao.erros.push(`Arquivo muito grande: ${(arquivo.size / 1024 / 1024).toFixed(2)}MB. Máximo: ${CONFIG.tamanhoMaximoArquivo / 1024 / 1024}MB`);
-        }
-        
-        const extensao = arquivo.name.toLowerCase().split('.').pop();
-        if (!['txt', 'sped'].includes(extensao)) {
-            validacao.avisos.push(`Extensão não usual para SPED: .${extensao}`);
-        }
-        
-        return validacao;
     }
+
+    function parseRegistro0005(campos) {
+        if (!validarEstruturaRegistro(campos, 7)) return null;
+        return {
+            tipo: 'empresa',
+            fantasia: validarCampo(campos, 2),
+            cep: validarCampo(campos, 3),
+            endereco: validarCampo(campos, 4),
+            numero: validarCampo(campos, 5),
+            complemento: validarCampo(campos, 6),
+            bairro: validarCampo(campos, 7)
+        };
+    }
+
+    function parseRegistro0150(campos) {
+        if (!validarEstruturaRegistro(campos, 11)) return null;
+        return {
+            tipo: 'participante',
+            codigo: validarCampo(campos, 2),
+            nome: validarCampo(campos, 3),
+            codigoPais: validarCampo(campos, 4),
+            cnpjCpf: validarCampo(campos, 5),
+            ie: validarCampo(campos, 6),
+            codigoMunicipio: validarCampo(campos, 7),
+            suframa: validarCampo(campos, 8),
+            endereco: validarCampo(campos, 9),
+            numero: validarCampo(campos, 10)
+        };
+    }
+
+    function parseRegistro0190(campos) {
+        if (!validarEstruturaRegistro(campos, 3)) return null;
+        return {
+            tipo: 'unidade_medida',
+            codigo: validarCampo(campos, 2),
+            descricao: validarCampo(campos, 3)
+        };
+    }
+
+    function parseRegistro0200(campos) {
+        if (!validarEstruturaRegistro(campos, 9)) return null;
+        return {
+            tipo: 'item',
+            codigo: validarCampo(campos, 2),
+            descricao: validarCampo(campos, 3),
+            codigoBarras: validarCampo(campos, 4),
+            codigoAntItem: validarCampo(campos, 5),
+            unidadeInvent: validarCampo(campos, 6),
+            tipoItem: validarCampo(campos, 7),
+            ncm: validarCampo(campos, 8),
+            exTipi: validarCampo(campos, 9)
+        };
+    }
+
+    function parseRegistroC100(campos) {
+        if (!validarEstruturaRegistro(campos, 28)) return null;
+        return {
+            tipo: 'documento',
+            indOper: validarCampo(campos, 2),
+            indEmit: validarCampo(campos, 3),
+            codPart: validarCampo(campos, 4),
+            codMod: validarCampo(campos, 5),
+            codSit: validarCampo(campos, 6),
+            serie: validarCampo(campos, 7),
+            numDoc: validarCampo(campos, 8),
+            chvNfe: validarCampo(campos, 9),
+            dataDoc: validarCampo(campos, 10),
+            dataEnt: validarCampo(campos, 11),
+            valorDoc: converterValorMonetario(validarCampo(campos, 12, '0')),
+            indPgto: validarCampo(campos, 13),
+            valorDesc: converterValorMonetario(validarCampo(campos, 14, '0')),
+            valorAbatNt: converterValorMonetario(validarCampo(campos, 15, '0')),
+            valorMerc: converterValorMonetario(validarCampo(campos, 16, '0')),
+            indFrt: validarCampo(campos, 17),
+            valorFrt: converterValorMonetario(validarCampo(campos, 18, '0')),
+            valorSeg: converterValorMonetario(validarCampo(campos, 19, '0')),
+            valorOutDa: converterValorMonetario(validarCampo(campos, 20, '0')),
+            valorBc: converterValorMonetario(validarCampo(campos, 21, '0')),
+            valorIcms: converterValorMonetario(validarCampo(campos, 22, '0')),
+            valorBcSt: converterValorMonetario(validarCampo(campos, 23, '0')),
+            valorSt: converterValorMonetario(validarCampo(campos, 24, '0')),
+            valorIpi: converterValorMonetario(validarCampo(campos, 25, '0')),
+            valorPis: converterValorMonetario(validarCampo(campos, 26, '0')),
+            valorCofins: converterValorMonetario(validarCampo(campos, 27, '0')),
+            valorPisSt: converterValorMonetario(validarCampo(campos, 28, '0')),
+            valorCofinsSt: converterValorMonetario(validarCampo(campos, 29, '0')),
+            valorTotal: converterValorMonetario(validarCampo(campos, 12, '0')),
+            dataEmissao: validarCampo(campos, 10),
+            modelo: validarCampo(campos, 5),
+            situacao: validarCampo(campos, 6)
+        };
+    }
+
+    function parseRegistroC170(campos) {
+        if (!validarEstruturaRegistro(campos, 17)) return null;
+        return {
+            tipo: 'item_documento',
+            numItem: validarCampo(campos, 2),
+            codItem: validarCampo(campos, 3),
+            descrCompl: validarCampo(campos, 4),
+            qtd: converterValorMonetario(validarCampo(campos, 5, '0')),
+            unid: validarCampo(campos, 6),
+            valorItem: converterValorMonetario(validarCampo(campos, 7, '0')),
+            valorDesc: converterValorMonetario(validarCampo(campos, 8, '0')),
+            indMov: validarCampo(campos, 9),
+            cstIcms: validarCampo(campos, 10),
+            cfop: validarCampo(campos, 11),
+            codNat: validarCampo(campos, 12),
+            valorBcIcms: converterValorMonetario(validarCampo(campos, 13, '0')),
+            aliqIcms: converterValorMonetario(validarCampo(campos, 14, '0')),
+            valorIcms: converterValorMonetario(validarCampo(campos, 15, '0')),
+            valorBcIcmsSt: converterValorMonetario(validarCampo(campos, 16, '0')),
+            aliqSt: converterValorMonetario(validarCampo(campos, 17, '0'))
+        };
+    }
+
+    function parseRegistroC190(campos) {
+        if (!validarEstruturaRegistro(campos, 8)) return null;
+        return {
+            tipo: 'analitico_icms',
+            categoria: 'icms',
+            cstIcms: validarCampo(campos, 2),
+            cfop: validarCampo(campos, 3),
+            aliqIcms: converterValorMonetario(validarCampo(campos, 4, '0')),
+            valorOpr: converterValorMonetario(validarCampo(campos, 5, '0')),
+            valorBcIcms: converterValorMonetario(validarCampo(campos, 6, '0')),
+            valorIcms: converterValorMonetario(validarCampo(campos, 7, '0')),
+            valorBcIcmsSt: converterValorMonetario(validarCampo(campos, 8, '0')),
+            valorIcmsSt: converterValorMonetario(validarCampo(campos, 9, '0'))
+        };
+    }
+
+    function parseRegistroC197(campos) {
+        if (!validarEstruturaRegistro(campos, 8)) return null;
+        return {
+            tipo: 'outras_obrigacoes',
+            categoria: 'icms',
+            codigoAjOuInf: validarCampo(campos, 2),
+            descrCompl: validarCampo(campos, 3),
+            valorAjuste: converterValorMonetario(validarCampo(campos, 4, '0'))
+        };
+    }
+
+    function parseRegistroE110(campos) {
+        if (!validarEstruturaRegistro(campos, 29)) return null;
+        return {
+            tipo: 'debito',
+            categoria: 'icms',
+            valorTotalDebitos: converterValorMonetario(validarCampo(campos, 4, '0')),
+            valorTotalCreditos: converterValorMonetario(validarCampo(campos, 11, '0')),
+            valorSaldoApurado: converterValorMonetario(validarCampo(campos, 26, '0')),
+            valorDebitoEspecial: converterValorMonetario(validarCampo(campos, 27, '0')),
+            valorSaldoAPagar: converterValorMonetario(validarCampo(campos, 28, '0'))
+        };
+    }
+
+    function parseRegistroE111(campos) {
+        if (!validarEstruturaRegistro(campos, 7)) return null;
+        return {
+            tipo: 'ajuste',
+            categoria: 'icms',
+            codAjApur: validarCampo(campos, 2),
+            descrCompl: validarCampo(campos, 3),
+            valorAjuste: converterValorMonetario(validarCampo(campos, 4, '0'))
+        };
+    }
+
+    function parseRegistroE116(campos) {
+        if (!validarEstruturaRegistro(campos, 6)) return null;
+        return {
+            tipo: 'obrigacao',
+            categoria: 'icms',
+            codOr: validarCampo(campos, 2),
+            valorOr: converterValorMonetario(validarCampo(campos, 3, '0')),
+            dataVcto: validarCampo(campos, 4),
+            codRec: validarCampo(campos, 5)
+        };
+    }
+
+    function parseRegistroE200(campos) {
+        if (!validarEstruturaRegistro(campos, 13)) return null;
+        return {
+            tipo: 'debito',
+            categoria: 'ipi',
+            valorTotalDebitos: converterValorMonetario(validarCampo(campos, 4, '0')),
+            valorTotalCreditos: converterValorMonetario(validarCampo(campos, 5, '0')),
+            valorTotalAPagar: converterValorMonetario(validarCampo(campos, 12, '0'))
+        };
+    }
+
+    function parseRegistroE210(campos) {
+        if (!validarEstruturaRegistro(campos, 7)) return null;
+        return {
+            tipo: 'ajuste',
+            categoria: 'ipi',
+            indAj: validarCampo(campos, 2),
+            valorAj: converterValorMonetario(validarCampo(campos, 3, '0')),
+            codAj: validarCampo(campos, 4)
+        };
+    }
+
+    function parseRegistroE220(campos) {
+        if (!validarEstruturaRegistro(campos, 6)) return null;
+        return {
+            tipo: 'informacao_adicional',
+            categoria: 'ipi',
+            codInfAd: validarCampo(campos, 2),
+            txtCompl: validarCampo(campos, 3),
+            qtdRef: converterValorMonetario(validarCampo(campos, 4, '0'))
+        };
+    }
+
+    function parseRegistroH010(campos) {
+        if (!validarEstruturaRegistro(campos, 3)) return null;
+        return {
+            tipo: 'inventario_abertura',
+            codItem: validarCampo(campos, 2),
+            unid: validarCampo(campos, 3),
+            qtd: converterValorMonetario(validarCampo(campos, 4, '0')),
+            valorUnit: converterValorMonetario(validarCampo(campos, 5, '0')),
+            valorItem: converterValorMonetario(validarCampo(campos, 6, '0'))
+        };
+    }
+
+    function parseRegistroH020(campos) {
+        if (!validarEstruturaRegistro(campos, 6)) return null;
+        return {
+            tipo: 'inventario_info',
+            codItem: validarCampo(campos, 2),
+            unid: validarCampo(campos, 3),
+            qtd: converterValorMonetario(validarCampo(campos, 4, '0')),
+            valorUnit: converterValorMonetario(validarCampo(campos, 5, '0')),
+            valorItem: converterValorMonetario(validarCampo(campos, 6, '0'))
+        };
+    }
+
+    // =============================
+    // FUNÇÕES DE PARSING - SPED CONTRIBUIÇÕES
+    // =============================
+
+    function parseRegistro0000Contribuicoes(campos) {
+        if (!validarEstruturaRegistro(campos, 15)) return null;
+        return {
+            tipo: 'empresa',
+            cnpj: validarCampo(campos, 8),
+            nome: validarCampo(campos, 9),
+            ie: validarCampo(campos, 11),
+            municipio: validarCampo(campos, 13),  
+            uf: validarCampo(campos, 14),
+            dataInicial: validarCampo(campos, 5),
+            dataFinal: validarCampo(campos, 6),
+            versaoLeiaute: validarCampo(campos, 3)
+        };
+    }
+
+    function parseRegistro0001Contribuicoes(campos) {
+        if (!validarEstruturaRegistro(campos, 3)) return null;
+        return {
+            tipo: 'abertura_bloco',
+            bloco: '0',
+            indicadorMovimento: validarCampo(campos, 2)
+        };
+    }
+
+    function parseRegistro0110(campos) {
+        if (!validarEstruturaRegistro(campos, 4)) return null;
+        return {
+            tipo: 'regime',
+            categoria: 'pis_cofins',
+            codigoIncidencia: validarCampo(campos, 2),
+            codigoIncidenciaAnterior: validarCampo(campos, 3)
+        };
+    }
+
+    function parseRegistro0140(campos) {
+        if (!validarEstruturaRegistro(campos, 6)) return null;
+        return {
+            tipo: 'tabela_cadastro',
+            codEst: validarCampo(campos, 2),
+            nome: validarCampo(campos, 3),
+            codClasse: validarCampo(campos, 4),
+            codGru: validarCampo(campos, 5)
+        };
+    }
+
+    function parseRegistro0150Contribuicoes(campos) {
+        if (!validarEstruturaRegistro(campos, 11)) return null;
+        return {
+            tipo: 'participante',
+            codigo: validarCampo(campos, 2),
+            nome: validarCampo(campos, 3),
+            codigoPais: validarCampo(campos, 4),
+            cnpjCpf: validarCampo(campos, 5),
+            ie: validarCampo(campos, 6),
+            codigoMunicipio: validarCampo(campos, 7)
+        };
+    }
+
+    function parseRegistroA100(campos) {
+        if (!validarEstruturaRegistro(campos, 6)) return null;
+        return {
+            tipo: 'receita',
+            categoria: 'operacao',
+            indOper: validarCampo(campos, 2),
+            indEmit: validarCampo(campos, 3),
+            codPart: validarCampo(campos, 4),
+            codSit: validarCampo(campos, 5),
+            valorOperacao: converterValorMonetario(validarCampo(campos, 6, '0'))
+        };
+    }
+
+    function parseRegistroA110(campos) {
+        if (!validarEstruturaRegistro(campos, 8)) return null;
+        return {
+            tipo: 'receita_complemento',
+            categoria: 'operacao',
+            codInf: validarCampo(campos, 2),
+            txtCompl: validarCampo(campos, 3),
+            valorItem: converterValorMonetario(validarCampo(campos, 4, '0'))
+        };
+    }
+
+    function parseRegistroA111(campos) {
+        if (!validarEstruturaRegistro(campos, 4)) return null;
+        return {
+            tipo: 'processo_referenciado',
+            categoria: 'receita',
+            numProc: validarCampo(campos, 2),
+            indProc: validarCampo(campos, 3)
+        };
+    }
+
+    function parseRegistroC100Contribuicoes(campos) {
+        if (!validarEstruturaRegistro(campos, 18)) return null;
+        return {
+            tipo: 'documento',
+            indOper: validarCampo(campos, 2),
+            indEmit: validarCampo(campos, 3),
+            codPart: validarCampo(campos, 4),
+            codMod: validarCampo(campos, 5),
+            codSit: validarCampo(campos, 6),
+            numDoc: validarCampo(campos, 7),
+            dataDoc: validarCampo(campos, 8),
+            valorDoc: converterValorMonetario(validarCampo(campos, 9, '0')),
+            valorPis: converterValorMonetario(validarCampo(campos, 10, '0')),
+            valorCofins: converterValorMonetario(validarCampo(campos, 11, '0')),
+            natBcCred: validarCampo(campos, 12),
+            valorTotal: converterValorMonetario(validarCampo(campos, 9, '0')),
+            dataEmissao: validarCampo(campos, 8),
+            modelo: validarCampo(campos, 5),
+            situacao: validarCampo(campos, 6)
+        };
+    }
+
+    function parseRegistroC180(campos) {
+        if (!validarEstruturaRegistro(campos, 12)) return null;
+        return {
+            tipo: 'consolidacao_operacoes',
+            categoria: 'pis_cofins',
+            codMod: validarCampo(campos, 2),
+            dataIniOper: validarCampo(campos, 3),
+            dataFinOper: validarCampo(campos, 4),
+            valorTotRec: converterValorMonetario(validarCampo(campos, 5, '0')),
+            codCta: validarCampo(campos, 6),
+            descrCompl: validarCampo(campos, 7)
+        };
+    }
+
+    function parseRegistroC181(campos) {
+        if (!validarEstruturaRegistro(campos, 17)) return null;
+        return {
+            tipo: 'detalhamento_consolidacao',
+            categoria: 'pis_cofins',
+            cstPis: validarCampo(campos, 2),
+            codCred: validarCampo(campos, 3),
+            valorBc: converterValorMonetario(validarCampo(campos, 4, '0')),
+            aliqPis: converterValorMonetario(validarCampo(campos, 5, '0')),
+            quantBcPis: converterValorMonetario(validarCampo(campos, 6, '0')),
+            aliqPisQuant: converterValorMonetario(validarCampo(campos, 7, '0')),
+            valorPis: converterValorMonetario(validarCampo(campos, 8, '0')),
+            cstCofins: validarCampo(campos, 9),
+            valorBcCofins: converterValorMonetario(validarCampo(campos, 10, '0')),
+            aliqCofins: converterValorMonetario(validarCampo(campos, 11, '0')),
+            quantBcCofins: converterValorMonetario(validarCampo(campos, 12, '0')),
+            aliqCofinsQuant: converterValorMonetario(validarCampo(campos, 13, '0')),
+            valorCofins: converterValorMonetario(validarCampo(campos, 14, '0')),
+            codCta: validarCampo(campos, 15),
+            descrCompl: validarCampo(campos, 16)
+        };
+    }
+
+    function parseRegistroC185(campos) {
+        if (!validarEstruturaRegistro(campos, 15)) return null;
+        return {
+            tipo: 'detalhamento_consolidacao_pis',
+            categoria: 'pis',
+            cstPis: validarCampo(campos, 2),
+            codCred: validarCampo(campos, 3),
+            valorBc: converterValorMonetario(validarCampo(campos, 4, '0')),
+            aliqPis: converterValorMonetario(validarCampo(campos, 5, '0')),
+            quantBcPis: converterValorMonetario(validarCampo(campos, 6, '0')),
+            aliqPisQuant: converterValorMonetario(validarCampo(campos, 7, '0')),
+            valorPis: converterValorMonetario(validarCampo(campos, 8, '0')),
+            codCta: validarCampo(campos, 9),
+            descrCompl: validarCampo(campos, 10)
+        };
+    }
+
+    function parseRegistroC188(campos) {
+        if (!validarEstruturaRegistro(campos, 4)) return null;
+        return {
+            tipo: 'processo_referenciado',
+            categoria: 'consolidacao',
+            numProc: validarCampo(campos, 2),
+            indProc: validarCampo(campos, 3)
+        };
+    }
+
+    function parseRegistroD100(campos) {
+        if (!validarEstruturaRegistro(campos, 15)) return null;
+        return {
+            tipo: 'aquisicao_servicos',
+            categoria: 'credito',
+            indOper: validarCampo(campos, 2),
+            indEmit: validarCampo(campos, 3),
+            codPart: validarCampo(campos, 4),
+            codMod: validarCampo(campos, 5),
+            codSit: validarCampo(campos, 6),
+            numDoc: validarCampo(campos, 7),
+            dataDoc: validarCampo(campos, 8),
+            valorDoc: converterValorMonetario(validarCampo(campos, 9, '0')),
+            indPgto: validarCampo(campos, 10),
+            valorDesc: converterValorMonetario(validarCampo(campos, 11, '0')),
+            valorServ: converterValorMonetario(validarCampo(campos, 12, '0'))
+        };
+    }
+
+    function parseRegistroD101(campos) {
+        if (!validarEstruturaRegistro(campos, 13)) return null;
+        return {
+            tipo: 'credito_detalhe',
+            categoria: 'pis',
+            indNatPJ: validarCampo(campos, 2),
+            valorBcPis: converterValorMonetario(validarCampo(campos, 3, '0')),
+            aliqPis: converterValorMonetario(validarCampo(campos, 4, '0')),
+            valorPis: converterValorMonetario(validarCampo(campos, 5, '0')),
+            codCred: validarCampo(campos, 6)
+        };
+    }
+
+    function parseRegistroD105(campos) {
+        if (!validarEstruturaRegistro(campos, 13)) return null;
+        return {
+            tipo: 'credito_detalhe',
+            categoria: 'cofins',
+            indNatPJ: validarCampo(campos, 2),
+            valorBcCofins: converterValorMonetario(validarCampo(campos, 3, '0')),
+            aliqCofins: converterValorMonetario(validarCampo(campos, 4, '0')),
+            valorCofins: converterValorMonetario(validarCampo(campos, 5, '0')),
+            codCred: validarCampo(campos, 6)
+        };
+    }
+
+    function parseRegistroD111(campos) {
+        if (!validarEstruturaRegistro(campos, 4)) return null;
+        return {
+            tipo: 'processo_referenciado',
+            categoria: 'aquisicao',
+            numProc: validarCampo(campos, 2),
+            indProc: validarCampo(campos, 3)
+        };
+    }
+
+    function parseRegistroF100(campos) {
+        if (!validarEstruturaRegistro(campos, 18)) return null;
+        return {
+            tipo: 'demais_documentos',
+            categoria: 'operacao',
+            indOper: validarCampo(campos, 2),
+            codPart: validarCampo(campos, 3),
+            codItem: validarCampo(campos, 4),
+            dataOper: validarCampo(campos, 5),
+            valorOper: converterValorMonetario(validarCampo(campos, 6, '0')),
+            cstPis: validarCampo(campos, 7),
+            valorBcPis: converterValorMonetario(validarCampo(campos, 8, '0')),
+            aliqPisPerc: converterValorMonetario(validarCampo(campos, 9, '0')),
+            valorPis: converterValorMonetario(validarCampo(campos, 10, '0')),
+            cstCofins: validarCampo(campos, 11),
+            valorBcCofins: converterValorMonetario(validarCampo(campos, 12, '0')),
+            aliqCofinsPerc: converterValorMonetario(validarCampo(campos, 13, '0')),
+            valorCofins: converterValorMonetario(validarCampo(campos, 14, '0')),
+            natBcCred: validarCampo(campos, 15),
+            indOrigCred: validarCampo(campos, 16),
+            codCred: validarCampo(campos, 17),
+            valorCredDisp: converterValorMonetario(validarCampo(campos, 18, '0'))
+        };
+    }
+
+    function parseRegistroF111(campos) {
+        if (!validarEstruturaRegistro(campos, 4)) return null;
+        return {
+            tipo: 'processo_referenciado',
+            categoria: 'demais_documentos',
+            numProc: validarCampo(campos, 2),
+            indProc: validarCampo(campos, 3)
+        };
+    }
+
+    function parseRegistroF120(campos) {
+        if (!validarEstruturaRegistro(campos, 18)) return null;
+        return {
+            tipo: 'bens_ativo',
+            categoria: 'ativo_imobilizado',
+            natBcCred: validarCampo(campos, 2),
+            identBemImob: validarCampo(campos, 3),
+            indOrigCred: validarCampo(campos, 4),
+            indUtilBemImob: validarCampo(campos, 5),
+            valorOperacao: converterValorMonetario(validarCampo(campos, 6, '0')),
+            parcCredito: converterValorMonetario(validarCampo(campos, 7, '0')),
+            valorCredito: converterValorMonetario(validarCampo(campos, 8, '0')),
+            dataOperacao: validarCampo(campos, 9)
+        };
+    }
+
+    function parseRegistroF129(campos) {
+        if (!validarEstruturaRegistro(campos, 4)) return null;
+        return {
+            tipo: 'processo_referenciado',
+            categoria: 'bens_ativo',
+            numProc: validarCampo(campos, 2),
+            indProc: validarCampo(campos, 3)
+        };
+    }
+
+    function parseRegistroF130(campos) {
+        if (!validarEstruturaRegistro(campos, 15)) return null;
+        return {
+            tipo: 'atividade_imobiliaria',
+            categoria: 'credito',
+            natBcCred: validarCampo(campos, 2),
+            valorBcPis: converterValorMonetario(validarCampo(campos, 3, '0')),
+            valorPis: converterValorMonetario(validarCampo(campos, 4, '0')),
+            valorBcCofins: converterValorMonetario(validarCampo(campos, 5, '0')),
+            valorCofins: converterValorMonetario(validarCampo(campos, 6, '0')),
+            infCompl: validarCampo(campos, 7)
+        };
+    }
+
+    function parseRegistroF139(campos) {
+        if (!validarEstruturaRegistro(campos, 4)) return null;
+        return {
+            tipo: 'processo_referenciado',
+            categoria: 'atividade_imobiliaria',
+            numProc: validarCampo(campos, 2),
+            indProc: validarCampo(campos, 3)
+        };
+    }
+
+    function parseRegistroF150(campos) {
+        if (!validarEstruturaRegistro(campos, 12)) return null;
+        return {
+            tipo: 'credito_presumido_estoque',
+            categoria: 'credito',
+            natBcCred: validarCampo(campos, 2),
+            valorEstoque: converterValorMonetario(validarCampo(campos, 3, '0')),
+            valorBcPis: converterValorMonetario(validarCampo(campos, 4, '0')),
+            valorPis: converterValorMonetario(validarCampo(campos, 5, '0')),
+            valorBcCofins: converterValorMonetario(validarCampo(campos, 6, '0')),
+            valorCofins: converterValorMonetario(validarCampo(campos, 7, '0'))
+        };
+    }
+
+    function parseRegistroF200(campos) {
+        if (!validarEstruturaRegistro(campos, 15)) return null;
+        return {
+            tipo: 'operacao_imobiliaria',
+            categoria: 'receita',
+            indOper: validarCampo(campos, 2),
+            unidImob: validarCampo(campos, 3),
+            identEmpr: validarCampo(campos, 4),
+            descrUnidImob: validarCampo(campos, 5),
+            numCont: validarCampo(campos, 6),
+            cpfCnpjAdq: validarCampo(campos, 7),
+            dataOper: validarCampo(campos, 8),
+            valorTotalVenda: converterValorMonetario(validarCampo(campos, 9, '0')),
+            valorRecebido: converterValorMonetario(validarCampo(campos, 10, '0'))
+        };
+    }
+
+    function parseRegistroF205(campos) {
+        if (!validarEstruturaRegistro(campos, 15)) return null;
+        return {
+            tipo: 'operacao_cartao_credito',
+            categoria: 'receita',
+            valorOperacao: converterValorMonetario(validarCampo(campos, 2, '0')),
+            valorDesconto: converterValorMonetario(validarCampo(campos, 3, '0')),
+            valorBcPis: converterValorMonetario(validarCampo(campos, 4, '0')),
+            aliqPis: converterValorMonetario(validarCampo(campos, 5, '0')),
+            valorPis: converterValorMonetario(validarCampo(campos, 6, '0')),
+            valorBcCofins: converterValorMonetario(validarCampo(campos, 7, '0')),
+            aliqCofins: converterValorMonetario(validarCampo(campos, 8, '0')),
+            valorCofins: converterValorMonetario(validarCampo(campos, 9, '0'))
+        };
+    }
+
+    function parseRegistroF210(campos) {
+        if (!validarEstruturaRegistro(campos, 15)) return null;
+        return {
+            tipo: 'cide',
+            categoria: 'contribuicao',
+            codCide: validarCampo(campos, 2),
+            valorBcCide: converterValorMonetario(validarCampo(campos, 3, '0')),
+            aliqCide: converterValorMonetario(validarCampo(campos, 4, '0')),
+            valorCide: converterValorMonetario(validarCampo(campos, 5, '0'))
+        };
+    }
+
+    function parseRegistroF211(campos) {
+        if (!validarEstruturaRegistro(campos, 4)) return null;
+        return {
+            tipo: 'processo_referenciado',
+            categoria: 'cide',
+            numProc: validarCampo(campos, 2),
+            indProc: validarCampo(campos, 3)
+        };
+    }
+
+    function parseRegistroI100(campos) {
+        if (!validarEstruturaRegistro(campos, 18)) return null;
+        return {
+            tipo: 'operacao_exterior',
+            categoria: 'credito',
+            valorReceita: converterValorMonetario(validarCampo(campos, 2, '0')),
+            cstPis: validarCampo(campos, 3),
+            valorBcPis: converterValorMonetario(validarCampo(campos, 4, '0')),
+            aliqPis: converterValorMonetario(validarCampo(campos, 5, '0')),
+            valorPis: converterValorMonetario(validarCampo(campos, 6, '0')),
+            cstCofins: validarCampo(campos, 7),
+            valorBcCofins: converterValorMonetario(validarCampo(campos, 8, '0')),
+            aliqCofins: converterValorMonetario(validarCampo(campos, 9, '0')),
+            valorCofins: converterValorMonetario(validarCampo(campos, 10, '0'))
+        };
+    }
+
+    function parseRegistroI199(campos) {
+        if (!validarEstruturaRegistro(campos, 4)) return null;
+        return {
+            tipo: 'processo_referenciado',
+            categoria: 'operacao_exterior',
+            numProc: validarCampo(campos, 2),
+            indProc: validarCampo(campos, 3)
+        };
+    }
+
+    function parseRegistroM100(campos) {
+        if (!validarEstruturaRegistro(campos, 8)) return null;
+        return {
+            tipo: 'credito',
+            categoria: 'pis',
+            codCredPres: validarCampo(campos, 2),
+            valorCredito: converterValorMonetario(validarCampo(campos, 3, '0')),
+            perCredPres: converterValorMonetario(validarCampo(campos, 4, '0')),
+            origem: 'registro_m100'
+        };
+    }
+
+    function parseRegistroM105(campos) {
+        if (!validarEstruturaRegistro(campos, 12)) return null;
+        try {
+            const baseCalculo = converterValorMonetario(validarCampo(campos, 6, '0'));
+            const aliquota = converterValorMonetario(validarCampo(campos, 7, '0'));
+            const valorCredito = converterValorMonetario(validarCampo(campos, 8, '0'));
+            return {
+                tipo: 'credito_detalhe',
+                categoria: 'pis',
+                codigoCredito: validarCampo(campos, 3),
+                indicadorCreditoOriundo: validarCampo(campos, 4),
+                valorOperacao: converterValorMonetario(validarCampo(campos, 5, '0')),
+                baseCalculoCredito: baseCalculo,
+                aliquotaCredito: aliquota,
+                valorCredito: valorCredito,
+                descricaoItemServico: validarCampo(campos, 9),
+                codigoContaContabil: validarCampo(campos, 10)
+            };
+        } catch (erro) {
+            console.warn('Erro ao processar registro M105:', erro.message);
+            return null;
+        }
+    }
+
+    function parseRegistroM110(campos) {
+        if (!validarEstruturaRegistro(campos, 7)) return null;
+        return {
+            tipo: 'ajuste',
+            categoria: 'pis',
+            indAjuste: validarCampo(campos, 2),
+            valorAjuste: converterValorMonetario(validarCampo(campos, 3, '0')),
+            codAjuste: validarCampo(campos, 4)
+        };
+    }
+
+    function parseRegistroM115(campos) {
+        if (!validarEstruturaRegistro(campos, 6)) return null;
+        return {
+            tipo: 'detalhamento_ajuste',
+            categoria: 'pis',
+            detalhamentoAjuste: validarCampo(campos, 2),
+            codCred: validarCampo(campos, 3),
+            valorCredito: converterValorMonetario(validarCampo(campos, 4, '0'))
+        };
+    }
+
+    function parseRegistroM200(campos) {
+        if (!validarEstruturaRegistro(campos, 14)) return null;
+        try {
+            return {
+                tipo: 'debito',
+                categoria: 'pis',
+                valorContribuicaoApurada: converterValorMonetario(validarCampo(campos, 5, '0')),
+                valorCredito: converterValorMonetario(validarCampo(campos, 6, '0')),
+                valorContribuicaoDevida: converterValorMonetario(validarCampo(campos, 7, '0')),
+                valorTotalRetencoes: converterValorMonetario(validarCampo(campos, 8, '0')),
+                valorTotalContribuicao: converterValorMonetario(validarCampo(campos, 9, '0')),
+                valorTotalDeducoes: converterValorMonetario(validarCampo(campos, 10, '0')),
+                valorContribuicaoAPagar: converterValorMonetario(validarCampo(campos, 11, '0')),
+                saldoCredorPeriodo: converterValorMonetario(validarCampo(campos, 12, '0'))
+            };
+        } catch (erro) {
+            console.warn('Erro ao processar registro M200:', erro.message);
+            return null;
+        }
+    }
+
+    function parseRegistroM205(campos) {
+        if (!validarEstruturaRegistro(campos, 7)) return null;
+        return {
+            tipo: 'ajuste_consolidacao',
+            categoria: 'pis',
+            numCampo: validarCampo(campos, 2),
+            codAj: validarCampo(campos, 3),
+            valorAjuste: converterValorMonetario(validarCampo(campos, 4, '0'))
+        };
+    }
+
+    function parseRegistroM210(campos) {
+        if (!validarEstruturaRegistro(campos, 8)) return null;
+        return {
+            tipo: 'detalhamento_consolidacao_pis',
+            categoria: 'pis',
+            codCont: validarCampo(campos, 2),
+            valorRec: converterValorMonetario(validarCampo(campos, 3, '0')),
+            valorContrib: converterValorMonetario(validarCampo(campos, 4, '0'))
+        };
+    }
+
+    function parseRegistroM220(campos) {
+        if (!validarEstruturaRegistro(campos, 7)) return null;
+        return {
+            tipo: 'demonstrativo_saldo_credor',
+            categoria: 'pis',
+            indAj: validarCampo(campos, 2),
+            valorAj: converterValorMonetario(validarCampo(campos, 3, '0')),
+            codAj: validarCampo(campos, 4)
+        };
+    }
+
+    function parseRegistroM225(campos) {
+        if (!validarEstruturaRegistro(campos, 6)) return null;
+        return {
+            tipo: 'detalhamento_demonstrativo_pis',
+            categoria: 'pis',
+            numDoc: validarCampo(campos, 2),
+            codItem: validarCampo(campos, 3),
+            valorAj: converterValorMonetario(validarCampo(campos, 4, '0'))
+        };
+    }
+
+    function parseRegistroM400(campos) {
+        if (!validarEstruturaRegistro(campos, 5)) return null;
+        return {
+            tipo: 'receita_nao_tributada',
+            categoria: 'pis',
+            cstPis: validarCampo(campos, 2),
+            valorTotRec: converterValorMonetario(validarCampo(campos, 3, '0')),
+            codCta: validarCampo(campos, 4)
+        };
+    }
+
+    function parseRegistroM410(campos) {
+        if (!validarEstruturaRegistro(campos, 8)) return null;
+        return {
+            tipo: 'detalhamento_receita_nao_tributada',
+            categoria: 'pis',
+            natRec: validarCampo(campos, 2),
+            valorRec: converterValorMonetario(validarCampo(campos, 3, '0')),
+            codCta: validarCampo(campos, 4),
+            descrCompl: validarCampo(campos, 5)
+        };
+    }
+
+    function parseRegistroM500(campos) {
+        if (!validarEstruturaRegistro(campos, 8)) return null;
+        return {
+            tipo: 'credito',
+            categoria: 'cofins',
+            codCredPres: validarCampo(campos, 2),
+            valorCredito: converterValorMonetario(validarCampo(campos, 3, '0')),
+            perCredPres: converterValorMonetario(validarCampo(campos, 4, '0')),
+            origem: 'registro_m500'
+        };
+    }
+
+    function parseRegistroM505(campos) {
+        if (!validarEstruturaRegistro(campos, 12)) return null;
+        try {
+            const baseCalculo = converterValorMonetario(validarCampo(campos, 6, '0'));
+            const aliquota = converterValorMonetario(validarCampo(campos, 7, '0'));
+            const valorCredito = converterValorMonetario(validarCampo(campos, 8, '0'));
+            return {
+                tipo: 'credito_detalhe',
+                categoria: 'cofins',
+                codigoCredito: validarCampo(campos, 3),
+                indicadorCreditoOriundo: validarCampo(campos, 4),
+                valorOperacao: converterValorMonetario(validarCampo(campos, 5, '0')),
+                baseCalculoCredito: baseCalculo,
+                aliquotaCredito: aliquota,
+                valorCredito: valorCredito,
+                descricaoItemServico: validarCampo(campos, 9),
+                codigoContaContabil: validarCampo(campos, 10)
+            };
+        } catch (erro) {
+            console.warn('Erro ao processar registro M505:', erro.message);
+            return null;
+        }
+    }
+
+    function parseRegistroM510(campos) {
+        if (!validarEstruturaRegistro(campos, 7)) return null;
+        return {
+            tipo: 'ajuste',
+            categoria: 'cofins',
+            indAjuste: validarCampo(campos, 2),
+            valorAjuste: converterValorMonetario(validarCampo(campos, 3, '0')),
+            codAjuste: validarCampo(campos, 4)
+        };
+    }
+
+    function parseRegistroM515(campos) {
+        if (!validarEstruturaRegistro(campos, 6)) return null;
+        return {
+            tipo: 'detalhamento_ajuste',
+            categoria: 'cofins',
+            detalhamentoAjuste: validarCampo(campos, 2),
+            codCred: validarCampo(campos, 3),
+            valorCredito: converterValorMonetario(validarCampo(campos, 4, '0'))
+        };
+    }
+
+    function parseRegistroM600(campos) {
+        if (!validarEstruturaRegistro(campos, 14)) return null;
+        try {
+            return {
+                tipo: 'debito',
+                categoria: 'cofins',
+                valorContribuicaoApurada: converterValorMonetario(validarCampo(campos, 5, '0')),
+                valorCredito: converterValorMonetario(validarCampo(campos, 6, '0')),
+                valorContribuicaoDevida: converterValorMonetario(validarCampo(campos, 7, '0')),
+                valorTotalRetencoes: converterValorMonetario(validarCampo(campos, 8, '0')),
+                valorTotalContribuicao: converterValorMonetario(validarCampo(campos, 9, '0')),
+                valorTotalDeducoes: converterValorMonetario(validarCampo(campos, 10, '0')),
+                valorContribuicaoAPagar: converterValorMonetario(validarCampo(campos, 11, '0')),
+                saldoCredorPeriodo: converterValorMonetario(validarCampo(campos, 12, '0'))
+            };
+        } catch (erro) {
+            console.warn('Erro ao processar registro M600:', erro.message);
+            return null;
+        }
+    }
+
+    function parseRegistroM605(campos) {
+        if (!validarEstruturaRegistro(campos, 7)) return null;
+        return {
+            tipo: 'ajuste_consolidacao',
+            categoria: 'cofins',
+            numCampo: validarCampo(campos, 2),
+            codAj: validarCampo(campos, 3),
+            valorAjuste: converterValorMonetario(validarCampo(campos, 4, '0'))
+        };
+    }
+
+    function parseRegistroM610(campos) {
+        if (!validarEstruturaRegistro(campos, 8)) return null;
+        return {
+            tipo: 'detalhamento_consolidacao_cofins',
+            categoria: 'cofins',
+            codCont: validarCampo(campos, 2),
+            valorRec: converterValorMonetario(validarCampo(campos, 3, '0')),
+            valorContrib: converterValorMonetario(validarCampo(campos, 4, '0'))
+        };
+    }
+
+    function parseRegistroM620(campos) {
+        if (!validarEstruturaRegistro(campos, 7)) return null;
+        return {
+            tipo: 'demonstrativo_saldo_credor',
+            categoria: 'cofins',
+            indAj: validarCampo(campos, 2),
+            valorAj: converterValorMonetario(validarCampo(campos, 3, '0')),
+            codAj: validarCampo(campos, 4)
+        };
+    }
+
+    function parseRegistroM625(campos) {
+        if (!validarEstruturaRegistro(campos, 6)) return null;
+        return {
+            tipo: 'detalhamento_demonstrativo_cofins',
+            categoria: 'cofins',
+            numDoc: validarCampo(campos, 2),
+            codItem: validarCampo(campos, 3),
+            valorAj: converterValorMonetario(validarCampo(campos, 4, '0'))
+        };
+    }
+
+    function parseRegistroM800(campos) {
+        if (!validarEstruturaRegistro(campos, 5)) return null;
+        return {
+            tipo: 'receita_nao_tributada',
+            categoria: 'cofins',
+            cstCofins: validarCampo(campos, 2),
+            valorTotRec: converterValorMonetario(validarCampo(campos, 3, '0')),
+            codCta: validarCampo(campos, 4)
+        };
+    }
+
+    function parseRegistroM810(campos) {
+        if (!validarEstruturaRegistro(campos, 8)) return null;
+        return {
+            tipo: 'detalhamento_receita_nao_tributada',
+            categoria: 'cofins',
+            natRec: validarCampo(campos, 2),
+            valorRec: converterValorMonetario(validarCampo(campos, 3, '0')),
+            codCta: validarCampo(campos, 4),
+            descrCompl: validarCampo(campos, 5)
+        };
+    }
+
+    function parseRegistroP100(campos) {
+        if (!validarEstruturaRegistro(campos, 15)) return null;
+        return {
+            tipo: 'contribuicao_previdenciaria',
+            categoria: 'previdenciaria',
+            valorBcCp: converterValorMonetario(validarCampo(campos, 2, '0')),
+            aliqCp: converterValorMonetario(validarCampo(campos, 3, '0')),
+            valorCp: converterValorMonetario(validarCampo(campos, 4, '0')),
+            codCta: validarCampo(campos, 5),
+            descrCompl: validarCampo(campos, 6)
+        };
+    }
+
+    function parseRegistroP110(campos) {
+        if (!validarEstruturaRegistro(campos, 7)) return null;
+        return {
+            tipo: 'ajuste_contribuicao_previdenciaria',
+            categoria: 'previdenciaria',
+            numCampo: validarCampo(campos, 2),
+            codAj: validarCampo(campos, 3),
+            valorAjuste: converterValorMonetario(validarCampo(campos, 4, '0'))
+        };
+    }
+
+    function parseRegistroP199(campos) {
+        if (!validarEstruturaRegistro(campos, 4)) return null;
+        return {
+            tipo: 'processo_referenciado',
+            categoria: 'contribuicao_previdenciaria',
+            numProc: validarCampo(campos, 2),
+            indProc: validarCampo(campos, 3)
+        };
+    }
+
+    function parseRegistroP200(campos) {
+        if (!validarEstruturaRegistro(campos, 10)) return null;
+        return {
+            tipo: 'consolidacao_contribuicao_previdenciaria',
+            categoria: 'previdenciaria',
+            valorTotalCp: converterValorMonetario(validarCampo(campos, 2, '0')),
+            valorTotalAjuste: converterValorMonetario(validarCampo(campos, 3, '0')),
+            valorApagar: converterValorMonetario(validarCampo(campos, 4, '0'))
+        };
+    }
+
+    function parseRegistroP210(campos) {
+        if (!validarEstruturaRegistro(campos, 7)) return null;
+        return {
+            tipo: 'ajuste_consolidacao_previdenciaria',
+            categoria: 'previdenciaria',
+            numCampo: validarCampo(campos, 2),
+            codAj: validarCampo(campos, 3),
+            valorAjuste: converterValorMonetario(validarCampo(campos, 4, '0'))
+        };
+    }
+
+    function parseRegistro1001(campos) {
+        if (!validarEstruturaRegistro(campos, 3)) return null;
+        return {
+            tipo: 'encerramento',
+            indMov: validarCampo(campos, 2)
+        };
+    }
+
+    function parseRegistro1100(campos) {
+        if (!validarEstruturaRegistro(campos, 15)) return null;
+        return {
+            tipo: 'totalizacao',
+            categoria: 'pis',
+            perApur: validarCampo(campos, 2),
+            valorRecBrt: converterValorMonetario(validarCampo(campos, 3, '0')),
+            valorBcPis: converterValorMonetario(validarCampo(campos, 4, '0')),
+            valorPis: converterValorMonetario(validarCampo(campos, 5, '0')),
+            valorCredPis: converterValorMonetario(validarCampo(campos, 6, '0')),
+            valorContribPis: converterValorMonetario(validarCampo(campos, 7, '0'))
+        };
+    }
+
+    function parseRegistro1200(campos) {
+        if (!validarEstruturaRegistro(campos, 15)) return null;
+        return {
+            tipo: 'totalizacao',
+            categoria: 'cofins',
+            perApur: validarCampo(campos, 2),
+            valorRecBrt: converterValorMonetario(validarCampo(campos, 3, '0')),
+            valorBcCofins: converterValorMonetario(validarCampo(campos, 4, '0')),
+            valorCofins: converterValorMonetario(validarCampo(campos, 5, '0')),
+            valorCredCofins: converterValorMonetario(validarCampo(campos, 6, '0')),
+            valorContribCofins: converterValorMonetario(validarCampo(campos, 7, '0'))
+        };
+    }
+
+    function parseRegistro1300(campos) {
+        if (!validarEstruturaRegistro(campos, 10)) return null;
+        return {
+            tipo: 'totalizacao',
+            categoria: 'previdenciaria',
+            perApur: validarCampo(campos, 2),
+            valorTotContPrev: converterValorMonetario(validarCampo(campos, 3, '0')),
+            valorTotFol: converterValorMonetario(validarCampo(campos, 4, '0')),
+            valorExcBcCont: converterValorMonetario(validarCampo(campos, 5, '0'))
+        };
+    }
+
+    function parseRegistro1500(campos) {
+        if (!validarEstruturaRegistro(campos, 25)) return null;
+        return {
+            tipo: 'totalizacao',
+            categoria: 'geral',
+            perApur: validarCampo(campos, 2),
+            valorRecTribMI: converterValorMonetario(validarCampo(campos, 3, '0')),
+            valorRecNTribMI: converterValorMonetario(validarCampo(campos, 4, '0')),
+            valorRecExp: converterValorMonetario(validarCampo(campos, 5, '0')),
+            valorRecTotExt: converterValorMonetario(validarCampo(campos, 6, '0'))
+        };
+    }
+
+    // =============================
+    // FUNÇÕES DE PARSING - ECF
+    // =============================
+
+    function parseRegistro0000ECF(campos) {
+        if (!validarEstruturaRegistro(campos, 11)) return null;
+        return {
+            tipo: 'empresa',
+            nome: validarCampo(campos, 7),
+            cnpj: validarCampo(campos, 6),
+            dataInicial: validarCampo(campos, 4),
+            dataFinal: validarCampo(campos, 5),
+            situacaoEspecial: validarCampo(campos, 8),
+            eventoSitEsp: validarCampo(campos, 9),
+            naturezaLivro: validarCampo(campos, 10),
+            finalidadeEscr: validarCampo(campos, 11)
+        };
+    }
+
+    function parseRegistro0010ECF(campos) {
+        if (!validarEstruturaRegistro(campos, 6)) return null;
+        return {
+            tipo: 'hash_arquivo',
+            hash: validarCampo(campos, 2),
+            arquivoRtf: validarCampo(campos, 3),
+            indSitEsp: validarCampo(campos, 4)
+        };
+    }
+
+    function parseRegistro0020ECF(campos) {
+        if (!validarEstruturaRegistro(campos, 8)) return null;
+        return {
+            tipo: 'empresa_detalhes',
+            indAlteracaoPC: validarCampo(campos, 2),
+            codIncidencia: validarCampo(campos, 3),
+            indApExt: validarCampo(campos, 4),
+            indCPC: validarCampo(campos, 5),
+            codVersao: validarCampo(campos, 6),
+            codEntRef: validarCampo(campos, 7)
+        };
+    }
+
+    function parseRegistroJ001ECF(campos) {
+        if (!validarEstruturaRegistro(campos, 3)) return null;
+        return {
+            tipo: 'abertura_bloco',
+            bloco: 'J',
+            indicadorMovimento: validarCampo(campos, 2)
+        };
+    }
+
+    function parseRegistroJ050ECF(campos) {
+        if (!validarEstruturaRegistro(campos, 6)) return null;
+        return {
+            tipo: 'dre',
+            codConta: validarCampo(campos, 2),
+            descrConta: validarCampo(campos, 3),
+            valorConta: converterValorMonetario(validarCampo(campos, 4, '0')),
+            indDC: validarCampo(campos, 5)
+        };
+    }
+
+    // =============================
+    // REGISTROS DE CONTROLE E ENCERRAMENTO - SPED FISCAL
+    // =============================
+
+    function parseRegistro9900(campos) {
+        if (!validarEstruturaRegistro(campos, 4)) return null;
+        return {
+            tipo: 'totalizacao_registro',
+            categoria: 'controle',
+            regBlc: validarCampo(campos, 2),
+            qtdRegBlc: converterValorMonetario(validarCampo(campos, 3, '0'))
+        };
+    }
+
+    function parseRegistro9990(campos) {
+        if (!validarEstruturaRegistro(campos, 3)) return null;
+        return {
+            tipo: 'encerramento_bloco',
+            categoria: 'controle',
+            qtdLin9: converterValorMonetario(validarCampo(campos, 2, '0'))
+        };
+    }
+
+    function parseRegistro9999(campos) {
+        if (!validarEstruturaRegistro(campos, 3)) return null;
+        return {
+            tipo: 'encerramento_arquivo',
+            categoria: 'controle',
+            qtdLin: converterValorMonetario(validarCampo(campos, 2, '0'))
+        };
+    }
+
+    // =============================
+    // FUNÇÕES DE PARSING - SPED ECF
+    // =============================
+
+    function parseRegistroJ051ECF(campos) {
+        if (!validarEstruturaRegistro(campos, 6)) return null;
+        return {
+            tipo: 'plano_contas_referencial',
+            categoria: 'conta_referencial',
+            codConta: validarCampo(campos, 2),
+            codContaRef: validarCampo(campos, 3),
+            descrConta: validarCampo(campos, 4)
+        };
+    }
+
+    function parseRegistroJ100ECF(campos) {
+        if (!validarEstruturaRegistro(campos, 5)) return null;
+        return {
+            tipo: 'centro_custo',
+            categoria: 'centro_custo',
+            dataAlt: validarCampo(campos, 2),
+            codCcus: validarCampo(campos, 3),
+            descrCcus: validarCampo(campos, 4)
+        };
+    }
+
+    function parseRegistroK001ECF(campos) {
+        if (!validarEstruturaRegistro(campos, 3)) return null;
+        return {
+            tipo: 'abertura_bloco',
+            categoria: 'saldos_contabeis',
+            bloco: 'K',
+            indicadorMovimento: validarCampo(campos, 2)
+        };
+    }
+
+    function parseRegistroK030ECF(campos) {
+        if (!validarEstruturaRegistro(campos, 4)) return null;
+        return {
+            tipo: 'periodo_apuracao',
+            categoria: 'identificacao_periodo',
+            dataIni: validarCampo(campos, 2),
+            dataFim: validarCampo(campos, 3)
+        };
+    }
+
+    function parseRegistroK155ECF(campos) {
+        if (!validarEstruturaRegistro(campos, 7)) return null;
+        return {
+            tipo: 'saldo_contabil',
+            categoria: 'saldo_final',
+            codConta: validarCampo(campos, 2),
+            codCcus: validarCampo(campos, 3),
+            valorSaldo: converterValorMonetario(validarCampo(campos, 4, '0')),
+            indDC: validarCampo(campos, 5)
+        };
+    }
+
+    function parseRegistroK156ECF(campos) {
+        if (!validarEstruturaRegistro(campos, 5)) return null;
+        return {
+            tipo: 'mapeamento_referencial',
+            categoria: 'saldo_final',
+            codConta: validarCampo(campos, 2),
+            codContaRef: validarCampo(campos, 3),
+            valorSaldo: converterValorMonetario(validarCampo(campos, 4, '0'))
+        };
+    }
+
+    function parseRegistroL001ECF(campos) {
+        if (!validarEstruturaRegistro(campos, 3)) return null;
+        return {
+            tipo: 'abertura_bloco',
+            categoria: 'lalur_lacs',
+            bloco: 'L',
+            indicadorMovimento: validarCampo(campos, 2)
+        };
+    }
+
+    function parseRegistroL030ECF(campos) {
+        if (!validarEstruturaRegistro(campos, 4)) return null;
+        return {
+            tipo: 'periodo_lalur',
+            categoria: 'identificacao_periodo',
+            dataIni: validarCampo(campos, 2),
+            dataFim: validarCampo(campos, 3)
+        };
+    }
+
+    function parseRegistroL100ECF(campos) {
+        if (!validarEstruturaRegistro(campos, 8)) return null;
+        return {
+            tipo: 'demonstracao_lucro',
+            categoria: 'lalur',
+            codConta: validarCampo(campos, 2),
+            descrConta: validarCampo(campos, 3),
+            valorConta: converterValorMonetario(validarCampo(campos, 4, '0')),
+            indDC: validarCampo(campos, 5)
+        };
+    }
+
+    function parseRegistroM001ECF(campos) {
+        if (!validarEstruturaRegistro(campos, 3)) return null;
+        return {
+            tipo: 'abertura_bloco',
+            categoria: 'lalur_lacs',
+            bloco: 'M',
+            indicadorMovimento: validarCampo(campos, 2)
+        };
+    }
+
+    function parseRegistroM010ECF(campos) {
+        if (!validarEstruturaRegistro(campos, 6)) return null;
+        return {
+            tipo: 'conta_parte_b',
+            categoria: 'lalur_lacs',
+            codConta: validarCampo(campos, 2),
+            descrConta: validarCampo(campos, 3),
+            sinalConta: validarCampo(campos, 4)
+        };
+    }
+
+    function parseRegistroM300ECF(campos) {
+        if (!validarEstruturaRegistro(campos, 8)) return null;
+        return {
+            tipo: 'demonstracao_lucro_real',
+            categoria: 'lalur',
+            codLinha: validarCampo(campos, 2),
+            descrLinha: validarCampo(campos, 3),
+            valorLinha: converterValorMonetario(validarCampo(campos, 4, '0'))
+        };
+    }
+
+    function parseRegistroM350ECF(campos) {
+        if (!validarEstruturaRegistro(campos, 8)) return null;
+        return {
+            tipo: 'demonstracao_csll',
+            categoria: 'lacs',
+            codLinha: validarCampo(campos, 2),
+            descrLinha: validarCampo(campos, 3),
+            valorLinha: converterValorMonetario(validarCampo(campos, 4, '0'))
+        };
+    }
+
+    function parseRegistroN001ECF(campos) {
+        if (!validarEstruturaRegistro(campos, 3)) return null;
+        return {
+            tipo: 'abertura_bloco',
+            categoria: 'informacoes_diversas',
+            bloco: 'N',
+            indicadorMovimento: validarCampo(campos, 2)
+        };
+    }
+
+    function parseRegistroN500ECF(campos) {
+        if (!validarEstruturaRegistro(campos, 15)) return null;
+        return {
+            tipo: 'credito_imposto_exterior',
+            categoria: 'imposto_exterior',
+            paisOrigem: validarCampo(campos, 2),
+            valorImposto: converterValorMonetario(validarCampo(campos, 3, '0')),
+            tipoRendimento: validarCampo(campos, 4)
+        };
+    }
+
+    function parseRegistroN600ECF(campos) {
+        if (!validarEstruturaRegistro(campos, 12)) return null;
+        return {
+            tipo: 'consolidacao_exterior',
+            categoria: 'exterior',
+            paisDestino: validarCampo(campos, 2),
+            valorOperacao: converterValorMonetario(validarCampo(campos, 3, '0')),
+            tipoOperacao: validarCampo(campos, 4)
+        };
+    }
+
+    function parseRegistroN610ECF(campos) {
+        if (!validarEstruturaRegistro(campos, 10)) return null;
+        return {
+            tipo: 'detalhe_exterior',
+            categoria: 'exterior',
+            codOperacao: validarCampo(campos, 2),
+            valorDetalhado: converterValorMonetario(validarCampo(campos, 3, '0'))
+        };
+    }
+
+    function parseRegistroN620ECF(campos) {
+        if (!validarEstruturaRegistro(campos, 8)) return null;
+        return {
+            tipo: 'pessoa_vinculada_exterior',
+            categoria: 'exterior',
+            nomeVinculada: validarCampo(campos, 2),
+            paisVinculada: validarCampo(campos, 3),
+            valorVinculada: converterValorMonetario(validarCampo(campos, 4, '0'))
+        };
+    }
+
+    function parseRegistroN630ECF(campos) {
+        if (!validarEstruturaRegistro(campos, 12)) return null;
+        return {
+            tipo: 'preco_transferencia',
+            categoria: 'exterior',
+            metodoPrecificacao: validarCampo(campos, 2),
+            valorAjuste: converterValorMonetario(validarCampo(campos, 3, '0'))
+        };
+    }
+
+    function parseRegistroN650ECF(campos) {
+        if (!validarEstruturaRegistro(campos, 10)) return null;
+        return {
+            tipo: 'consolidacao_pais',
+            categoria: 'exterior',
+            codPais: validarCampo(campos, 2),
+            valorConsolidado: converterValorMonetario(validarCampo(campos, 3, '0'))
+        };
+    }
+
+    function parseRegistroN660ECF(campos) {
+        if (!validarEstruturaRegistro(campos, 8)) return null;
+        return {
+            tipo: 'detalhamento_pais',
+            categoria: 'exterior',
+            tipoOperacaoPais: validarCampo(campos, 2),
+            valorPais: converterValorMonetario(validarCampo(campos, 3, '0'))
+        };
+    }
+
+    function parseRegistroN670ECF(campos) {
+        if (!validarEstruturaRegistro(campos, 6)) return null;
+        return {
+            tipo: 'complemento_exterior',
+            categoria: 'exterior',
+            informacaoComplementar: validarCampo(campos, 2),
+            valorComplemento: converterValorMonetario(validarCampo(campos, 3, '0'))
+        };
+    }
+
+    function parseRegistroP001ECF(campos) {
+        if (!validarEstruturaRegistro(campos, 3)) return null;
+        return {
+            tipo: 'abertura_bloco',
+            categoria: 'rendimentos_exterior',
+            bloco: 'P',
+            indicadorMovimento: validarCampo(campos, 2)
+        };
+    }
+
+    function parseRegistroP030ECF(campos) {
+        if (!validarEstruturaRegistro(campos, 4)) return null;
+        return {
+            tipo: 'periodo_rendimento',
+            categoria: 'identificacao_periodo',
+            dataIni: validarCampo(campos, 2),
+            dataFim: validarCampo(campos, 3)
+        };
+    }
+
+    function parseRegistroP100ECF(campos) {
+        if (!validarEstruturaRegistro(campos, 12)) return null;
+        return {
+            tipo: 'rendimento_exterior',
+            categoria: 'rendimento',
+            paisOrigem: validarCampo(campos, 2),
+            valorRendimento: converterValorMonetario(validarCampo(campos, 3, '0')),
+            tipoRendimento: validarCampo(campos, 4)
+        };
+    }
+
+    function parseRegistroP130ECF(campos) {
+        if (!validarEstruturaRegistro(campos, 8)) return null;
+        return {
+            tipo: 'imposto_exterior_pago',
+            categoria: 'imposto_pago',
+            paisImposto: validarCampo(campos, 2),
+            valorImposto: converterValorMonetario(validarCampo(campos, 3, '0'))
+        };
+    }
+
+    function parseRegistroP150ECF(campos) {
+        if (!validarEstruturaRegistro(campos, 10)) return null;
+        return {
+            tipo: 'credito_compensavel',
+            categoria: 'credito',
+            valorCredito: converterValorMonetario(validarCampo(campos, 2, '0')),
+            anoCredito: validarCampo(campos, 3)
+        };
+    }
+
+    function parseRegistroP200ECF(campos) {
+        if (!validarEstruturaRegistro(campos, 15)) return null;
+        return {
+            tipo: 'consolidacao_rendimento',
+            categoria: 'rendimento',
+            totalRendimentos: converterValorMonetario(validarCampo(campos, 2, '0')),
+            totalImpostos: converterValorMonetario(validarCampo(campos, 3, '0'))
+        };
+    }
+
+    function parseRegistroP230ECF(campos) {
+        if (!validarEstruturaRegistro(campos, 12)) return null;
+        return {
+            tipo: 'demonstrativo_credito',
+            categoria: 'credito',
+            creditoDisponivel: converterValorMonetario(validarCampo(campos, 2, '0')),
+            creditoUtilizado: converterValorMonetario(validarCampo(campos, 3, '0'))
+        };
+    }
+
+    function parseRegistroT001ECF(campos) {
+        if (!validarEstruturaRegistro(campos, 3)) return null;
+        return {
+            tipo: 'abertura_bloco',
+            categoria: 'rubricas_receita',
+            bloco: 'T',
+            indicadorMovimento: validarCampo(campos, 2)
+        };
+    }
+
+    function parseRegistroT030ECF(campos) {
+        if (!validarEstruturaRegistro(campos, 4)) return null;
+        return {
+            tipo: 'periodo_rubrica',
+            categoria: 'identificacao_periodo',
+            dataIni: validarCampo(campos, 2),
+            dataFim: validarCampo(campos, 3)
+        };
+    }
+
+    function parseRegistroT120ECF(campos) {
+        if (!validarEstruturaRegistro(campos, 10)) return null;
+        return {
+            tipo: 'rubrica_receita',
+            categoria: 'receita',
+            codRubrica: validarCampo(campos, 2),
+            descrRubrica: validarCampo(campos, 3),
+            valorRubrica: converterValorMonetario(validarCampo(campos, 4, '0'))
+        };
+    }
+
+    function parseRegistroT150ECF(campos) {
+        if (!validarEstruturaRegistro(campos, 8)) return null;
+        return {
+            tipo: 'deducao_receita',
+            categoria: 'deducao',
+            codDeducao: validarCampo(campos, 2),
+            valorDeducao: converterValorMonetario(validarCampo(campos, 3, '0'))
+        };
+    }
+
+    function parseRegistroU001ECF(campos) {
+        if (!validarEstruturaRegistro(campos, 3)) return null;
+        return {
+            tipo: 'abertura_bloco',
+            categoria: 'demais_informacoes',
+            bloco: 'U',
+            indicadorMovimento: validarCampo(campos, 2)
+        };
+    }
+
+    function parseRegistroU030ECF(campos) {
+        if (!validarEstruturaRegistro(campos, 4)) return null;
+        return {
+            tipo: 'periodo_informacao',
+            categoria: 'identificacao_periodo',
+            dataIni: validarCampo(campos, 2),
+            dataFim: validarCampo(campos, 3)
+        };
+    }
+
+    function parseRegistroU100ECF(campos) {
+        if (!validarEstruturaRegistro(campos, 12)) return null;
+        return {
+            tipo: 'informacao_adicional',
+            categoria: 'informacao',
+            codInfo: validarCampo(campos, 2),
+            descrInfo: validarCampo(campos, 3),
+            valorInfo: converterValorMonetario(validarCampo(campos, 4, '0'))
+        };
+    }
+
+    function parseRegistroY540ECF(campos) {
+        if (!validarEstruturaRegistro(campos, 8)) return null;
+        console.warn('SPED-PARSER: Registro Y540 foi descontinuado no leiaute 7 da ECF (dezembro 2020)');
+        return {
+            tipo: 'receita_vendas_descontinuado',
+            categoria: 'vendas',
+            codAtividade: validarCampo(campos, 2),
+            valorVendas: converterValorMonetario(validarCampo(campos, 3, '0')),
+            observacao: 'Registro descontinuado - Leiaute 7'
+        };
+    }
+
+    // =============================
+    // FUNÇÕES DE PARSING - SPED ECD
+    // =============================
+
+    function parseRegistro0000ECD(campos) {
+        if (!validarEstruturaRegistro(campos, 15)) return null;
+        return {
+            tipo: 'empresa',
+            categoria: 'identificacao',
+            cnpj: validarCampo(campos, 8),
+            nome: validarCampo(campos, 9),
+            dataInicial: validarCampo(campos, 5),
+            dataFinal: validarCampo(campos, 6),
+            versaoLeiaute: validarCampo(campos, 3)
+        };
+    }
+
+    function parseRegistro0001ECD(campos) {
+        if (!validarEstruturaRegistro(campos, 3)) return null;
+        return {
+            tipo: 'abertura_bloco',
+            categoria: 'identificacao',
+            bloco: '0',
+            indicadorMovimento: validarCampo(campos, 2)
+        };
+    }
+
+    function parseRegistro0007ECD(campos) {
+        if (!validarEstruturaRegistro(campos, 15)) return null;
+        return {
+            tipo: 'entidade_empresarial',
+            categoria: 'identificacao',
+            codEntRef: validarCampo(campos, 2),
+            codCcm: validarCampo(campos, 3),
+            codScp: validarCampo(campos, 4)
+        };
+    }
+
+    function parseRegistro0020ECD(campos) {
+        if (!validarEstruturaRegistro(campos, 8)) return null;
+        return {
+            tipo: 'escrituracao_contabil',
+            categoria: 'identificacao',
+            indSitEsp: validarCampo(campos, 2),
+            dtSitEsp: validarCampo(campos, 3),
+            numRec: validarCampo(campos, 4)
+        };
+    }
+
+    function parseRegistroI001ECD(campos) {
+        if (!validarEstruturaRegistro(campos, 3)) return null;
+        return {
+            tipo: 'abertura_bloco',
+            categoria: 'lancamentos',
+            bloco: 'I',
+            indicadorMovimento: validarCampo(campos, 2)
+        };
+    }
+
+    function parseRegistroI010ECD(campos) {
+        if (!validarEstruturaRegistro(campos, 6)) return null;
+        return {
+            tipo: 'identificacao_escrituracao',
+            categoria: 'escrituracao',
+            indEsc: validarCampo(campos, 2),
+            codVerLc: validarCampo(campos, 3),
+            nomeLivro: validarCampo(campos, 4)
+        };
+    }
+
+    function parseRegistroI012ECD(campos) {
+        if (!validarEstruturaRegistro(campos, 5)) return null;
+        return {
+            tipo: 'livros_auxiliares',
+            categoria: 'escrituracao',
+            numOrdLivro: validarCampo(campos, 2),
+            natLivro: validarCampo(campos, 3),
+            tipoEsc: validarCampo(campos, 4)
+        };
+    }
+
+    function parseRegistroI015ECD(campos) {
+        if (!validarEstruturaRegistro(campos, 8)) return null;
+        return {
+            tipo: 'identificacao_conta',
+            categoria: 'conta',
+            codCtaSup: validarCampo(campos, 2),
+            codCta: validarCampo(campos, 3),
+            nomeCta: validarCampo(campos, 4),
+            codEcdRef: validarCampo(campos, 5)
+        };
+    }
+
+    function parseRegistroI020ECD(campos) {
+        if (!validarEstruturaRegistro(campos, 6)) return null;
+        return {
+            tipo: 'abertura_comparativo',
+            categoria: 'comparativo',
+            regEcd: validarCampo(campos, 2),
+            hashEcd: validarCampo(campos, 3),
+            numOrdEcd: validarCampo(campos, 4)
+        };
+    }
+
+    function parseRegistroI030ECD(campos) {
+        if (!validarEstruturaRegistro(campos, 8)) return null;
+        return {
+            tipo: 'termo_abertura',
+            categoria: 'termo',
+            numOrd: validarCampo(campos, 2),
+            natLivro: validarCampo(campos, 3),
+            qtdLinhas: converterValorMonetario(validarCampo(campos, 4, '0')),
+            nomeCidade: validarCampo(campos, 5),
+            dataAbert: validarCampo(campos, 6),
+            numInscr: validarCampo(campos, 7)
+        };
+    }
+
+    function parseRegistroI050ECD(campos) {
+        if (!validarEstruturaRegistro(campos, 8)) return null;
+        return {
+            tipo: 'dados_balancos',
+            categoria: 'balanco',
+            dataMovto: validarCampo(campos, 2),
+            codCta: validarCampo(campos, 3),
+            valorDebito: converterValorMonetario(validarCampo(campos, 4, '0')),
+            valorCredito: converterValorMonetario(validarCampo(campos, 5, '0')),
+            valorSaldo: converterValorMonetario(validarCampo(campos, 6, '0')),
+            indDCCred: validarCampo(campos, 7)
+        };
+    }
+
+    function parseRegistroI051ECD(campos) {
+        if (!validarEstruturaRegistro(campos, 7)) return null;
+        return {
+            tipo: 'plano_contas_referencial_ecd',
+            categoria: 'plano_contas',
+            codEcdRef: validarCampo(campos, 2),
+            codCtaRef: validarCampo(campos, 3),
+            codSubCtaRef: validarCampo(campos, 4)
+        };
+    }
+
+    function parseRegistroI052ECD(campos) {
+        if (!validarEstruturaRegistro(campos, 6)) return null;
+        return {
+            tipo: 'indicacao_codigo',
+            categoria: 'codigo',
+            codCcus: validarCampo(campos, 2),
+            codCta: validarCampo(campos, 3),
+            valorSaldo: converterValorMonetario(validarCampo(campos, 4, '0'))
+        };
+    }
+
+    function parseRegistroI053ECD(campos) {
+        if (!validarEstruturaRegistro(campos, 8)) return null;
+        return {
+            tipo: 'subconta_correlata',
+            categoria: 'subconta',
+            codIdent: validarCampo(campos, 2),
+            codCtaCorr: validarCampo(campos, 3),
+            nomeCta: validarCampo(campos, 4)
+        };
+    }
+
+    function parseRegistroI100ECD(campos) {
+        if (!validarEstruturaRegistro(campos, 7)) return null;
+        return {
+            tipo: 'centro_custo_ecd',
+            categoria: 'centro_custo',
+            dataAlt: validarCampo(campos, 2),
+            codCcus: validarCampo(campos, 3),
+            nomeCcus: validarCampo(campos, 4)
+        };
+    }
+
+    function parseRegistroI150ECD(campos) {
+        if (!validarEstruturaRegistro(campos, 8)) return null;
+        return {
+            tipo: 'saldo_periodo',
+            categoria: 'saldo',
+            dataIni: validarCampo(campos, 2),
+            dataFim: validarCampo(campos, 3),
+            codCta: validarCampo(campos, 4),
+            valorDebito: converterValorMonetario(validarCampo(campos, 5, '0')),
+            valorCredito: converterValorMonetario(validarCampo(campos, 6, '0'))
+        };
+    }
+
+    function parseRegistroI155ECD(campos) {
+        if (!validarEstruturaRegistro(campos, 9)) return null;
+        return {
+            tipo: 'detalhe_saldo_contabil',
+            categoria: 'saldo_detalhado',
+            codCta: validarCampo(campos, 2),
+            codCcus: validarCampo(campos, 3),
+            valorSaldoIni: converterValorMonetario(validarCampo(campos, 4, '0')),
+            indDCSaldoIni: validarCampo(campos, 5),
+            valorSaldoFim: converterValorMonetario(validarCampo(campos, 6, '0')),
+            indDCSaldoFim: validarCampo(campos, 7)
+        };
+    }
+
+    function parseRegistroI200ECD(campos) {
+        if (!validarEstruturaRegistro(campos, 15)) return null;
+        return {
+            tipo: 'lancamento_contabil',
+            categoria: 'lancamento',
+            numLanc: validarCampo(campos, 2),
+            dataLanc: validarCampo(campos, 3),
+            valorLanc: converterValorMonetario(validarCampo(campos, 4, '0')),
+            indLanc: validarCampo(campos, 5),
+            descrLanc: validarCampo(campos, 6),
+            codHist: validarCampo(campos, 7),
+            descrHist: validarCampo(campos, 8),
+            descrCompl: validarCampo(campos, 9)
+        };
+    }
+
+    function parseRegistroI250ECD(campos) {
+        if (!validarEstruturaRegistro(campos, 8)) return null;
+        return {
+            tipo: 'partida_lancamento',
+            categoria: 'partida',
+            codCta: validarCampo(campos, 2),
+            codCcus: validarCampo(campos, 3),
+            valorPartida: converterValorMonetario(validarCampo(campos, 4, '0')),
+            indDC: validarCampo(campos, 5),
+            numLinea: validarCampo(campos, 6)
+        };
+    }
+
+    function parseRegistroI300ECD(campos) {
+        if (!validarEstruturaRegistro(campos, 12)) return null;
+        return {
+            tipo: 'balancete_verificacao',
+            categoria: 'balancete',
+            dataBalancete: validarCampo(campos, 2),
+            codCta: validarCampo(campos, 3),
+            valorSaldoIni: converterValorMonetario(validarCampo(campos, 4, '0')),
+            indDCSaldoIni: validarCampo(campos, 5),
+            valorDebito: converterValorMonetario(validarCampo(campos, 6, '0')),
+            valorCredito: converterValorMonetario(validarCampo(campos, 7, '0')),
+            valorSaldoFim: converterValorMonetario(validarCampo(campos, 8, '0')),
+            indDCSaldoFim: validarCampo(campos, 9)
+        };
+    }
+
+    function parseRegistroI310ECD(campos) {
+        if (!validarEstruturaRegistro(campos, 6)) return null;
+        return {
+            tipo: 'indicacao_grau_balancete',
+            categoria: 'balancete',
+            codEcdRef: validarCampo(campos, 2),
+            codSubCtaCorr: validarCampo(campos, 3)
+        };
+    }
+
+    function parseRegistroI350ECD(campos) {
+        if (!validarEstruturaRegistro(campos, 8)) return null;
+        return {
+            tipo: 'resultado_periodo',
+            categoria: 'resultado',
+            dataResIni: validarCampo(campos, 2),
+            dataResFim: validarCampo(campos, 3),
+            codCta: validarCampo(campos, 4),
+            valorSaldoFim: converterValorMonetario(validarCampo(campos, 5, '0')),
+            indDCSaldoFim: validarCampo(campos, 6)
+        };
+    }
+
+    function parseRegistroI355ECD(campos) {
+        if (!validarEstruturaRegistro(campos, 6)) return null;
+        return {
+            tipo: 'resultado_centro_custo',
+            categoria: 'resultado',
+            codCcus: validarCampo(campos, 2),
+            valorResultado: converterValorMonetario(validarCampo(campos, 3, '0')),
+            indDCRes: validarCampo(campos, 4)
+        };
+    }
+
+    function parseRegistroJ001ECD(campos) {
+        if (!validarEstruturaRegistro(campos, 3)) return null;
+        return {
+            tipo: 'abertura_bloco',
+            categoria: 'demonstracoes_contabeis',
+            bloco: 'J',
+            indicadorMovimento: validarCampo(campos, 2)
+        };
+    }
+
+    function parseRegistroJ005ECD(campos) {
+        if (!validarEstruturaRegistro(campos, 8)) return null;
+        return {
+            tipo: 'demonstracao_resultado',
+            categoria: 'demonstracao',
+            dataIni: validarCampo(campos, 2),
+            dataFim: validarCampo(campos, 3),
+            idDem: validarCampo(campos, 4),
+            cabDem: validarCampo(campos, 5)
+        };
+    }
+
+    function parseRegistroJ100ECD(campos) {
+        if (!validarEstruturaRegistro(campos, 8)) return null;
+        return {
+            tipo: 'balanco_patrimonial',
+            categoria: 'balanco',
+            codAgl: validarCampo(campos, 2),
+            nomeAgl: validarCampo(campos, 3),
+            codAglSup: validarCampo(campos, 4),
+            valorAgl: converterValorMonetario(validarCampo(campos, 5, '0')),
+            indDCAgl: validarCampo(campos, 6)
+        };
+    }
+
+    function parseRegistroJ150ECD(campos) {
+        if (!validarEstruturaRegistro(campos, 8)) return null;
+        return {
+            tipo: 'demonstracao_resultado_exercicio',
+            categoria: 'dre',
+            codAgl: validarCampo(campos, 2),
+            nomeAgl: validarCampo(campos, 3),
+            codAglSup: validarCampo(campos, 4),
+            valorAgl: converterValorMonetario(validarCampo(campos, 5, '0')),
+            indDCAgl: validarCampo(campos, 6)
+        };
+    }
+
+    function parseRegistroK001ECD(campos) {
+        if (!validarEstruturaRegistro(campos, 3)) return null;
+        return {
+            tipo: 'abertura_bloco',
+            categoria: 'conglomerados',
+            bloco: 'K',
+            indicadorMovimento: validarCampo(campos, 2)
+        };
+    }
+
+    function parseRegistroK030ECD(campos) {
+        if (!validarEstruturaRegistro(campos, 4)) return null;
+        return {
+            tipo: 'periodo_consolidacao',
+            categoria: 'consolidacao',
+            dataIni: validarCampo(campos, 2),
+            dataFim: validarCampo(campos, 3)
+        };
+    }
+
+    function parseRegistroK100ECD(campos) {
+        if (!validarEstruturaRegistro(campos, 12)) return null;
+        return {
+            tipo: 'empresa_consolidada',
+            categoria: 'consolidacao',
+            codEmpresa: validarCampo(campos, 2),
+            nomeEmpresa: validarCampo(campos, 3),
+            cnpjEmpresa: validarCampo(campos, 4),
+            codCcm: validarCampo(campos, 5),
+            codScp: validarCampo(campos, 6),
+            percentualPart: converterValorMonetario(validarCampo(campos, 7, '0'))
+        };
+    }
+
+    function parseRegistroK155ECD(campos) {
+        if (!validarEstruturaRegistro(campos, 8)) return null;
+        return {
+            tipo: 'evento_societario',
+            categoria: 'consolidacao',
+            codEvento: validarCampo(campos, 2),
+            dataEvento: validarCampo(campos, 3),
+            descrEvento: validarCampo(campos, 4)
+        };
+    }
+
+    function parseRegistroK156ECD(campos) {
+        if (!validarEstruturaRegistro(campos, 6)) return null;
+        return {
+            tipo: 'empresa_evento',
+            categoria: 'consolidacao',
+            codEmpresaEvento: validarCampo(campos, 2),
+            valorEvento: converterValorMonetario(validarCampo(campos, 3, '0'))
+        };
+    }
+
+    function parseRegistroK200ECD(campos) {
+        if (!validarEstruturaRegistro(campos, 8)) return null;
+        return {
+            tipo: 'plano_contas_consolidado',
+            categoria: 'plano_contas_consolidado',
+            codCtaConsolidada: validarCampo(campos, 2),
+            nomeCtaConsolidada: validarCampo(campos, 3),
+            codCtaSup: validarCampo(campos, 4)
+        };
+    }
+
+    function parseRegistroK220ECD(campos) {
+        if (!validarEstruturaRegistro(campos, 6)) return null;
+        return {
+            tipo: 'mapeamento_consolidacao',
+            categoria: 'mapeamento',
+            codEmpresaMap: validarCampo(campos, 2),
+            codCtaEmpresa: validarCampo(campos, 3),
+            codCtaConsolidada: validarCampo(campos, 4)
+        };
+    }
+
+    function parseRegistroK230ECD(campos) {
+        if (!validarEstruturaRegistro(campos, 8)) return null;
+        return {
+            tipo: 'saldo_consolidado',
+            categoria: 'saldo_consolidado',
+            codCtaConsolidada: validarCampo(campos, 2),
+            valorSaldoConsolidado: converterValorMonetario(validarCampo(campos, 3, '0')),
+            indDCSaldoConsolidado: validarCampo(campos, 4)
+        };
+    }
+
+    function parseRegistroK300ECD(campos) {
+        if (!validarEstruturaRegistro(campos, 12)) return null;
+        return {
+            tipo: 'eliminacao_consolidacao',
+            categoria: 'eliminacao',
+            codEliminacao: validarCampo(campos, 2),
+            descrEliminacao: validarCampo(campos, 3),
+            valorEliminacao: converterValorMonetario(validarCampo(campos, 4, '0')),
+            codEmpresaOrigemElim: validarCampo(campos, 5),
+            codEmpresaDestinoElim: validarCampo(campos, 6)
+        };
+    }   
+        
+    // Atualização do mapeamento de registros
+    registrosMapeados.fiscal['9900'] = parseRegistro9900;
+    registrosMapeados.fiscal['9990'] = parseRegistro9990;
+    registrosMapeados.fiscal['9999'] = parseRegistro9999;
+
+    registrosMapeados.ecf['J050'] = parseRegistroJ050ECF;
+    registrosMapeados.ecf['K155'] = parseRegistroK155ECF;
+    registrosMapeados.ecf['L100'] = parseRegistroL100ECF;
+
+    registrosMapeados.ecd['I150'] = parseRegistroI150ECD;
+    registrosMapeados.ecd['I200'] = parseRegistroI200ECD;
+    registrosMapeados.ecd['K100'] = parseRegistroK100ECD;
+
+    registrosMapeados.contribuicoes['M105'] = parseRegistroM105;
+    registrosMapeados.contribuicoes['M505'] = parseRegistroM505;
     
-    // Interface pública do módulo
+    // Interface pública
     return {
-        parsearArquivoSped,
-        validarArquivoSped,
-        CONFIG,
-        SpedParserAprimorado
+        processarArquivo,
+        tiposSuportados: Object.keys(registrosMapeados),
+        versao: '2.0.0-corrigida'
     };
 })();
+
+// Garantir que o SpedParser seja carregado globalmente
+if (typeof window !== 'undefined') {
+    window.SpedParser = SpedParser;
+    console.log('SPED-PARSER: Módulo carregado com sucesso na versão', SpedParser.versao);
+}

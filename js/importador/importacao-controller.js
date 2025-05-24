@@ -1,940 +1,1243 @@
 /**
- * @fileoverview Controlador principal para importação e processamento de arquivos SPED
- * Coordena todo o fluxo de importação, processamento e integração com o simulador
- * 
- * @module importacao-controller
- * @author Expertzy Inteligência Tributária
- * @version 1.0.0
+ * Controller do módulo de importação SPED - VERSÃO CORRIGIDA
+ * Gerencia a interface de usuário e o fluxo de importação
+ * VERSÃO CORRIGIDA - Janeiro 2025
  */
-
-window.ImportacaoController = (function() {
+const ImportacaoController = (function() {
+    // Elementos da interface
+    let elements = {};
+    let dadosImportados = null;
+    let logImportacao = [];
     
-    // Estado do controlador
-    let estadoImportacao = {
-        arquivosCarregados: {},
-        dadosProcessados: {},
-        errosProcessamento: [],
-        statusAtual: 'aguardando',
-        progressoTotal: 0
-    };
-
-    // Configurações do controlador
-    const CONFIG = {
-        tamanhoMaximoArquivo: 50 * 1024 * 1024, // 50MB
-        tiposArquivoAceitos: ['.txt'],
-        timeoutProcessamento: 120000, // 2 minutos
-        logDetalhado: true
-    };
-
     /**
-     * Inicializa o controlador de importação
+     * Inicializa o controller
      */
     function inicializar() {
-        console.log('Inicializando Controlador de Importação SPED...');
+        console.log('IMPORTACAO-CONTROLLER: Iniciando inicialização...');
         
-        // Verificar dependências
-        if (!window.SpedParser) {
-            console.error('SpedParser não encontrado. Carregue sped-parser.js primeiro.');
+        // Verificar dependências críticas
+        if (!verificarDependencias()) {
+            console.error('IMPORTACAO-CONTROLLER: Dependências não atendidas');
             return false;
         }
         
-        if (!window.SpedExtractor) {
-            console.error('SpedExtractor não encontrado. Carregue sped-extractor.js primeiro.');
+        // Mapear elementos da interface
+        if (!mapearElementos()) {
+            console.error('IMPORTACAO-CONTROLLER: Falha ao mapear elementos da interface');
             return false;
         }
-
-        if (!window.DataManager) {
-            console.error('DataManager não encontrado. Sistema de importação requer DataManager.');
-            return false;
-        }
-
-        // Configurar event listeners
-        configurarEventListeners();
-
-        // Limpar estado inicial
-        limparEstadoImportacao();
-
-        adicionarLogImportacao('✓ Controlador de Importação SPED inicializado com sucesso', 'info');
+        
+        // Adicionar event listeners
+        adicionarEventListeners();
+        
+        // Configurar log
+        configurarSistemaLog();
+        
+        console.log('IMPORTACAO-CONTROLLER: Inicialização concluída com sucesso');
         return true;
     }
-
+    
     /**
-     * Configura os event listeners para a interface de importação
+     * Verifica se as dependências estão disponíveis
      */
-    function configurarEventListeners() {
-        // Botão de importação principal
-        const btnImportar = document.getElementById('btn-importar-sped');
-        if (btnImportar) {
-            btnImportar.addEventListener('click', iniciarProcessoImportacao);
-        }
+    function verificarDependencias() {
+        const dependencias = [
+            { nome: 'SpedParser', objeto: window.SpedParser },
+            { nome: 'SpedExtractor', objeto: window.SpedExtractor },
+            { nome: 'DataManager', objeto: window.DataManager }
+        ];
+        
+        let todasDisponíveis = true;
+        
+        dependencias.forEach(dep => {
+            if (!dep.objeto) {
+                console.error(`IMPORTACAO-CONTROLLER: ${dep.nome} não encontrado`);
+                todasDisponíveis = false;
+            } else {
+                console.log(`IMPORTACAO-CONTROLLER: ✓ ${dep.nome} disponível`);
+            }
+        });
+        
+        return todasDisponíveis;
+    }
+    
+    /**
+     * Mapeia elementos da interface
+     */
+    function mapearElementos() {
+        elements = {
+            // Inputs de arquivo
+            spedFiscal: document.getElementById('sped-fiscal'),
+            spedContribuicoes: document.getElementById('sped-contribuicoes'),
+            spedEcf: document.getElementById('sped-ecf'),
+            spedEcd: document.getElementById('sped-ecd'),
 
-        // Botão de cancelamento
-        const btnCancelar = document.getElementById('btn-cancelar-importacao');
-        if (btnCancelar) {
-            btnCancelar.addEventListener('click', cancelarImportacao);
-        }
+            // Checkboxes de opções
+            importEmpresa: document.getElementById('import-empresa'),
+            importProdutos: document.getElementById('import-produtos'),
+            importImpostos: document.getElementById('import-impostos'),
+            importCiclo: document.getElementById('import-ciclo'),
 
-        // Inputs de arquivo
-        const inputsArquivo = [
-            'sped-fiscal',
-            'sped-contribuicoes', 
-            'sped-ecf',
-            'sped-ecd'
+            // Controles adicionais
+            periodoReferencia: document.getElementById('periodo-referencia'),
+
+            // Botões
+            btnImportar: document.getElementById('btn-importar-sped'),
+            btnCancelar: document.getElementById('btn-cancelar-importacao'),
+
+            // Área de log
+            logArea: document.getElementById('import-log'),
+
+            // Controles de log
+            btnLimparLog: document.getElementById('btn-limpar-log'),
+            btnExportarLog: document.getElementById('btn-exportar-log'),
+
+            // Filtros de log
+            filtroInfo: document.getElementById('filtro-info'),
+            filtroWarning: document.getElementById('filtro-warning'),
+            filtroError: document.getElementById('filtro-error'),
+            filtroSuccess: document.getElementById('filtro-success'),
+
+            // Estatísticas
+            logStatistics: document.getElementById('log-statistics'),
+            statTotal: document.getElementById('stat-total'),
+            statSuccess: document.getElementById('stat-success'),
+            statWarnings: document.getElementById('stat-warnings'),
+            statErrors: document.getElementById('stat-errors')
+        };
+
+        // Verificar elementos críticos usando o mapeamento correto
+        const elementosCriticos = [
+            { id: 'btn-importar-sped', prop: 'btnImportar' },
+            { id: 'btn-cancelar-importacao', prop: 'btnCancelar' },
+            { id: 'import-log', prop: 'logArea' }
         ];
 
-        inputsArquivo.forEach(id => {
-            const input = document.getElementById(id);
-            if (input) {
-                input.addEventListener('change', function(event) {
-                    validarArquivoSelecionado(event.target, id);
-                });
+        let elementosEncontrados = 0;
+        elementosCriticos.forEach(elemento => {
+            if (elements[elemento.prop]) {
+                elementosEncontrados++;
+                console.log(`IMPORTACAO-CONTROLLER: ✓ ${elemento.id} mapeado com sucesso`);
+            } else {
+                console.warn(`IMPORTACAO-CONTROLLER: ✗ Elemento ${elemento.id} não encontrado no DOM`);
             }
         });
 
-        console.log('Event listeners configurados para importação SPED');
+        // Verificar elementos opcionais
+        const elementosOpcionais = ['spedFiscal', 'spedContribuicoes', 'spedEcf', 'spedEcd'];
+        elementosOpcionais.forEach(prop => {
+            if (elements[prop]) {
+                console.log(`IMPORTACAO-CONTROLLER: ✓ ${prop} disponível`);
+            } else {
+                console.warn(`IMPORTACAO-CONTROLLER: ⚠ ${prop} não encontrado (opcional)`);
+            }
+        });
+
+        const sucesso = elementosEncontrados >= elementosCriticos.length - 1;
+        console.log(`IMPORTACAO-CONTROLLER: Mapeamento ${sucesso ? 'bem-sucedido' : 'falhou'} (${elementosEncontrados}/${elementosCriticos.length} elementos críticos)`);
+
+        return sucesso;
     }
 
+    
     /**
-     * Valida arquivo selecionado pelo usuário
-     * @param {HTMLInputElement} input - Input de arquivo
-     * @param {string} tipoSped - Tipo de SPED (fiscal, contribuicoes, etc.)
+     * Adiciona os event listeners aos elementos da interface
      */
-    function validarArquivoSelecionado(input, tipoSped) {
-        if (!input.files || input.files.length === 0) {
+    function adicionarEventListeners() {
+        // Botões principais
+        if (elements.btnImportar) {
+            elements.btnImportar.addEventListener('click', iniciarImportacao);
+        }
+        
+        if (elements.btnCancelar) {
+            elements.btnCancelar.addEventListener('click', cancelarImportacao);
+        }
+        
+        // Controles de log
+        if (elements.btnLimparLog) {
+            elements.btnLimparLog.addEventListener('click', limparLog);
+        }
+        
+        if (elements.btnExportarLog) {
+            elements.btnExportarLog.addEventListener('click', exportarLog);
+        }
+        
+        // Filtros de log
+        const filtros = ['filtroInfo', 'filtroWarning', 'filtroError', 'filtroSuccess'];
+        filtros.forEach(filtro => {
+            if (elements[filtro]) {
+                elements[filtro].addEventListener('change', aplicarFiltrosLog);
+            }
+        });
+        
+        console.log('IMPORTACAO-CONTROLLER: Event listeners configurados');
+    }
+    
+    /**
+     * Configura o sistema de log
+     */
+    function configurarSistemaLog() {
+        logImportacao = [];
+        atualizarEstatisticasLog();
+        
+        // Configurar log inicial
+        if (elements.logArea) {
+            elements.logArea.innerHTML = '<p class="text-muted">Selecione os arquivos SPED e clique em "Importar Dados" para iniciar o processo.</p>';
+        }
+    }
+    
+    /**
+     * Inicia o processo de importação
+     */
+    function iniciarImportacao() {
+        console.log('IMPORTACAO-CONTROLLER: Iniciando processo de importação');
+        
+        // Limpar dados anteriores
+        dadosImportados = null;
+        limparLog();
+        
+        // Verificar arquivos selecionados
+        if (!verificarArquivosSelecionados()) {
+            adicionarLog('Selecione pelo menos um arquivo SPED para importação.', 'error');
+            return;
+        }
+        
+        // Desabilitar botão durante processamento
+        if (elements.btnImportar) {
+            elements.btnImportar.disabled = true;
+            elements.btnImportar.textContent = 'Processando...';
+        }
+        
+        adicionarLog('Iniciando importação de dados SPED...', 'info');
+        
+        // Processar arquivos selecionados
+        const promessas = [];
+        
+        if (elements.spedFiscal?.files.length > 0) {
+            promessas.push(processarArquivoSped(elements.spedFiscal.files[0], 'fiscal'));
+        }
+        
+        if (elements.spedContribuicoes?.files.length > 0) {
+            promessas.push(processarArquivoSped(elements.spedContribuicoes.files[0], 'contribuicoes'));
+        }
+        
+        if (elements.spedEcf?.files.length > 0) {
+            promessas.push(processarArquivoSped(elements.spedEcf.files[0], 'ecf'));
+        }
+        
+        if (elements.spedEcd?.files.length > 0) {
+            promessas.push(processarArquivoSped(elements.spedEcd.files[0], 'ecd'));
+        }
+        
+        // Aguardar processamento de todos os arquivos
+        Promise.all(promessas)
+            .then(resultados => {
+                console.log('IMPORTACAO-CONTROLLER: Todos os arquivos processados', resultados);
+                
+                // Combinar os resultados
+                const dadosCombinados = combinarResultados(resultados);
+                
+                // Extrair dados para o simulador
+                const dadosSimulador = window.SpedExtractor.extrairDadosParaSimulador(dadosCombinados);
+                
+                // Armazenar dados importados
+                dadosImportados = dadosSimulador;
+                window.dadosImportadosSped = dadosImportados; // Global para referência
+                
+                // Preencher campos do simulador
+                preencherCamposSimulador(dadosSimulador);
+                
+                adicionarLog('Importação concluída com sucesso!', 'success');
+                adicionarLog(`Dados da empresa: ${dadosSimulador.empresa?.nome || 'N/A'}`, 'info');
+                adicionarLog(`Faturamento mensal: ${formatarMoeda(dadosSimulador.empresa?.faturamento || 0)}`, 'info');
+                
+            })
+            .catch(erro => {
+                console.error('IMPORTACAO-CONTROLLER: Erro durante importação:', erro);
+                adicionarLog('Erro durante a importação: ' + erro.message, 'error');
+            })
+            .finally(() => {
+                // Reabilitar botão
+                if (elements.btnImportar) {
+                    elements.btnImportar.disabled = false;
+                    elements.btnImportar.textContent = 'Importar Dados';
+                }
+            });
+    }
+    
+    /**
+     * Processa um arquivo SPED
+     */
+    function processarArquivoSped(arquivo, tipo) {
+        adicionarLog(`Processando arquivo ${arquivo.name} (${tipo})...`, 'info');
+
+        return new Promise((resolve, reject) => {
+            try {
+                window.SpedParser.processarArquivo(arquivo, tipo)
+                    .then(dados => {
+                        // Adicionar metadados ao resultado
+                        dados.metadados = {
+                            ...dados.metadados,
+                            nomeArquivo: arquivo.name,
+                            tipoArquivo: tipo,
+                            tamanhoBytes: arquivo.size,
+                            dataProcessamento: new Date().toISOString()
+                        };
+
+                        // Log detalhado dos dados encontrados
+                        logDadosExtraidos(dados, tipo);
+
+                        adicionarLog(`Arquivo ${arquivo.name} processado com sucesso.`, 'success');
+                        resolve(dados);
+                    })
+                    .catch(erro => {
+                        adicionarLog(`Erro ao processar ${arquivo.name}: ${erro.message}`, 'error');
+                        console.error('IMPORTACAO-CONTROLLER: Erro no processamento:', erro);
+                        reject(erro);
+                    });
+            } catch (erro) {
+                adicionarLog(`Erro ao processar ${arquivo.name}: ${erro.message}`, 'error');
+                reject(erro);
+            }
+        });
+    }
+    
+    /**
+     * Adiciona logs detalhados sobre os dados extraídos
+     */
+    function logDadosExtraidos(dados, tipo) {
+        const resumo = {
+            tipo: tipo,
+            empresa: dados.empresa?.nome || 'N/A',
+            documentos: dados.documentos?.length || 0,
+            itens: dados.itens?.length || 0,
+            creditos: Object.keys(dados.creditos || {}).length,
+            debitos: Object.keys(dados.debitos || {}).length,
+            impostos: Object.keys(dados.impostos || {}).length
+        };
+
+        // Log resumido na interface
+        adicionarLog(`${tipo.toUpperCase()}: ${resumo.documentos} docs, ${resumo.creditos} tipos de crédito, ${resumo.debitos} tipos de débito`, 'info');
+
+        // Log detalhado no console
+        console.log(`IMPORTACAO-CONTROLLER: Resumo ${tipo}:`, resumo);
+
+        // Logs específicos por tipo
+        switch(tipo) {
+            case 'fiscal':
+                if (dados.debitos?.icms?.length > 0) {
+                    const valorICMS = dados.debitos.icms.reduce((sum, d) => sum + (d.valorTotalDebitos || 0), 0);
+                    adicionarLog(`ICMS: ${dados.debitos.icms.length} registros, valor total R$ ${valorICMS.toFixed(2)}`, 'info');
+                }
+                break;
+
+            case 'contribuicoes':
+                ['pis', 'cofins'].forEach(imposto => {
+                    if (dados.debitos?.[imposto]?.length > 0) {
+                        const valor = dados.debitos[imposto].reduce((sum, d) => sum + (d.valorTotalContribuicao || 0), 0);
+                        adicionarLog(`${imposto.toUpperCase()}: ${dados.debitos[imposto].length} registros, valor R$ ${valor.toFixed(2)}`, 'info');
+                    }
+                    
+                    if (dados.creditos?.[imposto]?.length > 0) {
+                        const valor = dados.creditos[imposto].reduce((sum, c) => sum + (c.valorCredito || 0), 0);
+                        adicionarLog(`Créditos ${imposto.toUpperCase()}: ${dados.creditos[imposto].length} registros, valor R$ ${valor.toFixed(2)}`, 'info');
+                    }
+                });
+                break;
+
+            case 'ecf':
+                if (dados.dre?.receita_liquida?.valor) {
+                    adicionarLog(`Receita líquida: R$ ${dados.dre.receita_liquida.valor.toFixed(2)}`, 'info');
+                }
+                if (dados.incentivosFiscais?.length > 0) {
+                    const valorIncentivos = dados.incentivosFiscais.reduce((sum, i) => sum + (i.valorIncentivo || 0), 0);
+                    adicionarLog(`Incentivos fiscais: ${dados.incentivosFiscais.length} registros, valor R$ ${valorIncentivos.toFixed(2)}`, 'info');
+                }
+                break;
+
+            case 'ecd':
+                if (dados.balancoPatrimonial?.length > 0) {
+                    adicionarLog(`Balanço: ${dados.balancoPatrimonial.length} contas`, 'info');
+                }
+                if (dados.demonstracaoResultado?.length > 0) {
+                    adicionarLog(`DRE: ${dados.demonstracaoResultado.length} contas`, 'info');
+                }
+                break;
+        }
+    }
+    
+    /**
+     * Combina os resultados de múltiplos arquivos SPED
+     */
+    function combinarResultados(resultados) {
+        console.log('IMPORTACAO-CONTROLLER: Combinando resultados de', resultados.length, 'arquivos');
+        
+        // Estrutura combinada expandida
+        const combinado = {
+            empresa: {},
+            documentos: [],
+            itens: [],
+            itensAnaliticos: [],
+            impostos: {},
+            creditos: {},
+            debitos: {},
+            regimes: {},
+            ajustes: {},
+            receitasNaoTributadas: {},
+            balancoPatrimonial: [],
+            demonstracaoResultado: [],
+            lancamentosContabeis: [],
+            partidasLancamento: [],
+            calculoImposto: {},
+            incentivosFiscais: [],
+            participantes: [],
+            inventario: [],
+            discriminacaoReceita: [],
+            totalizacao: {},
+            detalhamento: {},
+            metadados: {
+                arquivosProcessados: [],
+                combinadoEm: new Date().toISOString()
+            }
+        };
+
+        // Combinar resultados com validação
+        resultados.forEach(resultado => {
+            if (!resultado || typeof resultado !== 'object') return;
+
+            // Registrar arquivo processado
+            if (resultado.metadados) {
+                combinado.metadados.arquivosProcessados.push(resultado.metadados);
+            }
+
+            // Dados da empresa - priorizar o mais completo
+            if (resultado.empresa && Object.keys(resultado.empresa).length > 0) {
+                const nomeAtual = resultado.empresa.nome || '';
+                const nomeExistente = combinado.empresa.nome || '';
+
+                if (nomeAtual && (!nomeExistente || Object.keys(combinado.empresa).length < Object.keys(resultado.empresa).length)) {
+                    combinado.empresa = { ...resultado.empresa };
+                }
+            }
+
+            // Arrays simples - concatenar
+            const arrayProps = [
+                'documentos', 'itens', 'itensAnaliticos', 'balancoPatrimonial',
+                'demonstracaoResultado', 'lancamentosContabeis', 'partidasLancamento',
+                'incentivosFiscais', 'participantes', 'inventario', 'discriminacaoReceita'
+            ];
+
+            arrayProps.forEach(prop => {
+                if (Array.isArray(resultado[prop])) {
+                    combinado[prop] = combinado[prop].concat(resultado[prop]);
+                }
+            });
+
+            // Objetos de arrays categorizados - mesclar por categoria
+            const objArrayProps = ['impostos', 'creditos', 'debitos', 'ajustes', 'receitasNaoTributadas', 'totalizacao', 'detalhamento'];
+
+            objArrayProps.forEach(prop => {
+                if (resultado[prop] && typeof resultado[prop] === 'object') {
+                    Object.entries(resultado[prop]).forEach(([categoria, valores]) => {
+                        if (!combinado[prop][categoria]) {
+                            combinado[prop][categoria] = [];
+                        }
+                        if (Array.isArray(valores)) {
+                            combinado[prop][categoria] = combinado[prop][categoria].concat(valores);
+                        }
+                    });
+                }
+            });
+
+            // Objetos simples - mesclar com preferência para dados mais detalhados
+            const objProps = ['regimes', 'calculoImposto'];
+
+            objProps.forEach(prop => {
+                if (resultado[prop] && typeof resultado[prop] === 'object') {
+                    if (!combinado[prop]) combinado[prop] = {};
+
+                    Object.entries(resultado[prop]).forEach(([chave, valor]) => {
+                        if (!combinado[prop][chave] || 
+                            (typeof valor === 'object' && 
+                             Object.keys(valor).length > Object.keys(combinado[prop][chave] || {}).length)) {
+                            combinado[prop][chave] = { ...valor };
+                        }
+                    });
+                }
+            });
+        });
+
+        // Processa relações cruzadas
+        // Adicionar após a linha ~472
+        processarRelacoesCruzadas(combinado);
+
+        // Debug do balanço patrimonial
+        if (window.location.search.includes('debug=true')) {
+            diagnosticarBalancoPatrimonial(combinado);
+        }
+
+        console.log('IMPORTACAO-CONTROLLER: Resultados combinados:', {
+            empresa: !!combinado.empresa.nome,
+            documentos: combinado.documentos.length,
+            creditos: Object.keys(combinado.creditos).length,
+            debitos: Object.keys(combinado.debitos).length
+        });
+
+        return combinado;
+    }
+    
+    /**
+     * Processa relações cruzadas entre dados
+     */
+    function processarRelacoesCruzadas(dados) {
+        // Relacionar documentos com participantes
+        if (dados.documentos.length > 0 && dados.participantes?.length > 0) {
+            const participantesPorCodigo = {};
+            dados.participantes.forEach(participante => {
+                if (participante.codigo) {
+                    participantesPorCodigo[participante.codigo] = participante;
+                }
+            });
+
+            dados.documentos.forEach(doc => {
+                if (doc.codPart && participantesPorCodigo[doc.codPart]) {
+                    doc.participante = participantesPorCodigo[doc.codPart];
+                }
+            });
+        }
+
+        // Calcular valores agregados se não existirem
+        calcularValoresAgregados(dados);
+    }
+    
+    /**
+     * Calcula valores agregados com validação robusta
+     */
+    function calcularValoresAgregados(dados) {
+        // Calcular receita bruta com base nos documentos se não existir
+        if (!dados.receitaBruta && dados.documentos.length > 0) {
+            const documentosSaida = dados.documentos.filter(doc => 
+                doc.indOper === '1' && doc.situacao === '00'
+            );
+
+            if (documentosSaida.length > 0) {
+                const receitaPorMes = {};
+                documentosSaida.forEach(doc => {
+                    if (!doc.dataEmissao) return;
+
+                    const dataEmissao = doc.dataEmissao.replace(/(\d{2})(\d{2})(\d{4})/, '$3-$2');
+                    const valorDoc = doc.valorTotal || 0;
+
+                    if (!receitaPorMes[dataEmissao]) {
+                        receitaPorMes[dataEmissao] = 0;
+                    }
+                    receitaPorMes[dataEmissao] += valorDoc;
+                });
+
+                if (Object.keys(receitaPorMes).length > 0) {
+                    const totalReceita = Object.values(receitaPorMes).reduce((sum, val) => sum + val, 0);
+                    dados.receitaBruta = totalReceita * 12 / Object.keys(receitaPorMes).length;
+                }
+            }
+        }
+
+        // Calcular saldos contábeis se disponível - COM VALIDAÇÃO ROBUSTA
+        if (dados.balancoPatrimonial?.length > 0) {
+            try {
+                // Função auxiliar para validar conta
+                const validarConta = (conta) => {
+                    return conta && 
+                           typeof conta === 'object' && 
+                           (conta.codigoConta || conta.codigo || conta.numeroConta);
+                };
+
+                // Função auxiliar para obter código da conta
+                const obterCodigoConta = (conta) => {
+                    return conta.codigoConta || conta.codigo || conta.numeroConta || '';
+                };
+
+                // Função auxiliar para obter descrição da conta
+                const obterDescricaoConta = (conta) => {
+                    return conta.descricaoConta || conta.descricao || conta.nome || '';
+                };
+
+                // Calcular saldo de clientes
+                dados.saldoClientes = dados.balancoPatrimonial
+                    .filter(conta => {
+                        if (!validarConta(conta)) return false;
+
+                        const codigo = obterCodigoConta(conta);
+                        const descricao = obterDescricaoConta(conta).toLowerCase();
+                        const natureza = conta.naturezaSaldo || conta.natureza || '';
+
+                        const isCodigoClientes = codigo.startsWith('1.1.2') || 
+                                               codigo.startsWith('112') || 
+                                               codigo.includes('cliente');
+                        const isDescricaoClientes = descricao.includes('client') || 
+                                                  descricao.includes('duplicata') || 
+                                                  descricao.includes('receb');
+                        const isNaturezaDebito = natureza === 'D' || natureza === 'Débito';
+
+                        return (isCodigoClientes || isDescricaoClientes) && isNaturezaDebito;
+                    })
+                    .reduce((sum, conta) => {
+                        const saldo = conta.saldoFinal || conta.saldo || conta.valor || 0;
+                        return sum + (typeof saldo === 'number' ? saldo : 0);
+                    }, 0);
+
+                // Calcular saldo de estoques
+                dados.saldoEstoques = dados.balancoPatrimonial
+                    .filter(conta => {
+                        if (!validarConta(conta)) return false;
+
+                        const codigo = obterCodigoConta(conta);
+                        const descricao = obterDescricaoConta(conta).toLowerCase();
+                        const natureza = conta.naturezaSaldo || conta.natureza || '';
+
+                        const isCodigoEstoque = codigo.startsWith('1.1.3') || 
+                                              codigo.startsWith('113') || 
+                                              codigo.includes('estoq');
+                        const isDescricaoEstoque = descricao.includes('estoq') || 
+                                                 descricao.includes('mercador') || 
+                                                 descricao.includes('produto');
+                        const isNaturezaDebito = natureza === 'D' || natureza === 'Débito';
+
+                        return (isCodigoEstoque || isDescricaoEstoque) && isNaturezaDebito;
+                    })
+                    .reduce((sum, conta) => {
+                        const saldo = conta.saldoFinal || conta.saldo || conta.valor || 0;
+                        return sum + (typeof saldo === 'number' ? saldo : 0);
+                    }, 0);
+
+                // Calcular saldo de fornecedores
+                dados.saldoFornecedores = dados.balancoPatrimonial
+                    .filter(conta => {
+                        if (!validarConta(conta)) return false;
+
+                        const codigo = obterCodigoConta(conta);
+                        const descricao = obterDescricaoConta(conta).toLowerCase();
+                        const natureza = conta.naturezaSaldo || conta.natureza || '';
+
+                        const isCodigoFornecedor = codigo.startsWith('2.1.1') || 
+                                                 codigo.startsWith('211') || 
+                                                 codigo.includes('fornece');
+                        const isDescricaoFornecedor = descricao.includes('fornece') || 
+                                                    descricao.includes('duplicata') || 
+                                                    descricao.includes('pagar');
+                        const isNaturezaCredito = natureza === 'C' || natureza === 'Crédito';
+
+                        return (isCodigoFornecedor || isDescricaoFornecedor) && isNaturezaCredito;
+                    })
+                    .reduce((sum, conta) => {
+                        const saldo = conta.saldoFinal || conta.saldo || conta.valor || 0;
+                        return sum + (typeof saldo === 'number' ? saldo : 0);
+                    }, 0);
+
+                console.log('IMPORTACAO-CONTROLLER: Saldos calculados:', {
+                    saldoClientes: dados.saldoClientes,
+                    saldoEstoques: dados.saldoEstoques,
+                    saldoFornecedores: dados.saldoFornecedores
+                });
+
+            } catch (erro) {
+                console.warn('IMPORTACAO-CONTROLLER: Erro ao calcular saldos contábeis:', erro.message);
+                // Definir valores padrão em caso de erro
+                dados.saldoClientes = 0;
+                dados.saldoEstoques = 0;
+                dados.saldoFornecedores = 0;
+
+                // Log detalhado para debug
+                console.warn('IMPORTACAO-CONTROLLER: Estrutura do balanço patrimonial:', 
+                    dados.balancoPatrimonial.slice(0, 3));
+            }
+        } else {
+            // Definir valores padrão se não há dados do balanço
+            dados.saldoClientes = 0;
+            dados.saldoEstoques = 0;
+            dados.saldoFornecedores = 0;
+        }
+    }
+    
+    /**
+     * Função para diagnosticar estrutura do balanço patrimonial
+     */
+    function diagnosticarBalancoPatrimonial(dados) {
+        if (!dados.balancoPatrimonial?.length) {
+            console.log('IMPORTACAO-CONTROLLER: Balanço patrimonial não encontrado');
             return;
         }
 
-        const arquivo = input.files[0];
-        const validacao = {
-            valido: true,
-            erros: [],
-            avisos: []
-        };
+        console.log('IMPORTACAO-CONTROLLER: Diagnóstico do balanço patrimonial:');
+        console.log('Total de contas:', dados.balancoPatrimonial.length);
 
-        // Validar tamanho
-        if (arquivo.size > CONFIG.tamanhoMaximoArquivo) {
-            validacao.valido = false;
-            validacao.erros.push(`Arquivo muito grande: ${formatarTamanhoArquivo(arquivo.size)}. Máximo: ${formatarTamanhoArquivo(CONFIG.tamanhoMaximoArquivo)}`);
-        }
+        // Analisar primeiras 5 contas para entender a estrutura
+        const amostra = dados.balancoPatrimonial.slice(0, 5);
 
-        // Validar extensão
-        const extensao = arquivo.name.toLowerCase().split('.').pop();
-        if (!CONFIG.tiposArquivoAceitos.includes('.' + extensao)) {
-            validacao.erros.push(`Tipo de arquivo não suportado: .${extensao}. Tipos aceitos: ${CONFIG.tiposArquivoAceitos.join(', ')}`);
-        }
-
-        // Validar nome do arquivo (heurística simples)
-        const nomeArquivo = arquivo.name.toLowerCase();
-        if (!nomeArquivo.includes('sped') && !nomeArquivo.includes('efd') && !nomeArquivo.includes('ecf') && !nomeArquivo.includes('ecd')) {
-            validacao.avisos.push('Nome do arquivo não parece ser de um SPED. Verifique se o arquivo está correto.');
-        }
-
-        // Atualizar interface com resultado da validação
-        atualizarStatusValidacao(tipoSped, validacao);
-
-        // Armazenar arquivo se válido
-        if (validacao.valido) {
-            estadoImportacao.arquivosCarregados[tipoSped] = {
-                arquivo: arquivo,
-                validacao: validacao,
-                timestampCarregamento: new Date().toISOString()
-            };
-            
-            adicionarLogImportacao(`📁 Arquivo ${arquivo.name} carregado para ${tipoSped.toUpperCase()}`, 'info');
-        } else {
-            // Limpar arquivo inválido
-            input.value = '';
-            delete estadoImportacao.arquivosCarregados[tipoSped];
-            
-            adicionarLogImportacao(`❌ Arquivo ${arquivo.name} rejeitado: ${validacao.erros.join(', ')}`, 'error');
-        }
+        amostra.forEach((conta, index) => {
+            console.log(`Conta ${index + 1}:`, {
+                propriedades: Object.keys(conta),
+                codigoConta: conta.codigoConta,
+                codigo: conta.codigo,
+                numeroConta: conta.numeroConta,
+                descricaoConta: conta.descricaoConta,
+                descricao: conta.descricao,
+                nome: conta.nome,
+                naturezaSaldo: conta.naturezaSaldo,
+                natureza: conta.natureza,
+                saldoFinal: conta.saldoFinal,
+                saldo: conta.saldo,
+                valor: conta.valor
+            });
+        });
     }
-
+    
     /**
-     * Atualiza status de validação na interface
-     * @param {string} tipoSped - Tipo de SPED
-     * @param {Object} validacao - Resultado da validação
+     * Preenche os campos do simulador com os dados extraídos
      */
-    function atualizarStatusValidacao(tipoSped, validacao) {
-        const containerStatus = document.querySelector(`#${tipoSped}-status`) || 
-                               document.querySelector(`.validation-status[data-sped="${tipoSped}"]`);
-        
-        if (containerStatus) {
-            containerStatus.innerHTML = '';
-            
-            if (validacao.valido) {
-                containerStatus.innerHTML = '<span class="status-success">✓ Arquivo válido</span>';
-            } else {
-                const errosHtml = validacao.erros.map(erro => `<div class="status-error">❌ ${erro}</div>`).join('');
-                containerStatus.innerHTML = errosHtml;
-            }
-            
-            if (validacao.avisos.length > 0) {
-                const avisosHtml = validacao.avisos.map(aviso => `<div class="status-warning">⚠️ ${aviso}</div>`).join('');
-                containerStatus.innerHTML += avisosHtml;
-            }
-        }
-    }
+    function preencherCamposSimulador(dados) {
+        adicionarLog('Preenchendo campos do simulador...', 'info');
 
-    /**
-     * Inicia o processo completo de importação
-     */
-    async function iniciarProcessoImportacao() {
-        console.log('Iniciando processo de importação SPED...');
-        
         try {
-            // Verificar se há arquivos carregados
-            const arquivosDisponiveis = Object.keys(estadoImportacao.arquivosCarregados);
-            if (arquivosDisponiveis.length === 0) {
-                throw new Error('Nenhum arquivo SPED foi selecionado para importação');
+            // Validar estrutura dos dados
+            if (!dados || typeof dados !== 'object') {
+                throw new Error('Dados inválidos ou mal-formados');
             }
 
-            // Atualizar estado
-            estadoImportacao.statusAtual = 'processando';
-            estadoImportacao.progressoTotal = 0;
-            estadoImportacao.errosProcessamento = [];
+            // Preencher dados da empresa
+            if (dados.empresa && elements.importEmpresa?.checked !== false) {
+                preencherDadosEmpresa(dados.empresa);
+                adicionarLog('Dados da empresa preenchidos com sucesso.', 'success');
+            }
 
-            // Atualizar interface
-            atualizarInterfaceProgresso('Iniciando processamento...', 0);
-            desabilitarControlesImportacao(true);
+            // Preencher parâmetros fiscais
+            if (dados.parametrosFiscais && elements.importImpostos?.checked !== false) {
+                preencherParametrosFiscais(dados.parametrosFiscais);
+                adicionarLog('Parâmetros fiscais preenchidos com sucesso.', 'success');
+            }
 
-            adicionarLogImportacao(`🚀 Iniciando importação de ${arquivosDisponiveis.length} arquivo(s) SPED`, 'info');
+            // Preencher ciclo financeiro
+            if (dados.cicloFinanceiro && elements.importCiclo?.checked !== false) {
+                preencherCicloFinanceiro(dados.cicloFinanceiro);
+                adicionarLog('Dados do ciclo financeiro preenchidos com sucesso.', 'success');
+            }
 
-            // Processar cada arquivo
-            const totalArquivos = arquivosDisponiveis.length;
-            let arquivosProcessados = 0;
+            // Configurar IVA Dual
+            if (dados.ivaConfig) {
+                preencherDadosIVADual(dados.ivaConfig);
+                adicionarLog('Configurações do IVA Dual preenchidas com sucesso.', 'success');
+            }
 
-            for (const tipoSped of arquivosDisponiveis) {
-                try {
-                    adicionarLogImportacao(`📊 Processando ${tipoSped.toUpperCase()}...`, 'info');
-                    
-                    const dadosProcessados = await processarArquivoSped(tipoSped);
-                    estadoImportacao.dadosProcessados[tipoSped] = dadosProcessados;
-                    
-                    arquivosProcessados++;
-                    const progresso = (arquivosProcessados / totalArquivos) * 50; // 50% para processamento
-                    atualizarInterfaceProgresso(`${tipoSped.toUpperCase()} processado`, progresso);
-                    
-                    adicionarLogImportacao(`✅ ${tipoSped.toUpperCase()} processado com sucesso`, 'success');
-                    
-                } catch (erro) {
-                    console.error(`Erro ao processar ${tipoSped}:`, erro);
-                    estadoImportacao.errosProcessamento.push({
-                        tipo: tipoSped,
-                        erro: erro.message,
-                        timestamp: new Date().toISOString()
-                    });
-                    
-                    adicionarLogImportacao(`❌ Erro ao processar ${tipoSped.toUpperCase()}: ${erro.message}`, 'error');
+            // Rolar para a aba de simulação
+            setTimeout(() => {
+                const abaPrincipal = document.querySelector('.tab-button[data-tab="simulacao"]');
+                if (abaPrincipal) {
+                    abaPrincipal.click();
                 }
-            }
 
-            // Consolidar dados extraídos
-            atualizarInterfaceProgresso('Consolidando dados extraídos...', 60);
-            adicionarLogImportacao('🔄 Consolidando dados extraídos de todos os SPEDs...', 'info');
-            
-            const dadosConsolidados = await consolidarDadosImportados();
-            
-            // Integrar com o simulador
-            atualizarInterfaceProgresso('Integrando com o simulador...', 80);
-            adicionarLogImportacao('🔗 Integrando dados com o simulador...', 'info');
-            
-            await integrarComSimulador(dadosConsolidados);
-
-            // Finalizar processo
-            estadoImportacao.statusAtual = 'concluido';
-            atualizarInterfaceProgresso('Importação concluída com sucesso!', 100);
-            
-            const resumo = gerarResumoImportacao();
-            adicionarLogImportacao(`🎉 Importação concluída! ${resumo}`, 'success');
-            
-            // Notificar outros componentes
-            notificarImportacaoConcluida(dadosConsolidados);
+                const btnSimular = document.getElementById('btn-simular');
+                if (btnSimular) {
+                    adicionarLog('Preparação concluída. Você pode clicar em "Simular" para ver os resultados.', 'info');
+                }
+            }, 1000);
 
         } catch (erro) {
-            console.error('Erro no processo de importação:', erro);
-            estadoImportacao.statusAtual = 'erro';
+            adicionarLog('Erro ao preencher campos do simulador: ' + erro.message, 'error');
+            console.error('IMPORTACAO-CONTROLLER: Erro ao preencher campos:', erro);
+        }
+    }
+    
+    /**
+     * Preenche os dados da empresa no formulário
+     */
+    function preencherDadosEmpresa(dadosEmpresa) {
+        console.log('IMPORTACAO-CONTROLLER: Preenchendo dados da empresa:', dadosEmpresa);
+
+        // Nome da empresa
+        const campoEmpresa = document.getElementById('empresa');
+        if (campoEmpresa && dadosEmpresa.nome) {
+            campoEmpresa.value = dadosEmpresa.nome;
+        }
+
+        // Faturamento mensal
+        const campoFaturamento = document.getElementById('faturamento');
+        if (campoFaturamento && dadosEmpresa.faturamento) {
+            const valorFormatado = formatarMoeda(dadosEmpresa.faturamento);
+            campoFaturamento.value = valorFormatado;
             
-            atualizarInterfaceProgresso(`Erro: ${erro.message}`, 0);
-            adicionarLogImportacao(`💥 Falha na importação: ${erro.message}`, 'error');
+            // Marcar campo como preenchido pelo SPED
+            marcarCampoComoSped(campoFaturamento);
             
-        } finally {
-            desabilitarControlesImportacao(false);
+            // Disparar evento para recalcular valores dependentes
+            campoFaturamento.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+
+        // Margem operacional
+        const campoMargem = document.getElementById('margem');
+        if (campoMargem && dadosEmpresa.margem) {
+            campoMargem.value = (dadosEmpresa.margem * 100).toFixed(2);
+            marcarCampoComoSped(campoMargem);
+        }
+
+        // Tipo de empresa
+        const campoTipoEmpresa = document.getElementById('tipo-empresa');
+        if (campoTipoEmpresa && dadosEmpresa.tipoEmpresa) {
+            campoTipoEmpresa.value = dadosEmpresa.tipoEmpresa;
+            marcarCampoComoSped(campoTipoEmpresa);
+            campoTipoEmpresa.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+
+        // Regime tributário
+        const campoRegime = document.getElementById('regime');
+        if (campoRegime && dadosEmpresa.regime) {
+            campoRegime.value = dadosEmpresa.regime;
+            marcarCampoComoSped(campoRegime);
+            campoRegime.dispatchEvent(new Event('change', { bubbles: true }));
         }
     }
-
+    
     /**
-     * Processa um arquivo SPED específico
-     * @param {string} tipoSped - Tipo do SPED a processar
-     * @returns {Promise<Object>} Dados processados do SPED
+     * Preenche os parâmetros fiscais no formulário
      */
-    async function processarArquivoSped(tipoSped) {
-        const infoArquivo = estadoImportacao.arquivosCarregados[tipoSped];
-        if (!infoArquivo) {
-            throw new Error(`Arquivo ${tipoSped} não encontrado`);
+    function preencherParametrosFiscais(parametrosFiscais) {
+        console.log('IMPORTACAO-CONTROLLER: Preenchendo parâmetros fiscais:', parametrosFiscais);
+
+        // PRIORIDADE: Preencher composição tributária detalhada
+        if (parametrosFiscais.composicaoTributaria) {
+            preencherComposicaoTributaria(parametrosFiscais.composicaoTributaria);
         }
 
-        const arquivo = infoArquivo.arquivo;
-        adicionarLogImportacao(`📖 Lendo arquivo ${arquivo.name} (${formatarTamanhoArquivo(arquivo.size)})...`, 'info');
-
-        // Parsing inicial do arquivo
-        const opcoesParsing = {
-            validarIntegridade: true,
-            incluirEstatisticas: true,
-            extrairTodos: false
-        };
-
-        const resultadoParsing = await window.SpedParser.parsearArquivoSped(arquivo, opcoesParsing);
-        
-        if (!resultadoParsing.sucesso) {
-            throw new Error(`Falha no parsing: ${resultadoParsing.erro}`);
+        // Tipo de operação
+        const campoTipoOperacao = document.getElementById('tipo-operacao');
+        if (campoTipoOperacao && parametrosFiscais.tipoOperacao) {
+            campoTipoOperacao.value = parametrosFiscais.tipoOperacao;
+            marcarCampoComoSped(campoTipoOperacao);
+            campoTipoOperacao.dispatchEvent(new Event('change', { bubbles: true }));
         }
 
-        adicionarLogImportacao(`📋 Tipo identificado: ${resultadoParsing.tipoSped.detalhes.descricao}`, 'info');
-        adicionarLogImportacao(`🏢 Empresa: ${resultadoParsing.dadosEmpresa.razaoSocial}`, 'info');
-        adicionarLogImportacao(`📅 Período: ${resultadoParsing.dadosEmpresa.dataInicialPeriodo} a ${resultadoParsing.dadosEmpresa.dataFinalPeriodo}`, 'info');
+        // Regime PIS/COFINS
+        const campoPisCofinsRegime = document.getElementById('pis-cofins-regime');
+        if (campoPisCofinsRegime && parametrosFiscais.regimePisCofins) {
+            campoPisCofinsRegime.value = parametrosFiscais.regimePisCofins;
+            marcarCampoComoSped(campoPisCofinsRegime);
+            campoPisCofinsRegime.dispatchEvent(new Event('change', { bubbles: true }));
+        }
 
-        // Log de estatísticas detalhadas
-        if (resultadoParsing.estatisticas) {
-            const stats = resultadoParsing.estatisticas;
-            adicionarLogImportacao(`📊 Estatísticas: ${stats.linhasProcessadas} linhas processadas, ${stats.registrosEncontrados} registros extraídos`, 'info');
-            
-            if (stats.erros && stats.erros.length > 0) {
-                adicionarLogImportacao(`⚠️ ${stats.erros.length} erro(s) encontrado(s) durante o parsing`, 'warning');
-                stats.erros.slice(0, 3).forEach(erro => {
-                    adicionarLogImportacao(`   Linha ${erro.linha}: ${erro.erro}`, 'warning');
-                });
+        // Atualizar cálculos dependentes
+        if (typeof window.calcularCreditosTributarios === 'function') {
+            try {
+                window.calcularCreditosTributarios();
+            } catch (erro) {
+                console.warn('IMPORTACAO-CONTROLLER: Erro ao recalcular créditos tributários:', erro);
             }
         }
-
-        // Extração de dados específicos
-        adicionarLogImportacao(`🔍 Extraindo dados específicos para simulação...`, 'info');
-        
-        const opcoesExtracao = {
-            incluirComposicaoTributaria: true,
-            incluirCreditosTributarios: true,
-            incluirDadosFinanceiros: true,
-            incluirCicloFinanceiro: true,
-            calcularTransicao: false // Será feito na consolidação
-        };
-
-        const spedData = {};
-        spedData[tipoSped] = resultadoParsing;
-
-        const dadosExtraidos = window.SpedExtractor.processarDadosConsolidados(spedData, opcoesExtracao);
-        
-        // Log detalhado dos dados extraídos
-        logDadosExtraidos(tipoSped, dadosExtraidos);
-
-        return {
-            parsing: resultadoParsing,
-            extracao: dadosExtraidos,
-            metadados: {
-                tipoSped: tipoSped,
-                nomeArquivo: arquivo.name,
-                tamanhoArquivo: arquivo.size,
-                timestampProcessamento: new Date().toISOString()
-            }
-        };
     }
-
+    
     /**
-     * Consolidar dados importados de todos os SPEDs
-     * @returns {Promise<Object>} Dados consolidados
+     * Preenche a composição tributária detalhada
      */
-    async function consolidarDadosImportados() {
-        adicionarLogImportacao('🔄 Iniciando consolidação de dados...', 'info');
+    function preencherComposicaoTributaria(composicao) {
+        console.log('IMPORTACAO-CONTROLLER: Preenchendo composição tributária:', composicao);
 
-        const speds = {};
-        
-        // Organizar dados para consolidação
-        Object.keys(estadoImportacao.dadosProcessados).forEach(tipoSped => {
-            const dados = estadoImportacao.dadosProcessados[tipoSped];
-            speds[tipoSped] = dados.parsing;
-        });
+        const { debitos, creditos, aliquotasEfetivas, fontesDados } = composicao;
 
-        // Configurar opções de consolidação
-        const opcoesConsolidacao = {
-            incluirComposicaoTributaria: true,
-            incluirCreditosTributarios: true, 
-            incluirDadosFinanceiros: true,
-            incluirCicloFinanceiro: true,
-            calcularTransicao: true,
-            parametrosIVA: {
-                aliquotaCBS: 8.8,
-                aliquotaIBS: 17.7,
-                aliquotaTotal: 26.5
-            }
-        };
+        // Preencher débitos
+        preencherCampoComValor('debito-pis', debitos.pis, 'SPED');
+        preencherCampoComValor('debito-cofins', debitos.cofins, 'SPED');
+        preencherCampoComValor('debito-icms', debitos.icms, 'SPED');
+        preencherCampoComValor('debito-ipi', debitos.ipi, 'SPED');
+        preencherCampoComValor('debito-iss', debitos.iss, 'SPED');
 
-        const dadosConsolidados = window.SpedExtractor.processarDadosConsolidados(speds, opcoesConsolidacao);
-        
-        // Log detalhado da consolidação
-        logConsolidacao(dadosConsolidados);
+        // Preencher créditos
+        preencherCampoComValor('credito-pis', creditos.pis, 'SPED');
+        preencherCampoComValor('credito-cofins', creditos.cofins, 'SPED');
+        preencherCampoComValor('credito-icms', creditos.icms, 'SPED');
+        preencherCampoComValor('credito-ipi', creditos.ipi, 'SPED');
+        preencherCampoComValor('credito-iss', creditos.iss || 0, 'SPED');
 
-        return dadosConsolidados;
+        // Preencher alíquotas efetivas
+        if (aliquotasEfetivas) {
+            preencherCampoComValor('aliquota-efetiva-pis', aliquotasEfetivas.pis, null, 3);
+            preencherCampoComValor('aliquota-efetiva-cofins', aliquotasEfetivas.cofins, null, 3);
+            preencherCampoComValor('aliquota-efetiva-icms', aliquotasEfetivas.icms, null, 3);
+            preencherCampoComValor('aliquota-efetiva-ipi', aliquotasEfetivas.ipi, null, 3);
+            preencherCampoComValor('aliquota-efetiva-iss', aliquotasEfetivas.iss, null, 3);
+            preencherCampoComValor('aliquota-efetiva-total', aliquotasEfetivas.total, null, 3);
+        }
+
+        // Calcular e preencher totais
+        const totalDebitos = Object.values(debitos).reduce((sum, val) => sum + (val || 0), 0);
+        const totalCreditos = Object.values(creditos).reduce((sum, val) => sum + (val || 0), 0);
+
+        preencherCampoComValor('total-debitos', totalDebitos, 'SPED');
+        preencherCampoComValor('total-creditos', totalCreditos, 'SPED');
+
+        // Adicionar indicadores de fonte
+        if (fontesDados) {
+            adicionarIndicadoresFonte(fontesDados);
+        }
     }
-
+    
     /**
-     * Função corrigida para integrar dados consolidados com o simulador
-     * Corrige o mapeamento de dados financeiros e tributários
+     * Preenche um campo com valor formatado
      */
-    async function integrarComSimulador(dadosConsolidados) {
-        if (!window.DataManager) {
-            throw new Error('DataManager não disponível para integração');
-        }
+    function preencherCampoComValor(campoId, valor, fonte = null, decimais = 2) {
+        const elemento = document.getElementById(campoId);
+        if (!elemento) return;
 
-        adicionarLogImportacao('🔗 Convertendo dados para estrutura do simulador...', 'info');
-
-        // Criar estrutura canônica do DataManager
-        const dadosEstruturados = window.DataManager.obterEstruturaAninhadaPadrao();
-
-        // Mapear dados da empresa
-        if (dadosConsolidados.empresaInfo) {
-            const empresa = dadosConsolidados.empresaInfo;
-            dadosEstruturados.empresa.nome = empresa.razaoSocial || '';
-            dadosEstruturados.empresa.cnpj = empresa.cnpj || '';
-            dadosEstruturados.empresa.inscricaoEstadual = empresa.inscricaoEstadual || '';
-            dadosEstruturados.empresa.uf = empresa.uf || '';
-
-            // Atualizar campo de empresa na interface
-            const campoEmpresa = document.getElementById('empresa');
-            if (campoEmpresa) {
-                campoEmpresa.value = empresa.razaoSocial || '';
-                campoEmpresa.classList.add('sped-data');
+        let valorFormatado;
+        if (typeof valor === 'number') {
+            if (campoId.includes('aliquota-efetiva') || campoId.includes('efetiv')) {
+                valorFormatado = valor.toFixed(decimais);
+            } else {
+                valorFormatado = formatarMoeda(valor);
             }
-
-            adicionarLogImportacao(`✓ Dados da empresa mapeados: ${empresa.razaoSocial}`, 'info');
-        }
-
-        // Mapear composição tributária COM CRÉDITOS
-        if (dadosConsolidados.composicaoTributaria) {
-            const composicao = dadosConsolidados.composicaoTributaria;
-
-            // Faturamento
-            dadosEstruturados.empresa.faturamento = composicao.faturamentoTotal || 0;
-            preencherCampoInterface('faturamento', composicao.faturamentoTotal);
-
-            // DÉBITOS TRIBUTÁRIOS
-            preencherCampoInterface('debito-pis', composicao.debitos.pis, 'SPED');
-            preencherCampoInterface('debito-cofins', composicao.debitos.cofins, 'SPED');
-            preencherCampoInterface('debito-icms', composicao.debitos.icms, 'SPED');
-            preencherCampoInterface('debito-ipi', composicao.debitos.ipi, 'SPED');
-            preencherCampoInterface('debito-iss', composicao.debitos.iss, 'SPED');
-
-            // CRÉDITOS TRIBUTÁRIOS (CORREÇÃO PRINCIPAL)
-            preencherCampoInterface('credito-pis', composicao.creditos.pis, 'SPED');
-            preencherCampoInterface('credito-cofins', composicao.creditos.cofins, 'SPED');
-            preencherCampoInterface('credito-icms', composicao.creditos.icms, 'SPED');
-            preencherCampoInterface('credito-ipi', composicao.creditos.ipi, 'SPED');
-            preencherCampoInterface('credito-iss', composicao.creditos.iss, 'SPED');
-
-            // ALÍQUOTAS EFETIVAS
-            preencherCampoInterface('aliquota-efetiva-pis', composicao.aliquotasEfetivas.pis);
-            preencherCampoInterface('aliquota-efetiva-cofins', composicao.aliquotasEfetivas.cofins);
-            preencherCampoInterface('aliquota-efetiva-icms', composicao.aliquotasEfetivas.icms);
-            preencherCampoInterface('aliquota-efetiva-ipi', composicao.aliquotasEfetivas.ipi);
-            preencherCampoInterface('aliquota-efetiva-iss', composicao.aliquotasEfetivas.iss);
-            preencherCampoInterface('aliquota-efetiva-total', composicao.aliquotasEfetivas.total);
-
-            // TOTAIS
-            preencherCampoInterface('total-debitos', composicao.impostosLiquidos.total);
-            preencherCampoInterface('total-creditos', 
-                composicao.creditos.pis + composicao.creditos.cofins + 
-                composicao.creditos.icms + composicao.creditos.ipi + composicao.creditos.iss
-            );
-
-            adicionarLogImportacao(`✓ Composição tributária mapeada - Alíquota efetiva: ${composicao.aliquotasEfetivas.total.toFixed(2)}%`, 'info');
-        }
-
-        // Mapear dados financeiros (CORREÇÃO PARA EXIBIR NA INTERFACE)
-        if (dadosConsolidados.dadosFinanceiros) {
-            const financeiro = dadosConsolidados.dadosFinanceiros;
-
-            // Receitas
-            preencherCampoInterface('receita-bruta', financeiro.receitas.receitaBruta);
-            preencherCampoInterface('receita-liquida', financeiro.receitas.receitaLiquida);
-
-            // Custos e despesas
-            preencherCampoInterface('custo-total', financeiro.custos.custoTotal);
-            preencherCampoInterface('despesas-operacionais', financeiro.despesas.despesasOperacionais);
-
-            // Resultados
-            preencherCampoInterface('lucro-operacional', financeiro.resultado.lucroOperacional);
-
-            // Margem operacional real (CORREÇÃO DA DUPLICAÇÃO)
-            if (financeiro.resultado.margemOperacional > 0) {
-                dadosEstruturados.empresa.margem = financeiro.resultado.margemOperacional / 100;
-                preencherCampoInterface('margem', financeiro.resultado.margemOperacional);
-                preencherCampoInterface('margem-operacional-calc', financeiro.resultado.margemOperacional);
-
-                adicionarLogImportacao(`✓ Margem operacional real: ${financeiro.resultado.margemOperacional.toFixed(2)}%`, 'info');
-            }
-
-            // Habilitar checkbox de dados financeiros
-            const checkboxDadosFinanceiros = document.getElementById('usar-dados-financeiros');
-            if (checkboxDadosFinanceiros) {
-                checkboxDadosFinanceiros.checked = true;
-                toggleDadosFinanceiros(); // Ativar campos
-            }
-
-            adicionarLogImportacao(`✓ Dados financeiros detalhados importados e exibidos`, 'success');
-        }
-
-        // Mapear ciclo financeiro (CORREÇÃO DO CÁLCULO)
-        if (dadosConsolidados.cicloFinanceiro) {
-            const ciclo = dadosConsolidados.cicloFinanceiro;
-
-            preencherCampoInterface('pmr', ciclo.pmr || 30);
-            preencherCampoInterface('pme', ciclo.pme || 30);
-            preencherCampoInterface('pmp', ciclo.pmp || 30);
-            preencherCampoInterface('ciclo-financeiro', ciclo.cicloFinanceiroLiquido || 30);
-
-            dadosEstruturados.cicloFinanceiro.pmr = ciclo.pmr || 30;
-            dadosEstruturados.cicloFinanceiro.pme = ciclo.pme || 30;
-            dadosEstruturados.cicloFinanceiro.pmp = ciclo.pmp || 30;
-
-            adicionarLogImportacao(`✓ Ciclo financeiro mapeado - PMR: ${ciclo.pmr}, PME: ${ciclo.pme}, PMP: ${ciclo.pmp}`, 'info');
-        }
-
-        // Armazenar dados validados globalmente
-        window.dadosImportadosSped = dadosEstruturados;
-
-        // Adicionar indicador visual no simulador
-        adicionarIndicadorDadosSped();
-
-        // Remover duplicações visuais
-        removerDuplicacoesCampos();
-
-        adicionarLogImportacao('✅ Dados integrados com sucesso ao simulador!', 'success');
-        adicionarLogImportacao('🎯 Formulário do simulador preenchido automaticamente', 'success');
-    }
-
-    /**
-     * Função auxiliar para preencher campos da interface
-     */
-    function preencherCampoInterface(idCampo, valor, origem = 'SPED') {
-        const campo = document.getElementById(idCampo);
-        if (!campo) return;
-
-        // Formatar valor conforme tipo do campo
-        if (campo.classList.contains('money-input') || idCampo.includes('debito') || idCampo.includes('credito') || idCampo.includes('total')) {
-            campo.value = window.DataManager.formatarMoeda(valor || 0);
-        } else if (idCampo.includes('aliquota') || idCampo === 'margem') {
-            campo.value = typeof valor === 'number' ? valor.toFixed(valor > 1 ? 2 : 3) : (valor || 0);
         } else {
-            campo.value = valor || 0;
+            valorFormatado = valor || '';
         }
 
-        // Adicionar classe e marcação de origem
-        campo.classList.add('sped-data');
-        campo.dataset.origem = origem;
-        campo.readOnly = true;
+        elemento.value = valorFormatado;
 
-        // Adicionar etiqueta visual de origem
-        adicionarEtiquetaOrigem(campo, origem);
-    }
-
-    /**
-     * Adiciona etiqueta visual da origem dos dados
-     */
-    function adicionarEtiquetaOrigem(campo, origem) {
-        // Remover etiqueta existente
-        const etiquetaExistente = campo.parentElement.querySelector('.origem-tag');
-        if (etiquetaExistente) {
-            etiquetaExistente.remove();
+        if (fonte === 'SPED') {
+            marcarCampoComoSped(elemento);
         }
-
-        // Adicionar nova etiqueta
-        const etiqueta = document.createElement('span');
-        etiqueta.className = 'origem-tag';
-        etiqueta.textContent = origem;
-        etiqueta.style.cssText = `
-            font-size: 10px;
-            background: #28a745;
-            color: white;
-            padding: 2px 6px;
-            border-radius: 3px;
-            margin-left: 5px;
-            position: absolute;
-            top: -8px;
-            right: 0;
-        `;
-
-        campo.parentElement.style.position = 'relative';
-        campo.parentElement.appendChild(etiqueta);
     }
-
+    
     /**
-     * Remove duplicações de campos visuais
+     * Marca campo visualmente como preenchido pelo SPED
      */
-    function removerDuplicacoesCampos() {
-        // Ocultar campos duplicados de margem se existirem
-        const margensExtras = document.querySelectorAll('[id*="margem"]:not(#margem):not(#margem-operacional-calc)');
-        margensExtras.forEach(campo => {
-            if (campo.id !== 'margem' && campo.id !== 'margem-operacional-calc') {
-                campo.closest('.form-group')?.style.setProperty('display', 'none');
-            }
-        });
+    function marcarCampoComoSped(elemento) {
+        if (!elemento) return;
+        
+        elemento.classList.add('sped-data');
+        elemento.title = 'Dados importados do SPED';
+        elemento.style.borderLeft = '3px solid #28a745';
+        elemento.style.backgroundColor = '#f8fff8';
+    }
+    
+    /**
+     * Adiciona indicadores visuais da fonte dos dados
+     */
+    function adicionarIndicadoresFonte(fontesDados) {
+        Object.entries(fontesDados).forEach(([imposto, fonte]) => {
+            const indicador = document.createElement('span');
+            indicador.className = `fonte-dados ${fonte}`;
+            indicador.textContent = fonte === 'sped' ? 'SPED' : 'EST';
+            indicador.title = fonte === 'sped' ? 'Dados extraídos do SPED' : 'Dados estimados';
+            indicador.style.cssText = `
+                display: inline-block;
+                margin-left: 5px;
+                padding: 2px 6px;
+                border-radius: 3px;
+                font-size: 10px;
+                font-weight: bold;
+                color: white;
+                background-color: ${fonte === 'sped' ? '#28a745' : '#ffc107'};
+            `;
 
-        // Ocultar faturamentos duplicados
-        const faturamentosExtras = document.querySelectorAll('[id*="faturamento"]:not(#faturamento)');
-        faturamentosExtras.forEach(campo => {
-            if (campo.id !== 'faturamento') {
-                campo.closest('.form-group')?.style.setProperty('display', 'none');
+            // Adicionar indicador próximo aos campos relevantes
+            const campoDebito = document.getElementById(`debito-${imposto}`);
+            if (campoDebito && !campoDebito.parentNode.querySelector('.fonte-dados')) {
+                campoDebito.parentNode.appendChild(indicador.cloneNode(true));
             }
         });
     }
-
+    
     /**
-     * Adiciona indicador visual no simulador sobre dados SPED
+     * Preenche dados do ciclo financeiro
      */
-    function adicionarIndicadorDadosSped() {
-        // Remover indicador existente
-        const indicadorExistente = document.querySelector('.sped-data-indicator');
-        if (indicadorExistente) {
-            indicadorExistente.remove();
+    function preencherCicloFinanceiro(cicloFinanceiro) {
+        console.log('IMPORTACAO-CONTROLLER: Preenchendo ciclo financeiro:', cicloFinanceiro);
+
+        // PMR - Prazo Médio de Recebimento
+        const campoPmr = document.getElementById('pmr');
+        if (campoPmr && cicloFinanceiro.pmr) {
+            campoPmr.value = Math.round(cicloFinanceiro.pmr);
+            marcarCampoComoSped(campoPmr);
+            campoPmr.dispatchEvent(new Event('input', { bubbles: true }));
         }
 
-        // Criar novo indicador
-        const indicador = document.createElement('div');
-        indicador.className = 'alert alert-info sped-data-indicator';
-        indicador.innerHTML = `
-            <strong><i class="fas fa-database"></i> Dados SPED Integrados:</strong> 
-            O simulador está utilizando dados tributários reais extraídos dos arquivos SPED importados.
-            <button type="button" class="btn btn-sm btn-outline-primary ml-2" onclick="exibirDetalhesImportacao()">
-                Ver Detalhes
-            </button>
-        `;
-
-        // Inserir no formulário principal
-        const formPrincipal = document.querySelector('.simulation-inputs .panel');
-        if (formPrincipal) {
-            formPrincipal.insertBefore(indicador, formPrincipal.firstChild);
+        // PMP - Prazo Médio de Pagamento
+        const campoPmp = document.getElementById('pmp');
+        if (campoPmp && cicloFinanceiro.pmp) {
+            campoPmp.value = Math.round(cicloFinanceiro.pmp);
+            marcarCampoComoSped(campoPmp);
+            campoPmp.dispatchEvent(new Event('input', { bubbles: true }));
         }
 
-        // Marcar campos como dados SPED
-        marcarCamposComDadosSped();
+        // PME - Prazo Médio de Estoque
+        const campoPme = document.getElementById('pme');
+        if (campoPme && cicloFinanceiro.pme) {
+            campoPme.value = Math.round(cicloFinanceiro.pme);
+            marcarCampoComoSped(campoPme);
+            campoPme.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+
+        // Percentual de vendas à vista
+        const campoPercVista = document.getElementById('perc-vista');
+        if (campoPercVista && cicloFinanceiro.percVista) {
+            campoPercVista.value = (cicloFinanceiro.percVista * 100).toFixed(0);
+            marcarCampoComoSped(campoPercVista);
+            campoPercVista.dispatchEvent(new Event('input', { bubbles: true }));
+        }
     }
-
+    
     /**
-     * Marca campos que foram preenchidos com dados SPED
+     * Preenche dados do IVA Dual
      */
-    function marcarCamposComDadosSped() {
-        const camposSped = [
-            'faturamento',
-            'margem', 
-            'pmr',
-            'pmp',
-            'pme',
-            'debito-pis',
-            'debito-cofins',
-            'debito-icms',
-            'debito-ipi',
-            'credito-pis',
-            'credito-cofins',
-            'credito-icms',
-            'credito-ipi',
-            'aliquota-efetiva-total'
-        ];
+    function preencherDadosIVADual(ivaConfig) {
+        console.log('IMPORTACAO-CONTROLLER: Preenchendo dados IVA Dual:', ivaConfig);
 
-        camposSped.forEach(id => {
-            const campo = document.getElementById(id);
-            if (campo) {
-                campo.classList.add('sped-data');
-                campo.title = 'Valor extraído dos arquivos SPED importados';
-                
-                // Adicionar ícone indicativo
-                if (!campo.parentElement.querySelector('.sped-icon')) {
-                    const icon = document.createElement('span');
-                    icon.className = 'sped-icon';
-                    icon.innerHTML = '<i class="fas fa-database text-info"></i>';
-                    icon.title = 'Dados extraídos do SPED';
-                    campo.parentElement.appendChild(icon);
-                }
+        // Tentar selecionar setor se houver código
+        const campoSetor = document.getElementById('setor');
+        if (campoSetor && ivaConfig.codigoSetor) {
+            const options = Array.from(campoSetor.options);
+            const setorOption = options.find(opt => opt.value.includes(ivaConfig.codigoSetor));
+
+            if (setorOption) {
+                campoSetor.value = setorOption.value;
+                marcarCampoComoSped(campoSetor);
+                campoSetor.dispatchEvent(new Event('change', { bubbles: true }));
+            } else {
+                // Preencher campos manualmente se setor não encontrado
+                preencherCamposIVAManuais(ivaConfig);
             }
-        });
+        } else {
+            preencherCamposIVAManuais(ivaConfig);
+        }
     }
+    
+    /**
+     * Preenche campos IVA manualmente
+     */
+    function preencherCamposIVAManuais(ivaConfig) {
+        // Alíquota CBS
+        const campoCbs = document.getElementById('aliquota-cbs');
+        if (campoCbs && ivaConfig.cbs) {
+            campoCbs.value = (ivaConfig.cbs * 100).toFixed(1);
+            marcarCampoComoSped(campoCbs);
+        }
 
+        // Alíquota IBS
+        const campoIbs = document.getElementById('aliquota-ibs');
+        if (campoIbs && ivaConfig.ibs) {
+            campoIbs.value = (ivaConfig.ibs * 100).toFixed(1);
+            marcarCampoComoSped(campoIbs);
+        }
+
+        // Redução Especial
+        const campoReducao = document.getElementById('reducao');
+        if (campoReducao && ivaConfig.reducaoEspecial) {
+            campoReducao.value = (ivaConfig.reducaoEspecial * 100).toFixed(1);
+            marcarCampoComoSped(campoReducao);
+        }
+
+        // Categoria IVA
+        const campoCategoriaIva = document.getElementById('categoria-iva');
+        if (campoCategoriaIva && ivaConfig.categoriaIva) {
+            campoCategoriaIva.value = ivaConfig.categoriaIva;
+            marcarCampoComoSped(campoCategoriaIva);
+        }
+
+        // Calcular alíquota total
+        const campoAliquota = document.getElementById('aliquota');
+        if (campoAliquota && ivaConfig.cbs && ivaConfig.ibs) {
+            const aliquotaTotal = (ivaConfig.cbs + ivaConfig.ibs) * (1 - (ivaConfig.reducaoEspecial || 0));
+            campoAliquota.value = (aliquotaTotal * 100).toFixed(1);
+            marcarCampoComoSped(campoAliquota);
+        }
+    }
+    
     /**
      * Cancela o processo de importação
      */
     function cancelarImportacao() {
-        if (estadoImportacao.statusAtual === 'processando') {
-            estadoImportacao.statusAtual = 'cancelado';
-            adicionarLogImportacao('🛑 Importação cancelada pelo usuário', 'warning');
-        }
+        // Limpar campos de arquivo
+        if (elements.spedFiscal) elements.spedFiscal.value = '';
+        if (elements.spedContribuicoes) elements.spedContribuicoes.value = '';
+        if (elements.spedEcf) elements.spedEcf.value = '';
+        if (elements.spedEcd) elements.spedEcd.value = '';
+
+        // Limpar dados
+        dadosImportados = null;
         
-        limparEstadoImportacao();
-        atualizarInterfaceProgresso('Importação cancelada', 0);
-        desabilitarControlesImportacao(false);
+        // Limpar log
+        limparLog();
+        
+        adicionarLog('Importação cancelada pelo usuário.', 'info');
     }
-
+    
     /**
-     * Limpa o estado da importação
+     * Verifica se algum arquivo foi selecionado
      */
-    function limparEstadoImportacao() {
-        estadoImportacao = {
-            arquivosCarregados: {},
-            dadosProcessados: {},
-            errosProcessamento: [],
-            statusAtual: 'aguardando',
-            progressoTotal: 0
-        };
-
-        // Limpar interface
-        const logArea = document.getElementById('import-log');
-        if (logArea) {
-            logArea.innerHTML = '<p class="text-muted">Selecione os arquivos SPED e clique em "Importar Dados" para iniciar o processo.</p>';
-        }
-
-        // Limpar validações
-        document.querySelectorAll('.validation-status').forEach(element => {
-            element.innerHTML = '';
-        });
+    function verificarArquivosSelecionados() {
+        return (
+            (elements.spedFiscal?.files.length > 0) ||
+            (elements.spedContribuicoes?.files.length > 0) ||
+            (elements.spedEcf?.files.length > 0) ||
+            (elements.spedEcd?.files.length > 0)
+        );
     }
-
+    
     /**
-     * Atualiza interface de progresso
-     * @param {string} mensagem - Mensagem de status
-     * @param {number} progresso - Progresso em percentual (0-100)
+     * Adiciona uma mensagem à área de log
      */
-    function atualizarInterfaceProgresso(mensagem, progresso) {
-        // Atualizar barra de progresso se existir
-        const barraProgresso = document.querySelector('.progress-bar');
-        if (barraProgresso) {
-            barraProgresso.style.width = `${progresso}%`;
-            barraProgresso.setAttribute('aria-valuenow', progresso);
-        }
-
-        // Atualizar mensagem de status
-        const statusMensagem = document.querySelector('.status-message');
-        if (statusMensagem) {
-            statusMensagem.textContent = mensagem;
-        }
-
-        estadoImportacao.progressoTotal = progresso;
-    }
-
-    /**
-     * Habilita/desabilita controles de importação
-     * @param {boolean} desabilitar - Se deve desabilitar os controles
-     */
-    function desabilitarControlesImportacao(desabilitar) {
-        const controles = [
-            'btn-importar-sped',
-            'sped-fiscal',
-            'sped-contribuicoes',
-            'sped-ecf', 
-            'sped-ecd'
-        ];
-
-        controles.forEach(id => {
-            const elemento = document.getElementById(id);
-            if (elemento) {
-                elemento.disabled = desabilitar;
-            }
-        });
-
-        // Mostrar/ocultar botão de cancelar
-        const btnCancelar = document.getElementById('btn-cancelar-importacao');
-        if (btnCancelar) {
-            btnCancelar.style.display = desabilitar ? 'inline-block' : 'none';
-        }
-    }
-
-    /**
-     * Adiciona entrada no log de importação
-     * @param {string} mensagem - Mensagem do log
-     * @param {string} tipo - Tipo do log (info, success, warning, error)
-     */
-    function adicionarLogImportacao(mensagem, tipo = 'info') {
-        const logArea = document.getElementById('import-log');
-        if (!logArea) return;
-
+    function adicionarLog(mensagem, tipo = 'info') {
         const timestamp = new Date().toLocaleTimeString();
-        const classesTipo = {
-            'info': 'text-info',
-            'success': 'text-success', 
-            'warning': 'text-warning',
-            'error': 'text-danger'
+        const logEntry = {
+            timestamp: timestamp,
+            tipo: tipo,
+            mensagem: mensagem
         };
-
-        const entrada = document.createElement('div');
-        entrada.className = `log-entry ${classesTipo[tipo] || 'text-info'}`;
-        entrada.innerHTML = `<span class="timestamp">[${timestamp}]</span> ${mensagem}`;
-
-        logArea.appendChild(entrada);
-        logArea.scrollTop = logArea.scrollHeight;
-
-        // Log no console também se configurado
-        if (CONFIG.logDetalhado) {
-            console.log(`[IMPORTACAO] ${timestamp}: ${mensagem}`);
-        }
-    }
-
-    /**
-     * Gera resumo da importação
-     * @returns {string} Resumo textual
-     */
-    function gerarResumoImportacao() {
-        const totalArquivos = Object.keys(estadoImportacao.arquivosCarregados).length;
-        const arquivosProcessados = Object.keys(estadoImportacao.dadosProcessados).length;
-        const erros = estadoImportacao.errosProcessamento.length;
-
-        return `${arquivosProcessados}/${totalArquivos} arquivo(s) processado(s) ${erros > 0 ? `com ${erros} erro(s)` : 'com sucesso'}`;
-    }
-
-    /**
-     * Log detalhado dos dados extraídos
-     * @param {string} tipoSped - Tipo do SPED
-     * @param {Object} dadosExtraidos - Dados extraídos
-     */
-    function logDadosExtraidos(tipoSped, dadosExtraidos) {
-        if (!CONFIG.logDetalhado) return;
-
-        const upper = tipoSped.toUpperCase();
         
-        if (dadosExtraidos.composicaoTributaria) {
-            const comp = dadosExtraidos.composicaoTributaria;
-            adicionarLogImportacao(`   📊 ${upper}: Faturamento R$ ${comp.faturamentoTotal.toFixed(2)}, Alíquota efetiva ${comp.aliquotasEfetivas.total.toFixed(2)}%`, 'info');
-        }
-
-        if (dadosExtraidos.dadosFinanceiros) {
-            const fin = dadosExtraidos.dadosFinanceiros;
-            adicionarLogImportacao(`   💰 ${upper}: Margem operacional ${fin.resultado.margemOperacional.toFixed(2)}%`, 'info');
-        }
-
-        if (dadosExtraidos.cicloFinanceiro) {
-            const ciclo = dadosExtraidos.cicloFinanceiro;
-            adicionarLogImportacao(`   ⏱️ ${upper}: Ciclo financeiro ${ciclo.cicloFinanceiroLiquido} dias`, 'info');
-        }
-
-        if (dadosExtraidos.erros && dadosExtraidos.erros.length > 0) {
-            adicionarLogImportacao(`   ⚠️ ${upper}: ${dadosExtraidos.erros.length} erro(s) na extração`, 'warning');
-        }
-    }
-
-    /**
-     * Log da consolidação de dados
-     * @param {Object} dadosConsolidados - Dados consolidados
-     */
-    function logConsolidacao(dadosConsolidados) {
-        if (!CONFIG.logDetalhado) return;
-
-        adicionarLogImportacao(`📋 Consolidação concluída:`, 'info');
+        logImportacao.push(logEntry);
         
-        if (dadosConsolidados.empresaInfo) {
-            adicionarLogImportacao(`   🏢 Empresa: ${dadosConsolidados.empresaInfo.razaoSocial}`, 'info');
+        // Atualizar interface de log
+        if (elements.logArea) {
+            const logItem = document.createElement('p');
+            logItem.className = `log-${tipo}`;
+            logItem.innerHTML = `<span class="log-time">[${timestamp}]</span> ${mensagem}`;
+            
+            elements.logArea.appendChild(logItem);
+            elements.logArea.scrollTop = elements.logArea.scrollHeight;
         }
-
-        if (dadosConsolidados.composicaoTributaria) {
-            const total = dadosConsolidados.composicaoTributaria.aliquotasEfetivas.total;
-            adicionarLogImportacao(`   💼 Carga tributária consolidada: ${total.toFixed(2)}%`, 'info');
-        }
-
-        if (dadosConsolidados.transicaoTributaria) {
-            const impacto = dadosConsolidados.transicaoTributaria.resumoTransicao.impactoTotal;
-            adicionarLogImportacao(`   📈 Impacto estimado da transição: R$ ${impacto.toFixed(2)}`, 'info');
-        }
-
-        const observacoes = dadosConsolidados.observacoes || [];
-        adicionarLogImportacao(`   ✓ ${observacoes.length} observação(ões) gerada(s)`, 'info');
+        
+        // Atualizar estatísticas
+        atualizarEstatisticasLog();
+        
+        // Log no console para debug
+        console.log(`IMPORTACAO-CONTROLLER [${tipo.toUpperCase()}]:`, mensagem);
     }
-
+    
     /**
-     * Notifica outros componentes sobre importação concluída
-     * @param {Object} dadosConsolidados - Dados consolidados
+     * Atualiza as estatísticas do log
      */
-    function notificarImportacaoConcluida(dadosConsolidados) {
-        // Evento customizado para outros módulos
-        const evento = new CustomEvent('spedImportacaoConcluida', {
-            detail: {
-                dados: dadosConsolidados,
-                estatisticas: gerarEstatisticasImportacao(),
-                timestamp: new Date().toISOString()
-            }
-        });
-
-        document.dispatchEvent(evento);
-
-        // Atualizar outros componentes se disponíveis
-        if (window.SimuladorFluxoCaixa && typeof window.SimuladorFluxoCaixa.atualizarComDadosSped === 'function') {
-            window.SimuladorFluxoCaixa.atualizarComDadosSped(dadosConsolidados);
-        }
-    }
-
-    /**
-     * Gera estatísticas da importação
-     * @returns {Object} Estatísticas detalhadas
-     */
-    function gerarEstatisticasImportacao() {
-        return {
-            arquivosCarregados: Object.keys(estadoImportacao.arquivosCarregados).length,
-            arquivosProcessados: Object.keys(estadoImportacao.dadosProcessados).length,
-            errosEncontrados: estadoImportacao.errosProcessamento.length,
-            tempoProcessamento: estadoImportacao.progressoTotal === 100 ? 'Concluído' : 'Em andamento',
-            tiposSpedImportados: Object.keys(estadoImportacao.dadosProcessados)
+    function atualizarEstatisticasLog() {
+        const stats = {
+            total: logImportacao.length,
+            success: logImportacao.filter(l => l.tipo === 'success').length,
+            warnings: logImportacao.filter(l => l.tipo === 'warning').length,
+            errors: logImportacao.filter(l => l.tipo === 'error').length
         };
-    }
-
-    /**
-     * Formata tamanho de arquivo para exibição
-     * @param {number} bytes - Tamanho em bytes
-     * @returns {string} Tamanho formatado
-     */
-    function formatarTamanhoArquivo(bytes) {
-        if (bytes === 0) return '0 Bytes';
         
-        const k = 1024;
-        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        // Atualizar elementos da interface
+        if (elements.statTotal) elements.statTotal.textContent = stats.total;
+        if (elements.statSuccess) elements.statSuccess.textContent = stats.success;
+        if (elements.statWarnings) elements.statWarnings.textContent = stats.warnings;
+        if (elements.statErrors) elements.statErrors.textContent = stats.errors;
         
-        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        // Mostrar/ocultar seção de estatísticas
+        if (elements.logStatistics) {
+            elements.logStatistics.style.display = stats.total > 0 ? 'block' : 'none';
+        }
     }
-
+    
     /**
-     * Exibe detalhes da importação (função global)
+     * Limpa a área de log
      */
-    window.exibirDetalhesImportacao = function() {
-        if (!window.dadosImportadosSped) {
-            alert('Nenhum dado SPED foi importado ainda.');
+    function limparLog() {
+        logImportacao = [];
+        
+        if (elements.logArea) {
+            elements.logArea.innerHTML = '<p class="text-muted">Log limpo pelo usuário.</p>';
+        }
+        
+        atualizarEstatisticasLog();
+    }
+    
+    /**
+     * Exporta o log de importação
+     */
+    function exportarLog() {
+        if (logImportacao.length === 0) {
+            alert('Não há dados de log para exportar.');
             return;
         }
-
-        // Criar modal ou painel com detalhes
-        const detalhes = `
-            Dados SPED Importados:
+        
+        const logContent = logImportacao.map(entry => 
+            `[${entry.timestamp}] ${entry.tipo.toUpperCase()}: ${entry.mensagem}`
+        ).join('\n');
+        
+        const blob = new Blob([logContent], { type: 'text/plain;charset=utf-8' });
+        const url = window.URL.createObjectURL(blob);
+        
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `log-importacao-sped-${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.txt`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+        
+        adicionarLog(`Log exportado com ${logImportacao.length} entradas.`, 'info');
+    }
+    
+    /**
+     * Aplica filtros ao log
+     */
+    function aplicarFiltrosLog() {
+        if (!elements.logArea) return;
+        
+        const filtros = {
+            info: elements.filtroInfo?.checked !== false,
+            warning: elements.filtroWarning?.checked !== false,
+            error: elements.filtroError?.checked !== false,
+            success: elements.filtroSuccess?.checked !== false
+        };
+        
+        const logItems = elements.logArea.querySelectorAll('p[class*="log-"]');
+        
+        logItems.forEach(item => {
+            let mostrar = false;
             
-            📊 Estatísticas:
-            - Arquivos processados: ${gerarEstatisticasImportacao().arquivosProcessados}
-            - Tipos SPED: ${gerarEstatisticasImportacao().tiposSpedImportados.join(', ')}
+            Object.keys(filtros).forEach(tipo => {
+                if (item.classList.contains(`log-${tipo}`) && filtros[tipo]) {
+                    mostrar = true;
+                }
+            });
             
-            💼 Dados da Empresa:
-            - Faturamento: R$ ${(window.dadosImportadosSped.empresa?.faturamento || 0).toFixed(2)}
-            - Margem: ${((window.dadosImportadosSped.empresa?.margem || 0) * 100).toFixed(2)}%
-            
-            📈 Composição Tributária:
-            - Alíquota efetiva total: ${((window.dadosImportadosSped.parametrosFiscais?.aliquota || 0) * 100).toFixed(2)}%
-        `;
+            item.style.display = mostrar ? 'block' : 'none';
+        });
+    }
+    
+    /**
+     * Formata um valor numérico como moeda
+     */
+    function formatarMoeda(valor) {
+        if (isNaN(valor) || valor === null || valor === undefined) {
+            valor = 0;
+        }
 
-        alert(detalhes);
-    };
+        // Usar CurrencyFormatter se disponível
+        if (window.CurrencyFormatter && typeof window.CurrencyFormatter.formatarValorMonetario === 'function') {
+            try {
+                return window.CurrencyFormatter.formatarValorMonetario(Math.round(valor * 100).toString());
+            } catch (erro) {
+                console.warn('IMPORTACAO-CONTROLLER: Erro ao usar CurrencyFormatter:', erro);
+            }
+        }
 
-    // Interface pública do módulo
+        // Fallback para formatação padrão
+        return new Intl.NumberFormat('pt-BR', {
+            style: 'currency',
+            currency: 'BRL',
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+        }).format(valor);
+    }
+    
+    // Interface pública
     return {
         inicializar,
-        iniciarProcessoImportacao,
-        cancelarImportacao,
-        limparEstadoImportacao,
-        gerarEstatisticasImportacao,
-        get estadoAtual() {
-            return {
-                status: estadoImportacao.statusAtual,
-                progresso: estadoImportacao.progressoTotal,
-                arquivos: Object.keys(estadoImportacao.arquivosCarregados),
-                erros: estadoImportacao.errosProcessamento.length
-            };
-        }
+        adicionarLog,
+        obterDadosImportados: () => dadosImportados,
+        limparLog,
+        exportarLog,
+        versao: '2.0.0-enhanced'
     };
 })();
+
+// Garantir carregamento global
+if (typeof window !== 'undefined') {
+    window.ImportacaoController = ImportacaoController;
+    console.log('IMPORTACAO-CONTROLLER: Módulo carregado com sucesso na versão', ImportacaoController.versao);
+}

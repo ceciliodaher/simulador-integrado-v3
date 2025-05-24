@@ -1,1710 +1,933 @@
 /**
- * @fileoverview Módulo de extração e processamento de dados SPED
- * Responsável por extrair informações tributárias, financeiras e operacionais
- * dos arquivos SPED para uso no simulador de Split Payment
- * 
- * @module sped-extractor
- * @author Expertzy Inteligência Tributária
- * @version 1.0.0
+ * SpedExtractor - Módulo melhorado para extração de dados do SPED
+ * Versão corrigida para integração com o simulador Split Payment
+ * VERSÃO CORRIGIDA - Janeiro 2025
  */
-
-window.SpedExtractor = (function() {
+const SpedExtractor = (function() {
     
     /**
-     * Configurações do extrator
+     * Extrai dados relevantes para o simulador a partir dos dados SPED
+     * VERSÃO MELHORADA
      */
-    const CONFIG = {
-        // Cronograma oficial de transição tributária (LC 214/2025)
-        cronogramaTransicao: {
-            2026: { sistemaAtual: 0.90, ivaDual: 0.10 },
-            2027: { sistemaAtual: 0.75, ivaDual: 0.25 },
-            2028: { sistemaAtual: 0.60, ivaDual: 0.40 },
-            2029: { sistemaAtual: 0.45, ivaDual: 0.55 },
-            2030: { sistemaAtual: 0.30, ivaDual: 0.70 },
-            2031: { sistemaAtual: 0.15, ivaDual: 0.85 },
-            2032: { sistemaAtual: 0.05, ivaDual: 0.95 },
-            2033: { sistemaAtual: 0.00, ivaDual: 1.00 }
-        },
-        
-        // Alíquotas padrão do sistema IVA Dual
-        aliquotasIVA: {
-            cbs: 8.8,      // Contribuição sobre Bens e Serviços (%)
-            ibs: 17.7,     // Imposto sobre Bens e Serviços (%)
-            total: 26.5    // Total IVA Dual (%)
-        },
-        
-        // Mapeamento de códigos de registro SPED
-        registrosSped: {
-            fiscal: {
-                empresa: ['0000', '0001', '0005'],
-                produtos: ['0200', '0205', '0210'],
-                documentos: ['C100', 'C170', 'C400', 'C405'],
-                impostos: ['E110', 'E111', 'E116', 'C197', 'C390'],
-                creditos: ['C170', 'C175', 'D100', 'D190']
-            },
-            contribuicoes: {
-                empresa: ['0000', '0001'],
-                receitas: ['A100', 'A110', 'A120'],
-                custos: ['A200', 'A210', 'A220'],
-                creditos: ['C100', 'C110', 'C120', 'C170', 'C180'],
-                debitos: ['M100', 'M110', 'M115', 'M200', 'M210']
-            },
-            ecf: {
-                empresa: ['J001'],
-                demonstracoes: ['J100', 'J150', 'J200', 'J210'],
-                receitas: ['J100'],
-                custos: ['J150'],
-                resultado: ['J200', 'J210']
-            },
-            ecd: {
-                empresa: ['I001', 'I010', 'I012'],
-                balanco: ['J100', 'J150'],
-                dre: ['J200', 'J210'],
-                fluxoCaixa: ['J800', 'J801']
-            }
-        },
-        
-        // Tolerâncias para validações
-        tolerancias: {
-            percentualVariacao: 0.05,  // 5% de tolerância em variações
-            valorMinimo: 0.01,         // Valor mínimo considerado
-            margemErro: 0.001          // Margem de erro para cálculos
+    function extrairDadosParaSimulador(dadosSped) {
+        if (!dadosSped || typeof dadosSped !== 'object') {
+            console.error('SPED-EXTRACTOR: Dados SPED inválidos ou não fornecidos');
+            return criarEstruturaVazia();
         }
-    };
 
-    /**
-     * Processa dados consolidados de múltiplos SPEDs
-     * @param {Object} speds - Dados parseados dos SPEDs
-     * @param {Object} opcoes - Opções de processamento
-     * @returns {Object} Dados consolidados e processados
-     */
-    function processarDadosConsolidados(speds, opcoes = {}) {
-        console.log('SPED-EXTRACTOR: Iniciando processamento de dados consolidados');
-        
-        const opcoesDefault = {
-            incluirComposicaoTributaria: true,
-            incluirCreditosTributarios: true,
-            incluirDadosFinanceiros: true,
-            incluirCicloFinanceiro: true,
-            calcularTransicao: true,
-            parametrosIVA: CONFIG.aliquotasIVA,
-            validarIntegridade: true,
-            gerarLog: true
-        };
-        
-        const opcoesFinais = { ...opcoesDefault, ...opcoes };
-        const log = [];
-        
+        console.log('SPED-EXTRACTOR: Iniciando extração de dados para simulador');
+        console.log('SPED-EXTRACTOR: Estrutura de dados recebida:', {
+            empresa: !!dadosSped.empresa,
+            documentos: dadosSped.documentos?.length || 0,
+            creditos: Object.keys(dadosSped.creditos || {}).join(', '),
+            debitos: Object.keys(dadosSped.debitos || {}).join(', '),
+            impostos: Object.keys(dadosSped.impostos || {}).join(', ')
+        });
+
         try {
-            // 1. Extrair informações básicas da empresa
-            log.push('📋 Extraindo informações básicas da empresa...');
-            const empresaInfo = extrairInformacoesEmpresa(speds, log);
-            
-            // 2. Processar composição tributária atual
-            log.push('💰 Processando composição tributária atual...');
-            const composicaoTributaria = processarComposicaoTributaria(speds, opcoesFinais, log);
-            
-            // 3. Extrair e calcular dados financeiros
-            log.push('📊 Extraindo dados financeiros das demonstrações...');
-            const dadosFinanceiros = extrairDadosFinanceiros(speds, opcoesFinais, log);
-            
-            // 4. Calcular ciclo financeiro
-            log.push('⏱️ Calculando ciclo financeiro...');
-            const cicloFinanceiro = calcularCicloFinanceiro(speds, dadosFinanceiros, opcoesFinais, log);
-            
-            // 5. Processar transição tributária (se solicitado)
-            let transicaoTributaria = null;
-            if (opcoesFinais.calcularTransicao) {
-                log.push('📈 Processando cenário de transição tributária...');
-                transicaoTributaria = processarTransicaoTributaria(
-                    composicaoTributaria, 
-                    opcoesFinais.parametrosIVA, 
-                    log
-                );
-            }
-            
-            // 6. Validar integridade dos dados processados
-            if (opcoesFinais.validarIntegridade) {
-                log.push('✅ Validando integridade dos dados processados...');
-                validarIntegridadeDados(empresaInfo, composicaoTributaria, dadosFinanceiros, log);
-            }
-            
-            // 7. Consolidar resultados
-            const resultadoConsolidado = {
-                empresaInfo,
-                composicaoTributaria,
-                dadosFinanceiros,
-                cicloFinanceiro,
-                transicaoTributaria,
+            const dadosSimulador = {
+                empresa: extrairDadosEmpresa(dadosSped),
+                parametrosFiscais: extrairParametrosFiscais(dadosSped),
+                cicloFinanceiro: extrairCicloFinanceiro(dadosSped),
+                ivaConfig: extrairDadosIVA(dadosSped),
                 metadados: {
-                    timestampProcessamento: new Date().toISOString(),
-                    tiposSpedProcessados: Object.keys(speds),
-                    opcoes: opcoesFinais,
-                    versaoExtrator: '1.0.0'
-                },
-                log: opcoesFinais.gerarLog ? log : [],
-                observacoes: gerarObservacoes(empresaInfo, composicaoTributaria, dadosFinanceiros, log),
-                qualidadeDados: avaliarQualidadeDados(speds, composicaoTributaria, dadosFinanceiros)
+                    fonteDados: 'sped',
+                    timestampImportacao: new Date().toISOString(),
+                    arquivosProcessados: dadosSped.metadados?.arquivosProcessados || [],
+                    qualidadeDados: avaliarQualidadeDados(dadosSped)
+                }
             };
-            
-            log.push('🎉 Processamento consolidado concluído com sucesso');
-            console.log('SPED-EXTRACTOR: Processamento consolidado concluído', {
-                empresa: empresaInfo.razaoSocial,
-                impostos: composicaoTributaria.aliquotasEfetivas.total,
-                margem: dadosFinanceiros.resultado.margemOperacional
-            });
-            
-            return resultadoConsolidado;
-            
+
+            // Validar e normalizar usando DataManager se disponível
+            const resultado = window.DataManager ? 
+                window.DataManager.validarENormalizar(dadosSimulador) : 
+                dadosSimulador;
+
+            console.log('SPED-EXTRACTOR: Extração concluída com sucesso');
+            return resultado;
+
         } catch (erro) {
-            console.error('SPED-EXTRACTOR: Erro no processamento consolidado:', erro);
-            log.push(`❌ ERRO CRÍTICO: ${erro.message}`);
-            
-            throw new Error(`Falha no processamento consolidado: ${erro.message}`);
+            console.error('SPED-EXTRACTOR: Erro durante extração:', erro);
+            return criarEstruturaVazia();
         }
     }
 
     /**
-     * Extrai informações básicas da empresa dos SPEDs
-     * @param {Object} speds - Dados dos SPEDs
-     * @param {Array} log - Array de log
-     * @returns {Object} Informações da empresa
+     * Cria estrutura vazia para casos de erro
      */
-    function extrairInformacoesEmpresa(speds, log) {
-        const empresaInfo = {
-            razaoSocial: '',
-            nomeFantasia: '',
-            cnpj: '',
-            inscricaoEstadual: '',
-            uf: '',
-            municipio: '',
-            atividade: '',
-            regimeTributario: '',
-            dataInicialPeriodo: '',
-            dataFinalPeriodo: '',
-            fonte: ''
+    function criarEstruturaVazia() {
+        return {
+            empresa: {
+                nome: '',
+                faturamento: 0,
+                margem: 0.15,
+                tipoEmpresa: 'comercio',
+                regime: 'presumido'
+            },
+            parametrosFiscais: {
+                tipoOperacao: 'b2b',
+                regimePisCofins: 'cumulativo',
+                creditos: { pis: 0, cofins: 0, icms: 0, ipi: 0, cbs: 0, ibs: 0 },
+                composicaoTributaria: {
+                    debitos: { pis: 0, cofins: 0, icms: 0, ipi: 0, iss: 0 },
+                    creditos: { pis: 0, cofins: 0, icms: 0, ipi: 0, iss: 0 },
+                    aliquotasEfetivas: { pis: 0, cofins: 0, icms: 0, ipi: 0, iss: 0, total: 0 }
+                }
+            },
+            cicloFinanceiro: { pmr: 30, pmp: 30, pme: 30, percVista: 0.3, percPrazo: 0.7 },
+            ivaConfig: { cbs: 0.088, ibs: 0.177, categoriaIva: 'standard', reducaoEspecial: 0 }
+        };
+    }
+
+    /**
+     * Avalia a qualidade dos dados extraídos
+     */
+    function avaliarQualidadeDados(dadosSped) {
+        const pontuacao = {
+            empresa: 0,
+            fiscal: 0,
+            contabil: 0,
+            total: 0
         };
 
-        // Priorizar dados do SPED Fiscal
-        if (speds['sped-fiscal'] || speds.fiscal) {
-            const fiscal = speds['sped-fiscal'] || speds.fiscal;
-            
-            if (fiscal.dadosEmpresa) {
-                empresaInfo.razaoSocial = fiscal.dadosEmpresa.razaoSocial || '';
-                empresaInfo.nomeFantasia = fiscal.dadosEmpresa.nomeFantasia || '';
-                empresaInfo.cnpj = fiscal.dadosEmpresa.cnpj || '';
-                empresaInfo.inscricaoEstadual = fiscal.dadosEmpresa.inscricaoEstadual || '';
-                empresaInfo.uf = fiscal.dadosEmpresa.uf || '';
-                empresaInfo.municipio = fiscal.dadosEmpresa.municipio || '';
-                empresaInfo.dataInicialPeriodo = fiscal.dadosEmpresa.dataInicialPeriodo || '';
-                empresaInfo.dataFinalPeriodo = fiscal.dadosEmpresa.dataFinalPeriodo || '';
-                empresaInfo.fonte = 'SPED Fiscal';
-                
-                log.push(`   🏢 Empresa: ${empresaInfo.razaoSocial}`);
-                log.push(`   📋 CNPJ: ${empresaInfo.cnpj}`);
-                log.push(`   📅 Período: ${empresaInfo.dataInicialPeriodo} a ${empresaInfo.dataFinalPeriodo}`);
-            }
-        }
+        // Avaliação dados da empresa
+        if (dadosSped.empresa?.nome) pontuacao.empresa += 25;
+        if (dadosSped.empresa?.cnpj) pontuacao.empresa += 25;
+        if (dadosSped.empresa?.faturamento > 0) pontuacao.empresa += 50;
+
+        // Avaliação dados fiscais
+        const temCreditos = Object.keys(dadosSped.creditos || {}).length > 0;
+        const temDebitos = Object.keys(dadosSped.debitos || {}).length > 0;
+        if (temCreditos) pontuacao.fiscal += 30;
+        if (temDebitos) pontuacao.fiscal += 30;
+        if (dadosSped.documentos?.length > 0) pontuacao.fiscal += 40;
+
+        // Avaliação dados contábeis
+        if (dadosSped.balancoPatrimonial?.length > 0) pontuacao.contabil += 50;
+        if (dadosSped.demonstracaoResultado?.length > 0) pontuacao.contabil += 50;
+
+        pontuacao.total = Math.round((pontuacao.empresa + pontuacao.fiscal + pontuacao.contabil) / 3);
+
+        return {
+            pontuacao: pontuacao,
+            classificacao: pontuacao.total >= 80 ? 'excelente' : 
+                          pontuacao.total >= 60 ? 'boa' : 
+                          pontuacao.total >= 40 ? 'regular' : 'insuficiente'
+        };
+    }
+
+    /**
+     * Extrai dados da empresa com validação aprimorada
+     */
+    function extrairDadosEmpresa(dadosSped) {
+        const empresa = dadosSped.empresa || {};
         
-        // Complementar com dados do SPED Contribuições se disponível
-        if (speds['sped-contribuicoes'] || speds.contribuicoes) {
-            const contrib = speds['sped-contribuicoes'] || speds.contribuicoes;
-            
-            if (contrib.dadosEmpresa && !empresaInfo.razaoSocial) {
-                empresaInfo.razaoSocial = contrib.dadosEmpresa.razaoSocial || '';
-                empresaInfo.cnpj = contrib.dadosEmpresa.cnpj || '';
-                empresaInfo.fonte = empresaInfo.fonte ? `${empresaInfo.fonte}, SPED Contribuições` : 'SPED Contribuições';
-            }
+        console.log('SPED-EXTRACTOR: Extraindo dados da empresa:', empresa);
+
+        // Calcular faturamento mensal com múltiplas fontes
+        const faturamentoMensal = calcularFaturamentoMensal(dadosSped);
+        console.log('SPED-EXTRACTOR: Faturamento mensal calculado:', faturamentoMensal);
+
+        // Calcular margem operacional
+        const margemOperacional = calcularMargemOperacional(dadosSped);
+        console.log('SPED-EXTRACTOR: Margem operacional calculada:', margemOperacional);
+
+        // Determinar tipo de empresa
+        const tipoEmpresa = determinarTipoEmpresa(dadosSped);
+        console.log('SPED-EXTRACTOR: Tipo de empresa determinado:', tipoEmpresa);
+
+        // Determinar regime tributário
+        const regimeTributario = determinarRegimeTributario(dadosSped);
+        console.log('SPED-EXTRACTOR: Regime tributário determinado:', regimeTributario);
+
+        return {
+            nome: empresa.nome || '',
+            cnpj: empresa.cnpj || '',
+            faturamento: faturamentoMensal,
+            margem: margemOperacional,
+            tipoEmpresa: tipoEmpresa,
+            regime: regimeTributario,
+            setor: determinarSetorIVA(dadosSped)
+        };
+    }
+
+    /**
+     * Calcula faturamento mensal com múltiplas fontes de dados
+     */
+    function calcularFaturamentoMensal(dadosSped) {
+        let faturamento = 0;
+        let fonte = 'estimado';
+
+        // PRIORIDADE 1: Dados contábeis da ECD/ECF
+        if (dadosSped.receitaBruta && dadosSped.receitaBruta > 0) {
+            faturamento = dadosSped.receitaBruta / 12;
+            fonte = 'ecd_receita_bruta';
+        } else if (dadosSped.dre?.receita_liquida?.valor) {
+            faturamento = dadosSped.dre.receita_liquida.valor / 12;
+            fonte = 'ecf_dre';
         }
+
+        // PRIORIDADE 2: Cálculo baseado em documentos fiscais
+        if (faturamento === 0 && dadosSped.documentos?.length > 0) {
+            const resultadoDocumentos = calcularFaturamentoPorDocumentos(dadosSped.documentos);
+            faturamento = resultadoDocumentos.faturamentoMensal;
+            fonte = 'documentos_fiscais';
+        }
+
+        // PRIORIDADE 3: Estimativa baseada em débitos de impostos
+        if (faturamento === 0) {
+            faturamento = estimarFaturamentoPorImpostos(dadosSped);
+            fonte = 'estimativa_impostos';
+        }
+
+        console.log(`SPED-EXTRACTOR: Faturamento calculado - Valor: R$ ${faturamento.toFixed(2)}, Fonte: ${fonte}`);
         
-        // Complementar com dados do ECF se disponível
-        if (speds['sped-ecf'] || speds.ecf) {
-            const ecf = speds['sped-ecf'] || speds.ecf;
-            
-            if (ecf.dadosEmpresa) {
-                if (!empresaInfo.regimeTributario && ecf.dadosEmpresa.regimeTributario) {
-                    empresaInfo.regimeTributario = ecf.dadosEmpresa.regimeTributario;
-                }
-                empresaInfo.fonte = empresaInfo.fonte ? `${empresaInfo.fonte}, ECF` : 'ECF';
-            }
-        }
-
-        if (!empresaInfo.razaoSocial) {
-            log.push('⚠️ AVISO: Informações básicas da empresa não encontradas nos SPEDs');
-        }
-
-        return empresaInfo;
+        return Math.max(0, faturamento);
     }
 
     /**
-     * Processa a composição tributária atual da empresa
-     * @param {Object} speds - Dados dos SPEDs
-     * @param {Object} opcoes - Opções de processamento
-     * @param {Array} log - Array de log
-     * @returns {Object} Composição tributária detalhada
+     * Calcula faturamento baseado em documentos fiscais
      */
-    function processarComposicaoTributaria(speds, opcoes, log) {
-        const composicao = {
-            faturamentoTotal: 0,
-            debitos: {
-                pis: 0,
-                cofins: 0,
-                icms: 0,
-                ipi: 0,
-                iss: 0,
-                outros: 0
-            },
-            creditos: {
-                pis: 0,
-                cofins: 0,
-                icms: 0,
-                ipi: 0,
-                iss: 0,
-                outros: 0
-            },
-            impostosLiquidos: {
-                pis: 0,
-                cofins: 0,
-                icms: 0,
-                ipi: 0,
-                iss: 0,
-                total: 0
-            },
-            aliquotasEfetivas: {
-                pis: 0,
-                cofins: 0,
-                icms: 0,
-                ipi: 0,
-                iss: 0,
-                total: 0
-            },
-            fonte: [],
-            observacoes: []
-        };
+    function calcularFaturamentoPorDocumentos(documentos) {
+        const documentosSaida = documentos.filter(doc => 
+            doc.indOper === '1' && // Saída
+            doc.situacao === '00' && // Documento regular
+            doc.valorTotal > 0
+        );
 
-        try {
-            // 1. Processar SPED Fiscal (ICMS/IPI)
-            if (speds['sped-fiscal'] || speds.fiscal) {
-                log.push('   📊 Processando impostos do SPED Fiscal...');
-                processarImpostosFiscal(speds['sped-fiscal'] || speds.fiscal, composicao, log);
-            }
-
-            // 2. Processar SPED Contribuições (PIS/COFINS)
-            if (speds['sped-contribuicoes'] || speds.contribuicoes) {
-                log.push('   💼 Processando impostos do SPED Contribuições...');
-                processarImpostosContribuicoes(speds['sped-contribuicoes'] || speds.contribuicoes, composicao, log);
-            }
-
-            // 3. Processar ECF (dados complementares)
-            if (speds['sped-ecf'] || speds.ecf) {
-                log.push('   📋 Processando dados complementares do ECF...');
-                processarDadosECF(speds['sped-ecf'] || speds.ecf, composicao, log);
-            }
-
-            // 4. Calcular valores líquidos e alíquotas efetivas
-            calcularImpostosLiquidos(composicao, log);
-            calcularAliquotasEfetivas(composicao, log);
-
-            // 5. Validar consistência dos dados
-            validarComposicaoTributaria(composicao, log);
-
-            log.push(`   ✅ Composição tributária processada - Alíquota total: ${composicao.aliquotasEfetivas.total.toFixed(2)}%`);
-
-        } catch (erro) {
-            log.push(`   ❌ Erro ao processar composição tributária: ${erro.message}`);
-            console.error('SPED-EXTRACTOR: Erro na composição tributária:', erro);
-            throw erro;
+        if (documentosSaida.length === 0) {
+            return { faturamentoMensal: 0, periodoAnalise: 0 };
         }
 
-        return composicao;
-    }
+        let faturamentoTotal = 0;
+        let dataInicial = null;
+        let dataFinal = null;
 
-    /**
-     * Processa impostos do SPED Fiscal
-     * @param {Object} spedFiscal - Dados do SPED Fiscal
-     * @param {Object} composicao - Objeto de composição a ser preenchido
-     * @param {Array} log - Array de log
-     */
-    function processarImpostosFiscal(spedFiscal, composicao, log) {
-        if (!spedFiscal.registros) {
-            log.push('     ⚠️ Registros do SPED Fiscal não encontrados');
-            return;
-        }
+        documentosSaida.forEach(doc => {
+            faturamentoTotal += doc.valorTotal || 0;
 
-        let faturamentoICMS = 0;
-        let debitosICMS = 0;
-        let creditosICMS = 0;
-        let debitosIPI = 0;
-        let creditosIPI = 0;
-
-        try {
-            // Processar documentos fiscais (C100, C400)
-            if (spedFiscal.registros.C100) {
-                spedFiscal.registros.C100.forEach(registro => {
-                    const valorDocumento = parseFloat(registro.VL_DOC) || 0;
-                    const valorICMS = parseFloat(registro.VL_ICMS) || 0;
-                    
-                    faturamentoICMS += valorDocumento;
-                    debitosICMS += valorICMS;
-                });
-            }
-
-            // Processar apuração ICMS (E110, E111)
-            if (spedFiscal.registros.E110) {
-                spedFiscal.registros.E110.forEach(registro => {
-                    const valorDebito = parseFloat(registro.VL_TOT_DEBITOS) || 0;
-                    const valorCredito = parseFloat(registro.VL_TOT_CREDITOS) || 0;
-                    
-                    debitosICMS += valorDebito;
-                    creditosICMS += valorCredito;
-                });
-            }
-
-            // Processar IPI se houver
-            if (spedFiscal.registros.C400) {
-                spedFiscal.registros.C400.forEach(registro => {
-                    const valorIPI = parseFloat(registro.VL_IPI) || 0;
-                    debitosIPI += valorIPI;
-                });
-            }
-
-            // Atualizar composição
-            composicao.faturamentoTotal = Math.max(composicao.faturamentoTotal, faturamentoICMS);
-            composicao.debitos.icms = debitosICMS;
-            composicao.creditos.icms = creditosICMS;
-            composicao.debitos.ipi = debitosIPI;
-            composicao.fonte.push('SPED Fiscal');
-
-            log.push(`     💰 ICMS: Débitos R$ ${debitosICMS.toFixed(2)}, Créditos R$ ${creditosICMS.toFixed(2)}`);
-            if (debitosIPI > 0) {
-                log.push(`     🏭 IPI: Débitos R$ ${debitosIPI.toFixed(2)}`);
-            }
-
-        } catch (erro) {
-            log.push(`     ❌ Erro ao processar SPED Fiscal: ${erro.message}`);
-            console.error('SPED-EXTRACTOR: Erro no SPED Fiscal:', erro);
-        }
-    }
-
-    /**
-     * Processa impostos do SPED Contribuições
-     * @param {Object} spedContrib - Dados do SPED Contribuições
-     * @param {Object} composicao - Objeto de composição a ser preenchido
-     * @param {Array} log - Array de log
-     */
-    function processarImpostosContribuicoes(spedContrib, composicao, log) {
-        if (!spedContrib.registros) {
-            log.push('     ⚠️ Registros do SPED Contribuições não encontrados');
-            return;
-        }
-
-        let faturamentoPisCofins = 0;
-        let debitosPIS = 0;
-        let creditosPIS = 0;
-        let debitosCOFINS = 0;
-        let creditosCOFINS = 0;
-
-        try {
-            // Processar receitas (A100)
-            if (spedContrib.registros.A100) {
-                spedContrib.registros.A100.forEach(registro => {
-                    const valorReceita = parseFloat(registro.VL_REC_BRT) || 0;
-                    faturamentoPisCofins += valorReceita;
-                });
-            }
-
-            // Processar débitos PIS/COFINS (M100, M200)
-            if (spedContrib.registros.M100) {
-                spedContrib.registros.M100.forEach(registro => {
-                    const valorPIS = parseFloat(registro.VL_TOT_CONT_NC_PER) || 0;
-                    debitosPIS += valorPIS;
-                });
-            }
-
-            if (spedContrib.registros.M200) {
-                spedContrib.registros.M200.forEach(registro => {
-                    const valorCOFINS = parseFloat(registro.VL_TOT_CONT_NC_PER) || 0;
-                    debitosCOFINS += valorCOFINS;
-                });
-            }
-
-            // Processar créditos (C100, C170)
-            if (spedContrib.registros.C100) {
-                spedContrib.registros.C100.forEach(registro => {
-                    const creditoPIS = parseFloat(registro.VL_CRED_PIS) || 0;
-                    const creditoCOFINS = parseFloat(registro.VL_CRED_COFINS) || 0;
-                    
-                    creditosPIS += creditoPIS;
-                    creditosCOFINS += creditoCOFINS;
-                });
-            }
-
-            // Atualizar composição
-            composicao.faturamentoTotal = Math.max(composicao.faturamentoTotal, faturamentoPisCofins);
-            composicao.debitos.pis = debitosPIS;
-            composicao.creditos.pis = creditosPIS;
-            composicao.debitos.cofins = debitosCOFINS;
-            composicao.creditos.cofins = creditosCOFINS;
-            composicao.fonte.push('SPED Contribuições');
-
-            log.push(`     💼 PIS: Débitos R$ ${debitosPIS.toFixed(2)}, Créditos R$ ${creditosPIS.toFixed(2)}`);
-            log.push(`     💼 COFINS: Débitos R$ ${debitosCOFINS.toFixed(2)}, Créditos R$ ${creditosCOFINS.toFixed(2)}`);
-
-        } catch (erro) {
-            log.push(`     ❌ Erro ao processar SPED Contribuições: ${erro.message}`);
-            console.error('SPED-EXTRACTOR: Erro no SPED Contribuições:', erro);
-        }
-    }
-
-    /**
-     * Processa dados complementares do ECF
-     * @param {Object} ecf - Dados do ECF
-     * @param {Object} composicao - Objeto de composição a ser preenchido
-     * @param {Array} log - Array de log
-     */
-    function processarDadosECF(ecf, composicao, log) {
-        if (!ecf.registros) {
-            log.push('     ⚠️ Registros do ECF não encontrados');
-            return;
-        }
-
-        try {
-            // Processar dados de receita bruta se não foi obtida de outros SPEDs
-            if (ecf.registros.J100 && composicao.faturamentoTotal === 0) {
-                ecf.registros.J100.forEach(registro => {
-                    const receitaBruta = parseFloat(registro.VL_REC_BRT) || 0;
-                    composicao.faturamentoTotal = Math.max(composicao.faturamentoTotal, receitaBruta);
-                });
-            }
-
-            // Processar dados tributários complementares
-            if (ecf.registros.J200) {
-                ecf.registros.J200.forEach(registro => {
-                    // Dados complementares de tributos se necessário
-                    const impostoRenda = parseFloat(registro.VL_IRPJ) || 0;
-                    const contribuicaoSocial = parseFloat(registro.VL_CSLL) || 0;
-                    
-                    composicao.debitos.outros += impostoRenda + contribuicaoSocial;
-                });
-            }
-
-            composicao.fonte.push('ECF');
-            log.push('     📋 Dados complementares do ECF processados');
-
-        } catch (erro) {
-            log.push(`     ❌ Erro ao processar ECF: ${erro.message}`);
-            console.error('SPED-EXTRACTOR: Erro no ECF:', erro);
-        }
-    }
-
-    /**
-     * Calcula impostos líquidos (débitos - créditos)
-     * @param {Object} composicao - Composição tributária
-     * @param {Array} log - Array de log
-     */
-    function calcularImpostosLiquidos(composicao, log) {
-        try {
-            composicao.impostosLiquidos.pis = Math.max(0, composicao.debitos.pis - composicao.creditos.pis);
-            composicao.impostosLiquidos.cofins = Math.max(0, composicao.debitos.cofins - composicao.creditos.cofins);
-            composicao.impostosLiquidos.icms = Math.max(0, composicao.debitos.icms - composicao.creditos.icms);
-            composicao.impostosLiquidos.ipi = Math.max(0, composicao.debitos.ipi - composicao.creditos.ipi);
-            composicao.impostosLiquidos.iss = Math.max(0, composicao.debitos.iss - composicao.creditos.iss);
-
-            composicao.impostosLiquidos.total = 
-                composicao.impostosLiquidos.pis +
-                composicao.impostosLiquidos.cofins +
-                composicao.impostosLiquidos.icms +
-                composicao.impostosLiquidos.ipi +
-                composicao.impostosLiquidos.iss +
-                composicao.debitos.outros;
-
-            log.push(`   💰 Impostos líquidos totais: R$ ${composicao.impostosLiquidos.total.toFixed(2)}`);
-
-        } catch (erro) {
-            log.push(`   ❌ Erro ao calcular impostos líquidos: ${erro.message}`);
-            throw erro;
-        }
-    }
-
-    /**
-     * Calcula alíquotas efetivas sobre o faturamento
-     * @param {Object} composicao - Composição tributária
-     * @param {Array} log - Array de log
-     */
-    function calcularAliquotasEfetivas(composicao, log) {
-        if (composicao.faturamentoTotal <= 0) {
-            log.push('   ⚠️ Faturamento zero ou negativo - não é possível calcular alíquotas efetivas');
-            return;
-        }
-
-        try {
-            composicao.aliquotasEfetivas.pis = (composicao.impostosLiquidos.pis / composicao.faturamentoTotal) * 100;
-            composicao.aliquotasEfetivas.cofins = (composicao.impostosLiquidos.cofins / composicao.faturamentoTotal) * 100;
-            composicao.aliquotasEfetivas.icms = (composicao.impostosLiquidos.icms / composicao.faturamentoTotal) * 100;
-            composicao.aliquotasEfetivas.ipi = (composicao.impostosLiquidos.ipi / composicao.faturamentoTotal) * 100;
-            composicao.aliquotasEfetivas.iss = (composicao.impostosLiquidos.iss / composicao.faturamentoTotal) * 100;
-
-            composicao.aliquotasEfetivas.total = (composicao.impostosLiquidos.total / composicao.faturamentoTotal) * 100;
-
-            log.push(`   📊 Alíquotas efetivas calculadas:`);
-            log.push(`      PIS: ${composicao.aliquotasEfetivas.pis.toFixed(3)}%`);
-            log.push(`      COFINS: ${composicao.aliquotasEfetivas.cofins.toFixed(3)}%`);
-            log.push(`      ICMS: ${composicao.aliquotasEfetivas.icms.toFixed(3)}%`);
-            log.push(`      IPI: ${composicao.aliquotasEfetivas.ipi.toFixed(3)}%`);
-            log.push(`      TOTAL: ${composicao.aliquotasEfetivas.total.toFixed(3)}%`);
-
-        } catch (erro) {
-            log.push(`   ❌ Erro ao calcular alíquotas efetivas: ${erro.message}`);
-            throw erro;
-        }
-    }
-
-    /**
-     * Extrai dados financeiros das demonstrações contábeis
-     * @param {Object} speds - Dados dos SPEDs
-     * @param {Object} opcoes - Opções de processamento
-     * @param {Array} log - Array de log
-     * @returns {Object} Dados financeiros extraídos
-     */
-    // Substituir a função extrairDadosFinanceiros no sped-extractor.js
-    function extrairDadosFinanceiros(speds, opcoes, log) {
-        const dadosFinanceiros = {
-            receitas: {
-                receitaBruta: 0,
-                receitaLiquida: 0,
-                receitaOperacional: 0,
-                outrasReceitas: 0
-            },
-            custos: {
-                custoProdutos: 0,
-                custoServicos: 0,
-                custoTotal: 0
-            },
-            despesas: {
-                despesasComerciais: 0,
-                despesasAdministrativas: 0,
-                despesasOperacionais: 0,
-                despesasFinanceiras: 0,
-                outrasDespesas: 0
-            },
-            resultado: {
-                lucroBruto: 0,
-                lucroOperacional: 0,
-                lucroLiquido: 0,
-                margemBruta: 0,
-                margemOperacional: 0,
-                margemLiquida: 0
-            },
-            fonte: [],
-            observacoes: []
-        };
-
-        try {
-            // 1. Processar ECF (dados primários das demonstrações)
-            if (speds['ecf'] || speds['sped-ecf']) {
-                log.push('   📊 Extraindo dados financeiros do ECF...');
-                processarDemonstracoesFiscaisCorrigido(speds['ecf'] || speds['sped-ecf'], dadosFinanceiros, log);
-            }
-
-            // 2. Processar ECD (dados contábeis detalhados)  
-            if (speds['ecd'] || speds['sped-ecd']) {
-                log.push('   📋 Extraindo dados contábeis do ECD...');
-                processarDemonstracoesContabeisCorrigido(speds['ecd'] || speds['sped-ecd'], dadosFinanceiros, log);
-            }
-
-            // 3. Complementar com dados do SPED Contribuições
-            if (speds['contribuicoes'] || speds['sped-contribuicoes']) {
-                log.push('   💼 Complementando com dados do SPED Contribuições...');
-                complementarComContribuicoesCorrigido(speds['contribuicoes'] || speds['sped-contribuicoes'], dadosFinanceiros, log);
-            }
-
-            // 4. Se não houver dados específicos, estimar baseado na composição tributária
-            if (dadosFinanceiros.receitas.receitaBruta === 0) {
-                log.push('   📊 Estimando dados financeiros baseado no faturamento tributário...');
-                estimarDadosFinanceirosPorFaturamento(speds, dadosFinanceiros, log);
-            }
-
-            // 5. Calcular indicadores derivados
-            calcularResultadosFinanceirosCorrigido(dadosFinanceiros, log);
-            calcularMargensOperacionaisCorrigido(dadosFinanceiros, log);
-
-            // 6. Validar consistência dos dados financeiros
-            validarDadosFinanceirosCorrigido(dadosFinanceiros, log);
-
-            log.push(`   ✅ Dados financeiros processados - Margem operacional: ${dadosFinanceiros.resultado.margemOperacional.toFixed(2)}%`);
-
-        } catch (erro) {
-            log.push(`   ❌ Erro ao extrair dados financeiros: ${erro.message}`);
-            console.error('SPED-EXTRACTOR: Erro nos dados financeiros:', erro);
-            dadosFinanceiros.observacoes.push(`Erro na extração: ${erro.message}`);
-        }
-
-        return dadosFinanceiros;
-    }
-
-    /**
-     * Versão corrigida do processamento de demonstrações fiscais
-     */
-    function processarDemonstracoesFiscaisCorrigido(ecf, dadosFinanceiros, log) {
-        if (!ecf.registros && !ecf.dadosEmpresa) {
-            log.push('     ⚠️ Estrutura do ECF não reconhecida');
-            return;
-        }
-
-        try {
-            // Processar diferentes estruturas possíveis do ECF
-            let registrosECF = ecf.registros || ecf;
-
-            // Buscar por registros J100 (Receitas)
-            if (registrosECF.J100 || registrosECF['J100']) {
-                const registrosJ100 = registrosECF.J100 || registrosECF['J100'];
-                if (Array.isArray(registrosJ100)) {
-                    registrosJ100.forEach(registro => {
-                        const receitaBruta = parseFloat(registro.VL_REC_BRT || registro.receitaBruta || 0);
-                        const receitaLiquida = parseFloat(registro.VL_REC_LIQ || registro.receitaLiquida || 0);
-
-                        dadosFinanceiros.receitas.receitaBruta += receitaBruta;
-                        dadosFinanceiros.receitas.receitaLiquida += receitaLiquida || receitaBruta;
-                    });
-                }
-            }
-
-            // Buscar por registros J150 (Custos)
-            if (registrosECF.J150 || registrosECF['J150']) {
-                const registrosJ150 = registrosECF.J150 || registrosECF['J150'];
-                if (Array.isArray(registrosJ150)) {
-                    registrosJ150.forEach(registro => {
-                        const custoTotal = parseFloat(registro.VL_CUSTO || registro.custoTotal || 0);
-                        dadosFinanceiros.custos.custoTotal += custoTotal;
-                    });
-                }
-            }
-
-            // Buscar por registros J200 (Resultado)
-            if (registrosECF.J200 || registrosECF['J200']) {
-                const registrosJ200 = registrosECF.J200 || registrosECF['J200'];
-                if (Array.isArray(registrosJ200)) {
-                    registrosJ200.forEach(registro => {
-                        const lucroOperacional = parseFloat(registro.VL_LUCRO_OPER || registro.lucroOperacional || 0);
-                        const lucroLiquido = parseFloat(registro.VL_LUCRO_LIQ || registro.lucroLiquido || 0);
-
-                        dadosFinanceiros.resultado.lucroOperacional += lucroOperacional;
-                        dadosFinanceiros.resultado.lucroLiquido += lucroLiquido || lucroOperacional;
-                    });
-                }
-            }
-
-            dadosFinanceiros.fonte.push('ECF');
-            log.push(`     📊 ECF processado - Receita bruta: R$ ${dadosFinanceiros.receitas.receitaBruta.toFixed(2)}`);
-
-        } catch (erro) {
-            log.push(`     ❌ Erro ao processar ECF: ${erro.message}`);
-            throw erro;
-        }
-    }
-
-    /**
-     * Estima dados financeiros baseado no faturamento tributário quando não disponíveis
-     */
-    function estimarDadosFinanceirosPorFaturamento(speds, dadosFinanceiros, log) {
-        let faturamentoBase = 0;
-
-        // Buscar faturamento de qualquer SPED disponível
-        Object.values(speds).forEach(sped => {
-            if (sped.dadosEmpresa && sped.dadosEmpresa.faturamento) {
-                faturamentoBase = Math.max(faturamentoBase, sped.dadosEmpresa.faturamento);
+            if (doc.dataEmissao) {
+                const dataDoc = converterDataSped(doc.dataEmissao);
+                if (!dataInicial || dataDoc < dataInicial) dataInicial = dataDoc;
+                if (!dataFinal || dataDoc > dataFinal) dataFinal = dataDoc;
             }
         });
 
-        if (faturamentoBase > 0) {
-            // Estimativas conservadoras baseadas em médias setoriais
-            dadosFinanceiros.receitas.receitaBruta = faturamentoBase;
-            dadosFinanceiros.receitas.receitaLiquida = faturamentoBase * 0.95; // 5% de deduções
-            dadosFinanceiros.custos.custoTotal = faturamentoBase * 0.60; // 60% CMV típico
-            dadosFinanceiros.despesas.despesasOperacionais = faturamentoBase * 0.20; // 20% despesas
-
-            dadosFinanceiros.observacoes.push('Dados financeiros estimados baseados no faturamento tributário');
-            log.push(`     📊 Dados estimados - Base: R$ ${faturamentoBase.toFixed(2)}`);
-        }
-    }
-
-    /**
-     * Versão corrigida do cálculo de resultados financeiros
-     */
-    function calcularResultadosFinanceirosCorrigido(dadosFinanceiros, log) {
-        try {
-            // Calcular lucro bruto
-            dadosFinanceiros.resultado.lucroBruto = 
-                dadosFinanceiros.receitas.receitaLiquida - dadosFinanceiros.custos.custoTotal;
-
-            // Se não temos lucro operacional calculado, estimar
-            if (dadosFinanceiros.resultado.lucroOperacional === 0) {
-                dadosFinanceiros.resultado.lucroOperacional = 
-                    dadosFinanceiros.resultado.lucroBruto - dadosFinanceiros.despesas.despesasOperacionais;
-            }
-
-            // Se não temos lucro líquido, usar operacional como base
-            if (dadosFinanceiros.resultado.lucroLiquido === 0) {
-                dadosFinanceiros.resultado.lucroLiquido = dadosFinanceiros.resultado.lucroOperacional * 0.85; // Desconto IR/CSLL
-            }
-
-            log.push(`     💰 Resultados calculados:`);
-            log.push(`        Lucro Bruto: R$ ${dadosFinanceiros.resultado.lucroBruto.toFixed(2)}`);
-            log.push(`        Lucro Operacional: R$ ${dadosFinanceiros.resultado.lucroOperacional.toFixed(2)}`);
-            log.push(`        Lucro Líquido: R$ ${dadosFinanceiros.resultado.lucroLiquido.toFixed(2)}`);
-
-        } catch (erro) {
-            log.push(`     ❌ Erro ao calcular resultados: ${erro.message}`);
-            throw erro;
-        }
-    }
-
-    /**
-     * Versão corrigida do cálculo de margens operacionais
-     */
-    function calcularMargensOperacionaisCorrigido(dadosFinanceiros, log) {
-        const receitaBase = dadosFinanceiros.receitas.receitaLiquida || dadosFinanceiros.receitas.receitaBruta;
-
-        if (receitaBase <= 0) {
-            log.push('     ⚠️ Receita zero ou negativa - não é possível calcular margens');
-            return;
+        // Calcular período de análise em meses
+        let mesesPeriodo = 1;
+        if (dataInicial && dataFinal) {
+            const diffTime = Math.abs(dataFinal - dataInicial);
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            mesesPeriodo = Math.max(1, Math.round(diffDays / 30));
         }
 
-        try {
-            dadosFinanceiros.resultado.margemBruta = 
-                (dadosFinanceiros.resultado.lucroBruto / receitaBase) * 100;
-
-            dadosFinanceiros.resultado.margemOperacional = 
-                (dadosFinanceiros.resultado.lucroOperacional / receitaBase) * 100;
-
-            dadosFinanceiros.resultado.margemLiquida = 
-                (dadosFinanceiros.resultado.lucroLiquido / receitaBase) * 100;
-
-            log.push(`     📊 Margens calculadas:`);
-            log.push(`        Margem Bruta: ${dadosFinanceiros.resultado.margemBruta.toFixed(2)}%`);
-            log.push(`        Margem Operacional: ${dadosFinanceiros.resultado.margemOperacional.toFixed(2)}%`);
-            log.push(`        Margem Líquida: ${dadosFinanceiros.resultado.margemLiquida.toFixed(2)}%`);
-
-        } catch (erro) {
-            log.push(`     ❌ Erro ao calcular margens: ${erro.message}`);
-            throw erro;
-        }
-    }
-
-    /**
-     * Versão aprimorada do cálculo do ciclo financeiro
-     */
-    function calcularCicloFinanceiroCorrigido(speds, dadosFinanceiros, opcoes, log) {
-        const cicloFinanceiro = {
-            pmr: 30,  // Prazo Médio de Recebimento (dias)
-            pme: 30,  // Prazo Médio de Estoque (dias)  
-            pmp: 30,  // Prazo Médio de Pagamento (dias)
-            cicloOperacional: 60,     // PMR + PME
-            cicloFinanceiroLiquido: 30,  // Ciclo Operacional - PMP
-            giroAtivos: 0,
-            giroEstoque: 0,
-            fonte: [],
-            observacoes: [],
-            estimado: true
+        return {
+            faturamentoMensal: faturamentoTotal / mesesPeriodo,
+            periodoAnalise: mesesPeriodo,
+            totalDocumentos: documentosSaida.length
         };
-
-        try {
-            // Tentar calcular baseado nos dados financeiros reais
-            if (dadosFinanceiros.receitas.receitaLiquida > 0) {
-                log.push('   📊 Calculando ciclo baseado nos dados financeiros reais...');
-
-                const receitaAnual = dadosFinanceiros.receitas.receitaLiquida * 12;
-                const custoAnual = dadosFinanceiros.custos.custoTotal * 12;
-
-                // Estimar PMR baseado no faturamento (empresas B2B geralmente 30-45 dias)
-                if (receitaAnual > 0) {
-                    // Heurística: empresas maiores tendem a ter PMR menor
-                    if (receitaAnual > 100000000) { // > 100M
-                        cicloFinanceiro.pmr = 25;
-                    } else if (receitaAnual > 50000000) { // > 50M
-                        cicloFinanceiro.pmr = 30;
-                    } else {
-                        cicloFinanceiro.pmr = 35;
-                    }
-                }
-
-                // Estimar PME baseado no giro de estoque
-                if (custoAnual > 0 && receitaAnual > 0) {
-                    cicloFinanceiro.giroEstoque = receitaAnual / custoAnual;
-                    // PME = 365 / (Giro do estoque anual)
-                    const giroEstoqueAnual = Math.max(cicloFinanceiro.giroEstoque * 6, 4); // Mínimo 4 giros/ano
-                    cicloFinanceiro.pme = Math.round(365 / giroEstoqueAnual);
-                    cicloFinanceiro.pme = Math.min(Math.max(cicloFinanceiro.pme, 15), 90); // Entre 15 e 90 dias
-                }
-
-                // Estimar PMP (geralmente 30-60 dias dependendo do porte)
-                if (receitaAnual > 50000000) {
-                    cicloFinanceiro.pmp = 45; // Empresas maiores conseguem prazos maiores
-                } else {
-                    cicloFinanceiro.pmp = 30;
-                }
-
-                cicloFinanceiro.estimado = false;
-                cicloFinanceiro.fonte.push('Cálculo baseado em dados financeiros reais');
-
-                log.push(`     📊 Ciclo calculado com dados reais:`);
-                log.push(`        Receita anual estimada: R$ ${receitaAnual.toFixed(2)}`);
-            }
-
-            // Analisar fluxo de caixa do ECD se disponível
-            if (speds['ecd'] || speds['sped-ecd']) {
-                log.push('   ⏱️ Analisando fluxo de caixa do ECD...');
-                analisarFluxoCaixaECDCorrigido(speds['ecd'] || speds['sped-ecd'], cicloFinanceiro, log);
-            }
-
-            // Calcular indicadores derivados
-            calcularIndicadoresCicloCorrigido(cicloFinanceiro, log);
-
-            // Validar razoabilidade dos valores
-            validarCicloFinanceiroCorrigido(cicloFinanceiro, log);
-
-            log.push(`   ✅ Ciclo financeiro calculado: ${cicloFinanceiro.cicloFinanceiroLiquido} dias`);
-
-        } catch (erro) {
-            log.push(`   ❌ Erro ao calcular ciclo financeiro: ${erro.message}`);
-            console.error('SPED-EXTRACTOR: Erro no ciclo financeiro:', erro);
-
-            // Manter valores padrão em caso de erro
-            cicloFinanceiro.observacoes.push(`Erro no cálculo: ${erro.message}. Utilizando valores estimados.`);
-        }
-
-        return cicloFinanceiro;
     }
 
     /**
-     * Calcula indicadores derivados do ciclo financeiro (versão corrigida)
+     * Converte data do formato SPED (DDMMAAAA) para objeto Date
      */
-    function calcularIndicadoresCicloCorrigido(cicloFinanceiro, log) {
-        try {
-            cicloFinanceiro.cicloOperacional = cicloFinanceiro.pmr + cicloFinanceiro.pme;
-            cicloFinanceiro.cicloFinanceiroLiquido = cicloFinanceiro.cicloOperacional - cicloFinanceiro.pmp;
-
-            // Garantir valores mínimos razoáveis
-            cicloFinanceiro.cicloFinanceiroLiquido = Math.max(cicloFinanceiro.cicloFinanceiroLiquido, 5);
-
-            log.push(`     ⏱️ Indicadores do ciclo:`);
-            log.push(`        PMR: ${cicloFinanceiro.pmr} dias`);
-            log.push(`        PME: ${cicloFinanceiro.pme} dias`);
-            log.push(`        PMP: ${cicloFinanceiro.pmp} dias`);
-            log.push(`        Ciclo Operacional: ${cicloFinanceiro.cicloOperacional} dias`);
-            log.push(`        Ciclo Financeiro Líquido: ${cicloFinanceiro.cicloFinanceiroLiquido} dias`);
-
-        } catch (erro) {
-            log.push(`     ❌ Erro ao calcular indicadores do ciclo: ${erro.message}`);
-            throw erro;
-        }
-    }
-
-    /**
-     * Processa demonstrações fiscais do ECF
-     * @param {Object} ecf - Dados do ECF
-     * @param {Object} dadosFinanceiros - Objeto de dados financeiros
-     * @param {Array} log - Array de log
-     */
-    function processarDemonstracoesFiscais(ecf, dadosFinanceiros, log) {
-        if (!ecf.registros) {
-            log.push('     ⚠️ Registros do ECF não encontrados');
-            return;
-        }
-
-        try {
-            // Processar DRE (J100 - Receitas, J150 - Custos, J200 - Resultado)
-            if (ecf.registros.J100) {
-                ecf.registros.J100.forEach(registro => {
-                    const receitaBruta = parseFloat(registro.VL_REC_BRT) || 0;
-                    const receitaLiquida = parseFloat(registro.VL_REC_LIQ) || 0;
-                    
-                    dadosFinanceiros.receitas.receitaBruta += receitaBruta;
-                    dadosFinanceiros.receitas.receitaLiquida += receitaLiquida;
-                });
-            }
-
-            if (ecf.registros.J150) {
-                ecf.registros.J150.forEach(registro => {
-                    const custoTotal = parseFloat(registro.VL_CUSTO) || 0;
-                    dadosFinanceiros.custos.custoTotal += custoTotal;
-                });
-            }
-
-            if (ecf.registros.J200) {
-                ecf.registros.J200.forEach(registro => {
-                    const lucroOperacional = parseFloat(registro.VL_LUCRO_OPER) || 0;
-                    const lucroLiquido = parseFloat(registro.VL_LUCRO_LIQ) || 0;
-                    
-                    dadosFinanceiros.resultado.lucroOperacional += lucroOperacional;
-                    dadosFinanceiros.resultado.lucroLiquido += lucroLiquido;
-                });
-            }
-
-            dadosFinanceiros.fonte.push('ECF');
-            log.push(`     📊 ECF processado - Receita bruta: R$ ${dadosFinanceiros.receitas.receitaBruta.toFixed(2)}`);
-
-        } catch (erro) {
-            log.push(`     ❌ Erro ao processar ECF: ${erro.message}`);
-            throw erro;
-        }
-    }
-
-    /**
-     * Processa demonstrações contábeis do ECD
-     * @param {Object} ecd - Dados do ECD
-     * @param {Object} dadosFinanceiros - Objeto de dados financeiros
-     * @param {Array} log - Array de log
-     */
-    function processarDemonstracoesContabeis(ecd, dadosFinanceiros, log) {
-        if (!ecd.registros) {
-            log.push('     ⚠️ Registros do ECD não encontrados');
-            return;
-        }
-
-        try {
-            // Processar Balanço Patrimonial (J100)
-            if (ecd.registros.J100) {
-                // Dados do balanço para complementar análises
-                log.push('     📋 Dados do Balanço Patrimonial identificados');
-            }
-
-            // Processar DRE detalhada (J200, J210)
-            if (ecd.registros.J200) {
-                ecd.registros.J200.forEach(registro => {
-                    // Complementar dados de receitas e custos se disponível
-                    const conta = registro.COD_CTA || '';
-                    const valor = parseFloat(registro.VL_CTA) || 0;
-                    
-                    // Mapear contas baseado no plano de contas
-                    if (conta.startsWith('3.1')) { // Receitas
-                        dadosFinanceiros.receitas.receitaOperacional += valor;
-                    } else if (conta.startsWith('3.2')) { // Custos
-                        dadosFinanceiros.custos.custoTotal += valor;
-                    } else if (conta.startsWith('3.3')) { // Despesas
-                        dadosFinanceiros.despesas.despesasOperacionais += valor;
-                    }
-                });
-            }
-
-            dadosFinanceiros.fonte.push('ECD');
-            log.push('     📋 ECD processado para complementar dados financeiros');
-
-        } catch (erro) {
-            log.push(`     ❌ Erro ao processar ECD: ${erro.message}`);
-            console.error('SPED-EXTRACTOR: Erro no ECD:', erro);
-        }
-    }
-
-    /**
-     * Complementa dados financeiros com informações do SPED Contribuições
-     * @param {Object} spedContrib - Dados do SPED Contribuições
-     * @param {Object} dadosFinanceiros - Objeto de dados financeiros
-     * @param {Array} log - Array de log
-     */
-    function complementarComContribuicoes(spedContrib, dadosFinanceiros, log) {
-        if (!spedContrib.registros) {
-            log.push('     ⚠️ Registros do SPED Contribuições não encontrados');
-            return;
-        }
-
-        try {
-            // Complementar receitas se não foram obtidas de outras fontes
-            if (spedContrib.registros.A100 && dadosFinanceiros.receitas.receitaBruta === 0) {
-                spedContrib.registros.A100.forEach(registro => {
-                    const receitaBruta = parseFloat(registro.VL_REC_BRT) || 0;
-                    dadosFinanceiros.receitas.receitaBruta += receitaBruta;
-                });
-            }
-
-            // Complementar custos (A200)
-            if (spedContrib.registros.A200) {
-                spedContrib.registros.A200.forEach(registro => {
-                    const custoTotal = parseFloat(registro.VL_CUSTO) || 0;
-                    dadosFinanceiros.custos.custoTotal += custoTotal;
-                });
-            }
-
-            dadosFinanceiros.fonte.push('SPED Contribuições');
-            log.push('     💼 Dados complementados com SPED Contribuições');
-
-        } catch (erro) {
-            log.push(`     ❌ Erro ao complementar com SPED Contribuições: ${erro.message}`);
-            console.error('SPED-EXTRACTOR: Erro ao complementar dados:', erro);
-        }
-    }
-
-    /**
-     * Calcula resultados financeiros derivados
-     * @param {Object} dadosFinanceiros - Dados financeiros
-     * @param {Array} log - Array de log
-     */
-    function calcularResultadosFinanceiros(dadosFinanceiros, log) {
-        try {
-            // Calcular lucro bruto
-            dadosFinanceiros.resultado.lucroBruto = 
-                dadosFinanceiros.receitas.receitaLiquida - dadosFinanceiros.custos.custoTotal;
-
-            // Se não temos lucro operacional calculado, estimar
-            if (dadosFinanceiros.resultado.lucroOperacional === 0) {
-                dadosFinanceiros.resultado.lucroOperacional = 
-                    dadosFinanceiros.resultado.lucroBruto - dadosFinanceiros.despesas.despesasOperacionais;
-            }
-
-            // Se não temos lucro líquido, usar operacional como base
-            if (dadosFinanceiros.resultado.lucroLiquido === 0) {
-                dadosFinanceiros.resultado.lucroLiquido = dadosFinanceiros.resultado.lucroOperacional;
-            }
-
-            log.push(`     💰 Resultados calculados:`);
-            log.push(`        Lucro Bruto: R$ ${dadosFinanceiros.resultado.lucroBruto.toFixed(2)}`);
-            log.push(`        Lucro Operacional: R$ ${dadosFinanceiros.resultado.lucroOperacional.toFixed(2)}`);
-            log.push(`        Lucro Líquido: R$ ${dadosFinanceiros.resultado.lucroLiquido.toFixed(2)}`);
-
-        } catch (erro) {
-            log.push(`     ❌ Erro ao calcular resultados: ${erro.message}`);
-            throw erro;
-        }
-    }
-
-    /**
-     * Calcula margens operacionais
-     * @param {Object} dadosFinanceiros - Dados financeiros
-     * @param {Array} log - Array de log
-     */
-    function calcularMargensOperacionais(dadosFinanceiros, log) {
-        const receitaBase = dadosFinanceiros.receitas.receitaLiquida || dadosFinanceiros.receitas.receitaBruta;
+    function converterDataSped(dataSped) {
+        if (!dataSped || dataSped.length !== 8) return new Date();
         
-        if (receitaBase <= 0) {
-            log.push('     ⚠️ Receita zero ou negativa - não é possível calcular margens');
-            return;
-        }
-
-        try {
-            dadosFinanceiros.resultado.margemBruta = 
-                (dadosFinanceiros.resultado.lucroBruto / receitaBase) * 100;
-
-            dadosFinanceiros.resultado.margemOperacional = 
-                (dadosFinanceiros.resultado.lucroOperacional / receitaBase) * 100;
-
-            dadosFinanceiros.resultado.margemLiquida = 
-                (dadosFinanceiros.resultado.lucroLiquido / receitaBase) * 100;
-
-            log.push(`     📊 Margens calculadas:`);
-            log.push(`        Margem Bruta: ${dadosFinanceiros.resultado.margemBruta.toFixed(2)}%`);
-            log.push(`        Margem Operacional: ${dadosFinanceiros.resultado.margemOperacional.toFixed(2)}%`);
-            log.push(`        Margem Líquida: ${dadosFinanceiros.resultado.margemLiquida.toFixed(2)}%`);
-
-        } catch (erro) {
-            log.push(`     ❌ Erro ao calcular margens: ${erro.message}`);
-            throw erro;
-        }
+        const dia = parseInt(dataSped.substring(0, 2));
+        const mes = parseInt(dataSped.substring(2, 4)) - 1; // Mês em JS é 0-based
+        const ano = parseInt(dataSped.substring(4, 8));
+        
+        return new Date(ano, mes, dia);
     }
 
     /**
-     * Calcula ciclo financeiro da empresa
-     * @param {Object} speds - Dados dos SPEDs
-     * @param {Object} dadosFinanceiros - Dados financeiros
-     * @param {Object} opcoes - Opções de processamento
-     * @param {Array} log - Array de log
-     * @returns {Object} Dados do ciclo financeiro
+     * Estima faturamento baseado em débitos de impostos
      */
-    function calcularCicloFinanceiro(speds, dadosFinanceiros, opcoes, log) {
-        const cicloFinanceiro = {
-            pmr: 30,  // Prazo Médio de Recebimento (dias)
-            pme: 30,  // Prazo Médio de Estoque (dias)
-            pmp: 30,  // Prazo Médio de Pagamento (dias)
-            cicloOperacional: 60,     // PMR + PME
-            cicloFinanceiroLiquido: 30,  // Ciclo Operacional - PMP
-            giroAtivos: 0,
-            giroEstoque: 0,
-            fonte: [],
-            observacoes: [],
-            estimado: true
-        };
-
-        try {
-            // Tentar extrair dados reais do fluxo de caixa (ECD)
-            if (speds['sped-ecd'] || speds.ecd) {
-                log.push('   ⏱️ Analisando fluxo de caixa do ECD...');
-                analisarFluxoCaixaECD(speds['sped-ecd'] || speds.ecd, cicloFinanceiro, log);
+    function estimarFaturamentoPorImpostos(dadosSped) {
+        // Tentar usar débitos de PIS/COFINS
+        if (dadosSped.debitos?.pis?.length > 0) {
+            const debitoPIS = dadosSped.debitos.pis[0].valorTotalContribuicao || 0;
+            if (debitoPIS > 0) {
+                // Assumindo alíquota média de 0.65% para PIS cumulativo
+                return debitoPIS / 0.0065;
             }
+        }
 
-            // Estimar baseado nos dados financeiros disponíveis
-            if (dadosFinanceiros.receitas.receitaLiquida > 0) {
-                log.push('   📊 Estimando ciclo baseado nos dados financeiros...');
-                estimarCicloFinanceiro(dadosFinanceiros, cicloFinanceiro, log);
+        if (dadosSped.debitos?.cofins?.length > 0) {
+            const debitoCOFINS = dadosSped.debitos.cofins[0].valorTotalContribuicao || 0;
+            if (debitoCOFINS > 0) {
+                // Assumindo alíquota média de 3% para COFINS cumulativo
+                return debitoCOFINS / 0.03;
             }
-
-            // Calcular indicadores derivados
-            calcularIndicadoresCiclo(cicloFinanceiro, log);
-
-            // Validar razoabilidade dos valores
-            validarCicloFinanceiro(cicloFinanceiro, log);
-
-            log.push(`   ✅ Ciclo financeiro calculado: ${cicloFinanceiro.cicloFinanceiroLiquido} dias`);
-
-        } catch (erro) {
-            log.push(`   ❌ Erro ao calcular ciclo financeiro: ${erro.message}`);
-            console.error('SPED-EXTRACTOR: Erro no ciclo financeiro:', erro);
-            
-            // Manter valores padrão em caso de erro
-            cicloFinanceiro.observacoes.push(`Erro no cálculo: ${erro.message}. Utilizando valores estimados.`);
         }
 
-        return cicloFinanceiro;
-    }
-
-    /**
-     * Analisa fluxo de caixa do ECD para extrair ciclo real
-     * @param {Object} ecd - Dados do ECD
-     * @param {Object} cicloFinanceiro - Objeto do ciclo financeiro
-     * @param {Array} log - Array de log
-     */
-    function analisarFluxoCaixaECD(ecd, cicloFinanceiro, log) {
-        if (!ecd.registros || !ecd.registros.J800) {
-            log.push('     ⚠️ Dados de fluxo de caixa não encontrados no ECD');
-            return;
-        }
-
-        try {
-            // Analisar demonstração de fluxo de caixa
-            ecd.registros.J800.forEach(registro => {
-                const conta = registro.COD_CTA || '';
-                const valor = parseFloat(registro.VL_CTA) || 0;
-                
-                // Identificar variações no capital de giro
-                if (conta.includes('RECEB') || conta.includes('CLIENTE')) {
-                    // Dados de recebimento podem indicar PMR
-                    log.push('     📋 Dados de recebimento identificados no fluxo de caixa');
-                }
-                
-                if (conta.includes('FORNEC') || conta.includes('PAGAMENTO')) {
-                    // Dados de pagamento podem indicar PMP
-                    log.push('     📋 Dados de pagamento identificados no fluxo de caixa');
-                }
-            });
-
-            cicloFinanceiro.fonte.push('ECD - Fluxo de Caixa');
-            cicloFinanceiro.estimado = false;
-
-        } catch (erro) {
-            log.push(`     ❌ Erro ao analisar fluxo de caixa: ${erro.message}`);
-        }
-    }
-
-    /**
-     * Estima ciclo financeiro baseado nos dados financeiros
-     * @param {Object} dadosFinanceiros - Dados financeiros
-     * @param {Object} cicloFinanceiro - Objeto do ciclo financeiro
-     * @param {Array} log - Array de log
-     */
-    function estimarCicloFinanceiro(dadosFinanceiros, cicloFinanceiro, log) {
-        try {
-            const receitaAnual = dadosFinanceiros.receitas.receitaLiquida;
-            const custoAnual = dadosFinanceiros.custos.custoTotal;
-
-            if (receitaAnual > 0) {
-                // Estimar giro dos ativos (simplificado)
-                cicloFinanceiro.giroAtivos = receitaAnual / (receitaAnual * 0.8); // Estimativa conservadora
-                
-                // Estimar PMR baseado no tipo de negócio (padrão: 30 dias)
-                cicloFinanceiro.pmr = 30;
-                
-                // Estimar PME baseado no giro de estoque
-                if (custoAnual > 0) {
-                    cicloFinanceiro.giroEstoque = receitaAnual / custoAnual;
-                    cicloFinanceiro.pme = 365 / Math.max(cicloFinanceiro.giroEstoque * 4, 4); // Mínimo 4 giros/ano
-                }
-
-                log.push(`     📊 Estimativas baseadas em dados financeiros:`);
-                log.push(`        PMR estimado: ${cicloFinanceiro.pmr} dias`);
-                log.push(`        PME estimado: ${cicloFinanceiro.pme.toFixed(0)} dias`);
+        // Tentar usar débitos de ICMS
+        if (dadosSped.debitos?.icms?.length > 0) {
+            const debitoICMS = dadosSped.debitos.icms[0].valorTotalDebitos || 0;
+            if (debitoICMS > 0) {
+                // Assumindo alíquota média de 18% para ICMS
+                return debitoICMS / 0.18;
             }
-
-            cicloFinanceiro.fonte.push('Estimativa baseada em dados financeiros');
-
-        } catch (erro) {
-            log.push(`     ❌ Erro na estimativa do ciclo: ${erro.message}`);
         }
+
+        return 0;
     }
 
     /**
-     * Calcula indicadores derivados do ciclo financeiro
-     * @param {Object} cicloFinanceiro - Objeto do ciclo financeiro
-     * @param {Array} log - Array de log
+     * Extrai parâmetros fiscais com composição tributária detalhada
      */
-    function calcularIndicadoresCiclo(cicloFinanceiro, log) {
-        try {
-            cicloFinanceiro.cicloOperacional = cicloFinanceiro.pmr + cicloFinanceiro.pme;
-            cicloFinanceiro.cicloFinanceiroLiquido = cicloFinanceiro.cicloOperacional - cicloFinanceiro.pmp;
+    function extrairParametrosFiscais(dadosSped) {
+        console.log('SPED-EXTRACTOR: Extraindo parâmetros fiscais');
 
-            log.push(`     ⏱️ Indicadores do ciclo:`);
-            log.push(`        Ciclo Operacional: ${cicloFinanceiro.cicloOperacional} dias`);
-            log.push(`        Ciclo Financeiro Líquido: ${cicloFinanceiro.cicloFinanceiroLiquido} dias`);
+        const regimeTributario = determinarRegimeTributario(dadosSped);
+        const tipoOperacao = determinarTipoOperacao(dadosSped);
+        const regimePisCofins = determinarRegimePisCofins(dadosSped);
 
-        } catch (erro) {
-            log.push(`     ❌ Erro ao calcular indicadores do ciclo: ${erro.message}`);
-            throw erro;
-        }
-    }
-
-    /**
-     * Processa cenário de transição tributária
-     * @param {Object} composicaoAtual - Composição tributária atual
-     * @param {Object} parametrosIVA - Parâmetros do IVA Dual
-     * @param {Array} log - Array de log
-     * @returns {Object} Dados da transição tributária
-     */
-    function processarTransicaoTributaria(composicaoAtual, parametrosIVA, log) {
-        const transicao = {
-            cronograma: CONFIG.cronogramaTransicao,
-            projecoesPorAno: {},
-            resumoTransicao: {
-                impactoTotal: 0,
-                variacao: {
-                    pis: 0,
-                    cofins: 0,
-                    icms: 0,
-                    ipi: 0,
-                    iss: 0,
-                    total: 0
-                },
-                aliquotaFinal: parametrosIVA.total
+        // Calcular dados tributários mensais
+        const faturamentoMensal = calcularFaturamentoMensal(dadosSped);
+        
+        const composicaoTributaria = {
+            debitos: {
+                pis: calcularDebitosPIS(dadosSped, faturamentoMensal),
+                cofins: calcularDebitosCOFINS(dadosSped, faturamentoMensal),
+                icms: calcularDebitosICMS(dadosSped, faturamentoMensal),
+                ipi: calcularDebitosIPI(dadosSped, faturamentoMensal),
+                iss: calcularDebitosISS(dadosSped, faturamentoMensal)
             },
-            observacoes: []
+            creditos: {
+                pis: calcularCreditosPIS(dadosSped),
+                cofins: calcularCreditosCOFINS(dadosSped),
+                icms: calcularCreditosICMS(dadosSped),
+                ipi: calcularCreditosIPI(dadosSped),
+                iss: 0 // ISS não gera créditos
+            },
+            aliquotasEfetivas: {},
+            fontesDados: {
+                pis: dadosSped.debitos?.pis?.length > 0 ? 'sped' : 'estimado',
+                cofins: dadosSped.debitos?.cofins?.length > 0 ? 'sped' : 'estimado',
+                icms: dadosSped.debitos?.icms?.length > 0 ? 'sped' : 'estimado',
+                ipi: dadosSped.debitos?.ipi?.length > 0 ? 'sped' : 'estimado',
+                iss: 'estimado'
+            }
         };
 
-        try {
-            log.push('   📈 Calculando projeções da transição tributária...');
-
-            // Calcular projeções para cada ano da transição
-            Object.keys(CONFIG.cronogramaTransicao).forEach(ano => {
-                const anoNum = parseInt(ano);
-                const percentuais = CONFIG.cronogramaTransicao[ano];
-                
-                const projecaoAno = calcularProjecaoAno(
-                    anoNum, 
-                    percentuais, 
-                    composicaoAtual, 
-                    parametrosIVA,
-                    log
-                );
-                
-                transicao.projecoesPorAno[ano] = projecaoAno;
+        // Calcular alíquotas efetivas
+        if (faturamentoMensal > 0) {
+            Object.keys(composicaoTributaria.debitos).forEach(imposto => {
+                const debito = composicaoTributaria.debitos[imposto];
+                const credito = composicaoTributaria.creditos[imposto] || 0;
+                const impostoLiquido = Math.max(0, debito - credito);
+                composicaoTributaria.aliquotasEfetivas[imposto] = (impostoLiquido / faturamentoMensal) * 100;
             });
 
-            // Calcular resumo da transição
-            calcularResumoTransicao(transicao, composicaoAtual, parametrosIVA, log);
+            // Calcular alíquota total
+            const totalImpostoLiquido = Object.keys(composicaoTributaria.debitos).reduce((total, imposto) => {
+                const debito = composicaoTributaria.debitos[imposto];
+                const credito = composicaoTributaria.creditos[imposto] || 0;
+                return total + Math.max(0, debito - credito);
+            }, 0);
 
-            // Gerar observações sobre a transição
-            gerarObservacoesTransicao(transicao, composicaoAtual, log);
-
-            log.push(`   ✅ Transição tributária processada - Impacto total: R$ ${transicao.resumoTransicao.impactoTotal.toFixed(2)}`);
-
-        } catch (erro) {
-            log.push(`   ❌ Erro ao processar transição tributária: ${erro.message}`);
-            console.error('SPED-EXTRACTOR: Erro na transição tributária:', erro);
-            throw erro;
+            composicaoTributaria.aliquotasEfetivas.total = (totalImpostoLiquido / faturamentoMensal) * 100;
         }
 
-        return transicao;
-    }
+        console.log('SPED-EXTRACTOR: Composição tributária calculada:', composicaoTributaria);
 
-    /**
-     * Calcula projeção tributária para um ano específico
-     * @param {number} ano - Ano da projeção
-     * @param {Object} percentuais - Percentuais de participação dos sistemas
-     * @param {Object} composicaoAtual - Composição tributária atual
-     * @param {Object} parametrosIVA - Parâmetros do IVA
-     * @param {Array} log - Array de log
-     * @returns {Object} Projeção do ano
-     */
-    function calcularProjecaoAno(ano, percentuais, composicaoAtual, parametrosIVA, log) {
-        const projecao = {
-            ano: ano,
-            percentualSistemaAtual: percentuais.sistemaAtual,
-            percentualIVA: percentuais.ivaDual,
-            impostosSistemaAtual: {},
-            impostosIVA: 0,
-            totalImpostos: 0,
-            aliquotaEfetiva: 0,
-            impactoCapitalGiro: 0
+        return {
+            tipoOperacao: tipoOperacao,
+            regimePisCofins: regimePisCofins,
+            regime: regimeTributario,
+            composicaoTributaria: composicaoTributaria,
+            creditos: composicaoTributaria.creditos // Mantém compatibilidade
         };
-
-        try {
-            // Calcular impostos do sistema atual (proporcionalmente)
-            projecao.impostosSistemaAtual = {
-                pis: composicaoAtual.impostosLiquidos.pis * percentuais.sistemaAtual,
-                cofins: composicaoAtual.impostosLiquidos.cofins * percentuais.sistemaAtual,
-                icms: composicaoAtual.impostosLiquidos.icms * percentuais.sistemaAtual,
-                ipi: composicaoAtual.impostosLiquidos.ipi * percentuais.sistemaAtual,
-                iss: composicaoAtual.impostosLiquidos.iss * percentuais.sistemaAtual,
-                total: composicaoAtual.impostosLiquidos.total * percentuais.sistemaAtual
-            };
-
-            // Calcular IVA Dual (proporcionalmente)
-            projecao.impostosIVA = (composicaoAtual.faturamentoTotal * parametrosIVA.total / 100) * percentuais.ivaDual;
-
-            // Total de impostos no ano
-            projecao.totalImpostos = projecao.impostosSistemaAtual.total + projecao.impostosIVA;
-
-            // Alíquota efetiva do ano
-            if (composicaoAtual.faturamentoTotal > 0) {
-                projecao.aliquotaEfetiva = (projecao.totalImpostos / composicaoAtual.faturamentoTotal) * 100;
-            }
-
-            // Estimar impacto no capital de giro (simplificado)
-            projecao.impactoCapitalGiro = projecao.impostosIVA * percentuais.ivaDual;
-
-        } catch (erro) {
-            log.push(`     ❌ Erro na projeção do ano ${ano}: ${erro.message}`);
-            throw erro;
-        }
-
-        return projecao;
     }
 
     /**
-     * Calcula resumo geral da transição
-     * @param {Object} transicao - Dados da transição
-     * @param {Object} composicaoAtual - Composição atual
-     * @param {Object} parametrosIVA - Parâmetros IVA
-     * @param {Array} log - Array de log
+     * Calcula débitos de PIS com múltiplas fontes
      */
-    function calcularResumoTransicao(transicao, composicaoAtual, parametrosIVA, log) {
-        try {
-            // Calcular impacto total acumulado
-            transicao.resumoTransicao.impactoTotal = Object.values(transicao.projecoesPorAno)
-                .reduce((total, projecao) => total + projecao.impactoCapitalGiro, 0);
-
-            // Calcular variação final (sistema atual vs IVA total)
-            const impostoAtualTotal = composicaoAtual.impostosLiquidos.total;
-            const impostoIVATotal = (composicaoAtual.faturamentoTotal * parametrosIVA.total / 100);
+    function calcularDebitosPIS(dadosSped, faturamentoMensal) {
+        // PRIORIDADE 1: Dados diretos do SPED Contribuições
+        if (dadosSped.debitos?.pis?.length > 0) {
+            const totalDebitos = dadosSped.debitos.pis.reduce((total, debito) => {
+                return total + (debito.valorTotalContribuicao || debito.valorContribuicaoAPagar || 0);
+            }, 0);
             
-            transicao.resumoTransicao.variacao.total = impostoIVATotal - impostoAtualTotal;
-
-            log.push(`     📊 Resumo da transição:`);
-            log.push(`        Impacto total acumulado: R$ ${transicao.resumoTransicao.impactoTotal.toFixed(2)}`);
-            log.push(`        Variação final de carga: R$ ${transicao.resumoTransicao.variacao.total.toFixed(2)}`);
-            log.push(`        Nova alíquota efetiva: ${parametrosIVA.total}%`);
-
-        } catch (erro) {
-            log.push(`     ❌ Erro no resumo da transição: ${erro.message}`);
-            throw erro;
+            if (totalDebitos > 0) {
+                console.log('SPED-EXTRACTOR: Débitos PIS extraídos do SPED:', totalDebitos);
+                return totalDebitos;
+            }
         }
-    }
 
-    /**
-     * Gera observações específicas sobre a transição
-     * @param {Object} transicao - Dados da transição
-     * @param {Object} composicaoAtual - Composição atual
-     * @param {Array} log - Array de log
-     */
-    function gerarObservacoesTransicao(transicao, composicaoAtual, log) {
-        try {
-            const observacoes = [];
-
-            // Comparar carga tributária atual vs final
-            const cargaAtual = composicaoAtual.aliquotasEfetivas.total;
-            const cargaFinal = transicao.resumoTransicao.aliquotaFinal;
-
-            if (cargaFinal > cargaAtual) {
-                observacoes.push(`Aumento de carga tributária: de ${cargaAtual.toFixed(2)}% para ${cargaFinal}%`);
-            } else if (cargaFinal < cargaAtual) {
-                observacoes.push(`Redução de carga tributária: de ${cargaAtual.toFixed(2)}% para ${cargaFinal}%`);
+        // PRIORIDADE 2: Estimativa baseada no regime e faturamento
+        if (faturamentoMensal > 0) {
+            const regime = determinarRegimeTributario(dadosSped);
+            const regimePisCofins = determinarRegimePisCofins(dadosSped);
+            
+            let aliquotaPIS = 0;
+            if (regime === 'simples') {
+                return 0; // PIS incluído na alíquota única do Simples
+            } else if (regimePisCofins === 'nao-cumulativo') {
+                aliquotaPIS = 0.0165; // 1,65%
             } else {
-                observacoes.push(`Manutenção da carga tributária em aproximadamente ${cargaAtual.toFixed(2)}%`);
+                aliquotaPIS = 0.0065; // 0,65%
             }
+            
+            const debitoEstimado = faturamentoMensal * aliquotaPIS;
+            console.log(`SPED-EXTRACTOR: Débito PIS estimado - Regime: ${regimePisCofins}, Alíquota: ${aliquotaPIS * 100}%, Valor: ${debitoEstimado}`);
+            return debitoEstimado;
+        }
 
-            // Observações sobre o cronograma
-            observacoes.push('Transição gradual conforme LC 214/2025 com implementação de 2026 a 2033');
-            observacoes.push('Split Payment será implementado progressivamente junto com o IVA Dual');
+        return 0;
+    }
 
-            // Observações sobre impactos no capital de giro
-            if (transicao.resumoTransicao.impactoTotal > 0) {
-                observacoes.push('Impacto negativo previsto no capital de giro devido ao Split Payment');
+    /**
+     * Calcula débitos de COFINS com múltiplas fontes
+     */
+    function calcularDebitosCOFINS(dadosSped, faturamentoMensal) {
+        // PRIORIDADE 1: Dados diretos do SPED Contribuições
+        if (dadosSped.debitos?.cofins?.length > 0) {
+            const totalDebitos = dadosSped.debitos.cofins.reduce((total, debito) => {
+                return total + (debito.valorTotalContribuicao || debito.valorContribuicaoAPagar || 0);
+            }, 0);
+            
+            if (totalDebitos > 0) {
+                console.log('SPED-EXTRACTOR: Débitos COFINS extraídos do SPED:', totalDebitos);
+                return totalDebitos;
             }
+        }
 
-            transicao.observacoes = observacoes;
-            log.push(`     📝 ${observacoes.length} observações geradas sobre a transição`);
+        // PRIORIDADE 2: Estimativa baseada no regime e faturamento
+        if (faturamentoMensal > 0) {
+            const regime = determinarRegimeTributario(dadosSped);
+            const regimePisCofins = determinarRegimePisCofins(dadosSped);
+            
+            let aliquotaCOFINS = 0;
+            if (regime === 'simples') {
+                return 0; // COFINS incluído na alíquota única do Simples
+            } else if (regimePisCofins === 'nao-cumulativo') {
+                aliquotaCOFINS = 0.076; // 7,6%
+            } else {
+                aliquotaCOFINS = 0.03; // 3%
+            }
+            
+            const debitoEstimado = faturamentoMensal * aliquotaCOFINS;
+            console.log(`SPED-EXTRACTOR: Débito COFINS estimado - Regime: ${regimePisCofins}, Alíquota: ${aliquotaCOFINS * 100}%, Valor: ${debitoEstimado}`);
+            return debitoEstimado;
+        }
 
-        } catch (erro) {
-            log.push(`     ❌ Erro ao gerar observações: ${erro.message}`);
+        return 0;
+    }
+
+    /**
+     * Calcula débitos de ICMS
+     */
+    function calcularDebitosICMS(dadosSped, faturamentoMensal) {
+        // PRIORIDADE 1: Dados diretos do SPED Fiscal
+        if (dadosSped.debitos?.icms?.length > 0) {
+            const totalDebitos = dadosSped.debitos.icms.reduce((total, debito) => {
+                return total + (debito.valorTotalDebitos || 0);
+            }, 0);
+            
+            if (totalDebitos > 0) {
+                console.log('SPED-EXTRACTOR: Débitos ICMS extraídos do SPED:', totalDebitos);
+                return totalDebitos;
+            }
+        }
+
+        // PRIORIDADE 2: Estimativa para empresas comerciais/industriais
+        const tipoEmpresa = determinarTipoEmpresa(dadosSped);
+        if (tipoEmpresa !== 'servicos' && faturamentoMensal > 0) {
+            const aliquotaMedia = 0.18; // 18% como média
+            const baseCalculoPercentual = 0.6; // 60% do faturamento sujeito ao ICMS
+            
+            const debitoEstimado = faturamentoMensal * baseCalculoPercentual * aliquotaMedia;
+            console.log(`SPED-EXTRACTOR: Débito ICMS estimado - Tipo: ${tipoEmpresa}, Valor: ${debitoEstimado}`);
+            return debitoEstimado;
+        }
+
+        return 0;
+    }
+
+    /**
+     * Calcula débitos de IPI
+     */
+    function calcularDebitosIPI(dadosSped, faturamentoMensal) {
+        const tipoEmpresa = determinarTipoEmpresa(dadosSped);
+        if (tipoEmpresa !== 'industria') {
+            return 0; // IPI só se aplica à indústria
+        }
+
+        // PRIORIDADE 1: Dados diretos do SPED Fiscal
+        if (dadosSped.impostos?.ipi?.length > 0) {
+            const totalDebitos = dadosSped.impostos.ipi.reduce((total, debito) => {
+                return total + (debito.valorTotalDebitos || 0);
+            }, 0);
+            
+            if (totalDebitos > 0) {
+                console.log('SPED-EXTRACTOR: Débitos IPI extraídos do SPED:', totalDebitos);
+                return totalDebitos;
+            }
+        }
+
+        // PRIORIDADE 2: Estimativa baseada no faturamento
+        if (faturamentoMensal > 0) {
+            const aliquotaMedia = 0.10; // 10% como média
+            const baseCalculoPercentual = 0.4; // 40% do faturamento sujeito ao IPI
+            
+            const debitoEstimado = faturamentoMensal * baseCalculoPercentual * aliquotaMedia;
+            console.log(`SPED-EXTRACTOR: Débito IPI estimado - Valor: ${debitoEstimado}`);
+            return debitoEstimado;
+        }
+
+        return 0;
+    }
+
+    /**
+     * Calcula débitos de ISS
+     */
+    function calcularDebitosISS(dadosSped, faturamentoMensal) {
+        const tipoEmpresa = determinarTipoEmpresa(dadosSped);
+        if (tipoEmpresa !== 'servicos') {
+            return 0; // ISS só se aplica a serviços
+        }
+
+        // ISS não consta no SPED, então sempre estimamos
+        if (faturamentoMensal > 0) {
+            const aliquotaMedia = 0.05; // 5% como média
+            const debitoEstimado = faturamentoMensal * aliquotaMedia;
+            console.log(`SPED-EXTRACTOR: Débito ISS estimado - Valor: ${debitoEstimado}`);
+            return debitoEstimado;
+        }
+
+        return 0;
+    }
+
+    /**
+     * Calcula créditos de PIS com dados do SPED
+     */
+    function calcularCreditosPIS(dadosSped) {
+        let totalCreditos = 0;
+
+        // PRIORIDADE 1: Registros M100/M105 do SPED Contribuições
+        if (dadosSped.creditos?.pis?.length > 0) {
+            totalCreditos = dadosSped.creditos.pis.reduce((total, credito) => {
+                return total + (credito.valorCredito || 0);
+            }, 0);
+            
+            if (totalCreditos > 0) {
+                console.log('SPED-EXTRACTOR: Créditos PIS extraídos do SPED:', totalCreditos);
+                return totalCreditos;
+            }
+        }
+
+        // PRIORIDADE 2: Estimativa baseada no regime não-cumulativo
+        const regimePisCofins = determinarRegimePisCofins(dadosSped);
+        if (regimePisCofins === 'nao-cumulativo') {
+            const faturamentoAnual = calcularFaturamentoMensal(dadosSped) * 12;
+            const baseCalculoEstimada = faturamentoAnual * 0.6; // 60% do faturamento
+            const aliquotaPIS = 0.0165; // 1,65%
+            const aproveitamentoEstimado = 0.8; // 80%
+            
+            const creditoEstimado = (baseCalculoEstimada * aliquotaPIS * aproveitamentoEstimado) / 12;
+            console.log(`SPED-EXTRACTOR: Crédito PIS estimado - Regime: ${regimePisCofins}, Valor: ${creditoEstimado}`);
+            return creditoEstimado;
+        }
+
+        return 0;
+    }
+
+    /**
+     * Calcula créditos de COFINS com dados do SPED
+     */
+    function calcularCreditosCOFINS(dadosSped) {
+        let totalCreditos = 0;
+
+        // PRIORIDADE 1: Registros M500/M505 do SPED Contribuições
+        if (dadosSped.creditos?.cofins?.length > 0) {
+            totalCreditos = dadosSped.creditos.cofins.reduce((total, credito) => {
+                return total + (credito.valorCredito || 0);
+            }, 0);
+            
+            if (totalCreditos > 0) {
+                console.log('SPED-EXTRACTOR: Créditos COFINS extraídos do SPED:', totalCreditos);
+                return totalCreditos;
+            }
+        }
+
+        // PRIORIDADE 2: Estimativa baseada no regime não-cumulativo
+        const regimePisCofins = determinarRegimePisCofins(dadosSped);
+        if (regimePisCofins === 'nao-cumulativo') {
+            const faturamentoAnual = calcularFaturamentoMensal(dadosSped) * 12;
+            const baseCalculoEstimada = faturamentoAnual * 0.6; // 60% do faturamento
+            const aliquotaCOFINS = 0.076; // 7,6%
+            const aproveitamentoEstimado = 0.8; // 80%
+            
+            const creditoEstimado = (baseCalculoEstimada * aliquotaCOFINS * aproveitamentoEstimado) / 12;
+            console.log(`SPED-EXTRACTOR: Crédito COFINS estimado - Regime: ${regimePisCofins}, Valor: ${creditoEstimado}`);
+            return creditoEstimado;
+        }
+
+        return 0;
+    }
+
+    /**
+     * Calcula créditos de ICMS
+     */
+    function calcularCreditosICMS(dadosSped) {
+        let totalCreditos = 0;
+
+        // PRIORIDADE 1: Dados do SPED Fiscal (E110)
+        if (dadosSped.debitos?.icms?.length > 0) {
+            totalCreditos = dadosSped.debitos.icms.reduce((total, apuracao) => {
+                return total + (apuracao.valorTotalCreditos || 0);
+            }, 0);
+            
+            if (totalCreditos > 0) {
+                console.log('SPED-EXTRACTOR: Créditos ICMS extraídos do SPED:', totalCreditos);
+                return totalCreditos;
+            }
+        }
+
+        // PRIORIDADE 2: Estimativa para empresas comerciais/industriais
+        const tipoEmpresa = determinarTipoEmpresa(dadosSped);
+        if (tipoEmpresa !== 'servicos') {
+            const faturamentoAnual = calcularFaturamentoMensal(dadosSped) * 12;
+            const aliquotaMedia = 0.18; // 18%
+            const baseCalculoCompras = faturamentoAnual * 0.7; // 70% do faturamento em compras
+            const aproveitamentoICMS = 0.85; // 85% de aproveitamento típico
+            
+            const creditoEstimado = (baseCalculoCompras * aliquotaMedia * aproveitamentoICMS) / 12;
+            console.log(`SPED-EXTRACTOR: Crédito ICMS estimado - Tipo: ${tipoEmpresa}, Valor: ${creditoEstimado}`);
+            return creditoEstimado;
+        }
+
+        return 0;
+    }
+
+    /**
+     * Calcula créditos de IPI
+     */
+    function calcularCreditosIPI(dadosSped) {
+        const tipoEmpresa = determinarTipoEmpresa(dadosSped);
+        if (tipoEmpresa !== 'industria') {
+            return 0; // IPI só se aplica à indústria
+        }
+
+        // PRIORIDADE 1: Dados do SPED Fiscal
+        if (dadosSped.impostos?.ipi?.length > 0) {
+            const totalCreditos = dadosSped.impostos.ipi.reduce((total, apuracao) => {
+                return total + (apuracao.valorTotalCreditos || 0);
+            }, 0);
+            
+            if (totalCreditos > 0) {
+                console.log('SPED-EXTRACTOR: Créditos IPI extraídos do SPED:', totalCreditos);
+                return totalCreditos;
+            }
+        }
+
+        // PRIORIDADE 2: Estimativa baseada no faturamento
+        const faturamentoAnual = calcularFaturamentoMensal(dadosSped) * 12;
+        const aliquotaMediaIPI = 0.10; // 10%
+        const baseCalculoCompras = faturamentoAnual * 0.4; // 40% para matérias-primas
+        const aproveitamentoIPI = 0.90; // 90% de aproveitamento
+        
+        const creditoEstimado = (baseCalculoCompras * aliquotaMediaIPI * aproveitamentoIPI) / 12;
+        console.log(`SPED-EXTRACTOR: Crédito IPI estimado - Valor: ${creditoEstimado}`);
+        return creditoEstimado;
+    }
+
+    /**
+     * Determina o regime tributário
+     */
+    function determinarRegimeTributario(dadosSped) {
+        // PRIORIDADE 1: Informação direta da ECF
+        if (dadosSped.ecf?.parametros?.formaApuracao) {
+            const forma = dadosSped.ecf.parametros.formaApuracao;
+            if (['1', '2'].includes(forma)) return 'real';
+            if (['3', '4'].includes(forma)) return 'presumido';
+            if (['5', '6', '7'].includes(forma)) return 'simples';
+        }
+
+        // PRIORIDADE 2: Análise do regime PIS/COFINS
+        if (dadosSped.regimes?.pis_cofins) {
+            const codigo = dadosSped.regimes.pis_cofins.codigoIncidencia;
+            if (codigo === '1') return 'real'; // Exclusivamente não-cumulativo
+            if (codigo === '2') return 'presumido'; // Exclusivamente cumulativo
+        }
+
+        // PRIORIDADE 3: Verificação de registros específicos
+        if (dadosSped.impostos?.simples?.length > 0) {
+            return 'simples';
+        }
+
+        // PRIORIDADE 4: Análise de créditos PIS/COFINS
+        const temCreditosPisCofins = (dadosSped.creditos?.pis?.length > 0 || 
+                                     dadosSped.creditos?.cofins?.length > 0);
+        
+        if (temCreditosPisCofins) {
+            return 'real'; // Empresas com créditos geralmente são do Lucro Real
+        }
+
+        return 'presumido'; // Padrão mais comum
+    }
+
+    /**
+     * Determina o regime PIS/COFINS
+     */
+    function determinarRegimePisCofins(dadosSped) {
+        if (dadosSped.regimes?.pis_cofins) {
+            const codigo = dadosSped.regimes.pis_cofins.codigoIncidencia;
+            if (codigo === '1') return 'nao-cumulativo';
+            if (codigo === '2') return 'cumulativo';
+            if (codigo === '3') return 'nao-cumulativo'; // Misto, priorizamos não-cumulativo
+        }
+
+        // Inferir pelo regime tributário
+        const regime = determinarRegimeTributario(dadosSped);
+        return regime === 'real' ? 'nao-cumulativo' : 'cumulativo';
+    }
+
+    /**
+     * Determina o tipo de empresa
+     */
+    function determinarTipoEmpresa(dadosSped) {
+        // Verificação direta de registros de IPI (forte indicativo de indústria)
+        if (dadosSped.impostos?.ipi?.length > 0 || dadosSped.debitos?.ipi?.length > 0) {
+            return 'industria';
+        }
+
+        // Análise dos CFOPs
+        const cfops = extrairCFOPs(dadosSped);
+        return analisarCFOPs(cfops);
+    }
+
+    /**
+     * Extrai CFOPs dos documentos
+     */
+    function extrairCFOPs(dadosSped) {
+        const cfops = new Set();
+        
+        if (dadosSped.itens?.length > 0) {
+            dadosSped.itens.forEach(item => {
+                if (item.cfop) cfops.add(item.cfop);
+            });
+        }
+
+        if (dadosSped.itensAnaliticos?.length > 0) {
+            dadosSped.itensAnaliticos.forEach(item => {
+                if (item.cfop) cfops.add(item.cfop);
+            });
+        }
+
+        return Array.from(cfops);
+    }
+
+    /**
+     * Analisa CFOPs para determinar tipo de empresa
+     */
+    function analisarCFOPs(cfops) {
+        const cfopsIndustria = [
+            '5101', '5102', '5103', '5104', '5105', '5106', '5109',
+            '6101', '6102', '6103', '6104', '6105', '6106', '6109',
+            '5124', '5125', '6124', '6125', '5901', '5902', '6901', '6902'
+        ];
+
+        const cfopsServicos = [
+            '5933', '5932', '5933', '6933', '6932', '9301', '9302',
+            '5301', '5302', '5303', '5304', '5305', '5306', '5307',
+            '6301', '6302', '6303', '6304', '6305', '6306', '6307'
+        ];
+
+        let countIndustria = 0;
+        let countServicos = 0;
+        let countComercio = 0;
+
+        cfops.forEach(cfop => {
+            if (cfopsIndustria.includes(cfop)) {
+                countIndustria += 2; // Peso maior para CFOPs industriais
+            } else if (cfopsServicos.includes(cfop)) {
+                countServicos++;
+            } else if (cfop.startsWith('5') || cfop.startsWith('6')) {
+                countComercio++;
+            }
+        });
+
+        if (countIndustria > 0 && countIndustria >= Math.max(countComercio, countServicos)) {
+            return 'industria';
+        } else if (countServicos > countComercio) {
+            return 'servicos';
+        } else {
+            return 'comercio';
         }
     }
 
     /**
-     * Valida integridade dos dados processados
-     * @param {Object} empresaInfo - Informações da empresa
-     * @param {Object} composicaoTributaria - Composição tributária
-     * @param {Object} dadosFinanceiros - Dados financeiros
-     * @param {Array} log - Array de log
+     * Determina tipo de operação (B2B, B2C, mista)
      */
-    function validarIntegridadeDados(empresaInfo, composicaoTributaria, dadosFinanceiros, log) {
-        const validacoes = [];
+    function determinarTipoOperacao(dadosSped) {
+        if (!dadosSped.documentos?.length) {
+            return 'b2b'; // Padrão conservador
+        }
 
-        try {
-            // Validar consistência de faturamento
-            const faturamentoTributario = composicaoTributaria.faturamentoTotal;
-            const faturamentoFinanceiro = dadosFinanceiros.receitas.receitaBruta || dadosFinanceiros.receitas.receitaLiquida;
+        const documentosSaida = dadosSped.documentos.filter(doc => doc.indOper === '1');
+        if (documentosSaida.length === 0) return 'b2b';
 
-            if (faturamentoTributario > 0 && faturamentoFinanceiro > 0) {
-                const diferenca = Math.abs(faturamentoTributario - faturamentoFinanceiro) / faturamentoTributario;
-                
-                if (diferenca > CONFIG.tolerancias.percentualVariacao) {
-                    validacoes.push(`⚠️ Divergência no faturamento: Tributário R$ ${faturamentoTributario.toFixed(2)} vs Financeiro R$ ${faturamentoFinanceiro.toFixed(2)}`);
+        let countB2B = 0;
+        let countB2C = 0;
+
+        documentosSaida.forEach(doc => {
+            if (doc.participante?.cnpjCpf) {
+                if (doc.participante.cnpjCpf.length === 14) {
+                    countB2B++;
                 } else {
-                    validacoes.push(`✅ Faturamento consistente entre bases tributária e financeira`);
+                    countB2C++;
                 }
+            } else if (doc.modelo === '65') { // NFC-e
+                countB2C++;
+            } else if (doc.modelo === '55') { // NF-e
+                countB2B++;
             }
+        });
 
-            // Validar razoabilidade das alíquotas
-            if (composicaoTributaria.aliquotasEfetivas.total > 50) {
-                validacoes.push(`⚠️ Alíquota total muito alta: ${composicaoTributaria.aliquotasEfetivas.total.toFixed(2)}% - verificar dados`);
-            } else if (composicaoTributaria.aliquotasEfetivas.total < 5) {
-                validacoes.push(`⚠️ Alíquota total muito baixa: ${composicaoTributaria.aliquotasEfetivas.total.toFixed(2)}% - verificar regime tributário`);
-            } else {
-                validacoes.push(`✅ Alíquota efetiva dentro da faixa esperada: ${composicaoTributaria.aliquotasEfetivas.total.toFixed(2)}%`);
-            }
+        const totalDocs = countB2B + countB2C;
+        if (totalDocs === 0) return 'b2b';
 
-            // Validar margem operacional
-            if (dadosFinanceiros.resultado.margemOperacional > 50) {
-                validacoes.push(`⚠️ Margem operacional muito alta: ${dadosFinanceiros.resultado.margemOperacional.toFixed(2)}% - verificar dados`);
-            } else if (dadosFinanceiros.resultado.margemOperacional < -10) {
-                validacoes.push(`⚠️ Margem operacional muito negativa: ${dadosFinanceiros.resultado.margemOperacional.toFixed(2)}% - empresa com prejuízo`);
-            } else {
-                validacoes.push(`✅ Margem operacional dentro da faixa aceitável: ${dadosFinanceiros.resultado.margemOperacional.toFixed(2)}%`);
-            }
-
-            log.push(`   🔍 Validação de integridade concluída - ${validacoes.length} verificações realizadas`);
-            validacoes.forEach(validacao => log.push(`     ${validacao}`));
-
-        } catch (erro) {
-            log.push(`   ❌ Erro na validação de integridade: ${erro.message}`);
-        }
+        const percentB2B = (countB2B / totalDocs) * 100;
+        
+        if (percentB2B > 80) return 'b2b';
+        if (percentB2B < 20) return 'b2c';
+        return 'mista';
     }
 
     /**
-     * Valida composição tributária
-     * @param {Object} composicao - Composição tributária
-     * @param {Array} log - Array de log
+     * Calcula margem operacional
      */
-    function validarComposicaoTributaria(composicao, log) {
-        try {
-            // Verificar se há débitos sem créditos correspondentes (pode indicar erro)
-            const impostos = ['pis', 'cofins', 'icms', 'ipi', 'iss'];
-            
-            impostos.forEach(imposto => {
-                if (composicao.debitos[imposto] > 0 && composicao.creditos[imposto] === 0) {
-                    composicao.observacoes.push(`${imposto.toUpperCase()}: Apenas débitos encontrados, sem créditos correspondentes`);
-                }
-                
-                if (composicao.creditos[imposto] > composicao.debitos[imposto]) {
-                    composicao.observacoes.push(`${imposto.toUpperCase()}: Créditos superiores aos débitos - possível saldo credor`);
-                }
-            });
-
-            // Verificar total de impostos
-            if (composicao.impostosLiquidos.total <= 0) {
-                composicao.observacoes.push('Total de impostos líquidos zero ou negativo - verificar dados tributários');
-            }
-
-        } catch (erro) {
-            log.push(`   ❌ Erro na validação da composição tributária: ${erro.message}`);
-        }
-    }
-
-    /**
-     * Valida dados financeiros
-     * @param {Object} dadosFinanceiros - Dados financeiros
-     * @param {Array} log - Array de log
-     */
-    function validarDadosFinanceiros(dadosFinanceiros, log) {
-        try {
-            // Verificar consistência entre receitas e custos
-            if (dadosFinanceiros.custos.custoTotal > dadosFinanceiros.receitas.receitaLiquida) {
-                dadosFinanceiros.observacoes.push('Custos superiores à receita líquida - verificar dados');
-            }
-
-            // Verificar consistência dos resultados
-            const lucroBrutoCalculado = dadosFinanceiros.receitas.receitaLiquida - dadosFinanceiros.custos.custoTotal;
-            const diferenca = Math.abs(lucroBrutoCalculado - dadosFinanceiros.resultado.lucroBruto);
-            
-            if (diferenca > CONFIG.tolerancias.valorMinimo) {
-                dadosFinanceiros.observacoes.push('Inconsistência no cálculo do lucro bruto - verificar dados de receitas e custos');
-            }
-
-        } catch (erro) {
-            log.push(`   ❌ Erro na validação dos dados financeiros: ${erro.message}`);
-        }
-    }
-
-    /**
-     * Valida ciclo financeiro
-     * @param {Object} cicloFinanceiro - Dados do ciclo financeiro
-     * @param {Array} log - Array de log
-     */
-    function validarCicloFinanceiro(cicloFinanceiro, log) {
-        try {
-            // Verificar se os prazos são razoáveis
-            if (cicloFinanceiro.pmr > 180) {
-                cicloFinanceiro.observacoes.push('PMR muito alto (>180 dias) - verificar se é adequado ao negócio');
-            }
-            
-            if (cicloFinanceiro.pme > 365) {
-                cicloFinanceiro.observacoes.push('PME muito alto (>365 dias) - verificar dados de estoque');
-            }
-            
-            if (cicloFinanceiro.pmp > 180) {
-                cicloFinanceiro.observacoes.push('PMP muito alto (>180 dias) - verificar dados de fornecedores');
-            }
-
-            // Verificar se o ciclo financeiro é positivo (necessidade de capital de giro)
-            if (cicloFinanceiro.cicloFinanceiroLiquido < 0) {
-                cicloFinanceiro.observacoes.push('Ciclo financeiro negativo - empresa tem folga no capital de giro');
-            }
-
-        } catch (erro) {
-            log.push(`   ❌ Erro na validação do ciclo financeiro: ${erro.message}`);
-        }
-    }
-
-    /**
-     * Gera observações gerais sobre os dados processados
-     * @param {Object} empresaInfo - Informações da empresa
-     * @param {Object} composicaoTributaria - Composição tributária
-     * @param {Object} dadosFinanceiros - Dados financeiros
-     * @param {Array} log - Array de log
-     * @returns {Array} Array de observações
-     */
-    function gerarObservacoes(empresaInfo, composicaoTributaria, dadosFinanceiros, log) {
-        const observacoes = [];
-
-        try {
-            // Observações sobre regime tributário
-            if (composicaoTributaria.aliquotasEfetivas.total < 10) {
-                observacoes.push('Empresa provavelmente enquadrada no Simples Nacional devido à baixa carga tributária');
-            } else if (composicaoTributaria.aliquotasEfetivas.total > 25) {
-                observacoes.push('Empresa com alta carga tributária - possivelmente Lucro Real com poucos créditos');
-            }
-
-            // Observações sobre situação financeira
-            if (dadosFinanceiros.resultado.margemOperacional > 15) {
-                observacoes.push('Empresa com boa margem operacional - situação financeira favorável');
-            } else if (dadosFinanceiros.resultado.margemOperacional < 5) {
-                observacoes.push('Empresa com margem operacional baixa - atenção à eficiência operacional');
-            }
-
-            // Observações sobre fontes de dados
-            const fontes = [...new Set([
-                ...composicaoTributaria.fonte,
-                ...dadosFinanceiros.fonte
-            ])];
-            
-            observacoes.push(`Dados extraídos de: ${fontes.join(', ')}`);
-
-            log.push(`   📝 ${observacoes.length} observações gerais geradas`);
-
-        } catch (erro) {
-            log.push(`   ❌ Erro ao gerar observações: ${erro.message}`);
+    function calcularMargemOperacional(dadosSped) {
+        // PRIORIDADE 1: Dados da ECD
+        if (dadosSped.resultadoOperacional && dadosSped.receitaLiquida && dadosSped.receitaLiquida > 0) {
+            return dadosSped.resultadoOperacional / dadosSped.receitaLiquida;
         }
 
-        return observacoes;
-    }
+        // PRIORIDADE 2: DRE da ECF
+        if (dadosSped.dre?.resultado_operacional?.valor && dadosSped.dre?.receita_liquida?.valor) {
+            return dadosSped.dre.resultado_operacional.valor / dadosSped.dre.receita_liquida.valor;
+        }
 
-    /**
-     * Avalia qualidade dos dados processados
-     * @param {Object} speds - Dados originais dos SPEDs
-     * @param {Object} composicaoTributaria - Composição tributária
-     * @param {Object} dadosFinanceiros - Dados financeiros
-     * @returns {Object} Avaliação da qualidade
-     */
-    function avaliarQualidadeDados(speds, composicaoTributaria, dadosFinanceiros) {
-        const avaliacao = {
-            pontuacao: 0,
-            nivel: 'Baixo',
-            criterios: {
-                completudeDados: 0,
-                consistenciaInterna: 0,
-                razoabilidadeValores: 0,
-                diversidadeFontes: 0
-            },
-            recomendacoes: []
+        // PRIORIDADE 3: Estimativa por tipo de empresa
+        const tipoEmpresa = determinarTipoEmpresa(dadosSped);
+        const margensPadrao = {
+            'comercio': 0.08,    // 8%
+            'industria': 0.12,   // 12%
+            'servicos': 0.15     // 15%
         };
 
-        try {
-            // Avaliar completude dos dados (0-25 pontos)
-            let pontuacaoCompletude = 0;
-            if (composicaoTributaria.faturamentoTotal > 0) pontuacaoCompletude += 10;
-            if (composicaoTributaria.impostosLiquidos.total > 0) pontuacaoCompletude += 10;
-            if (dadosFinanceiros.receitas.receitaLiquida > 0) pontuacaoCompletude += 5;
-            avaliacao.criterios.completudeDados = pontuacaoCompletude;
-
-            // Avaliar consistência interna (0-25 pontos)
-            let pontuacaoConsistencia = 15; // Base
-            if (composicaoTributaria.observacoes.length > 3) pontuacaoConsistencia -= 5;
-            if (dadosFinanceiros.observacoes.length > 3) pontuacaoConsistencia -= 5;
-            avaliacao.criterios.consistenciaInterna = Math.max(0, pontuacaoConsistencia);
-
-            // Avaliar razoabilidade dos valores (0-25 pontos)
-            let pontuacaoRazoabilidade = 20; // Base
-            if (composicaoTributaria.aliquotasEfetivas.total > 50 || composicaoTributaria.aliquotasEfetivas.total < 2) {
-                pontuacaoRazoabilidade -= 10;
-            }
-            if (Math.abs(dadosFinanceiros.resultado.margemOperacional) > 50) {
-                pontuacaoRazoabilidade -= 5;
-            }
-            avaliacao.criterios.razoabilidadeValores = Math.max(0, pontuacaoRazoabilidade);
-
-            // Avaliar diversidade de fontes (0-25 pontos)
-            const tiposSped = Object.keys(speds).length;
-            const pontuacaoDiversidade = Math.min(25, tiposSped * 8);
-            avaliacao.criterios.diversidadeFontes = pontuacaoDiversidade;
-
-            // Calcular pontuação total
-            avaliacao.pontuacao = Object.values(avaliacao.criterios).reduce((sum, valor) => sum + valor, 0);
-
-            // Determinar nível
-            if (avaliacao.pontuacao >= 80) {
-                avaliacao.nivel = 'Alto';
-            } else if (avaliacao.pontuacao >= 60) {
-                avaliacao.nivel = 'Médio';
-            } else {
-                avaliacao.nivel = 'Baixo';
-            }
-
-            // Gerar recomendações
-            if (avaliacao.criterios.completudeDados < 20) {
-                avaliacao.recomendacoes.push('Importar mais tipos de SPED para completar os dados');
-            }
-            if (avaliacao.criterios.consistenciaInterna < 15) {
-                avaliacao.recomendacoes.push('Verificar inconsistências nos dados importados');
-            }
-            if (avaliacao.criterios.razoabilidadeValores < 15) {
-                avaliacao.recomendacoes.push('Validar valores que parecem fora do padrão esperado');
-            }
-
-        } catch (erro) {
-            console.error('SPED-EXTRACTOR: Erro na avaliação de qualidade:', erro);
-            avaliacao.recomendacoes.push('Erro na avaliação - revisar dados importados');
-        }
-
-        return avaliacao;
+        return margensPadrao[tipoEmpresa] || 0.1;
     }
 
-    // Interface pública do módulo
+    /**
+     * Extrai dados do ciclo financeiro
+     */
+    function extrairCicloFinanceiro(dadosSped) {
+        const ciclo = {
+            pmr: 30,
+            pmp: 30,
+            pme: 30,
+            percVista: 0.3,
+            percPrazo: 0.7
+        };
+
+        // Calcular PMR, PMP, PME com base nos dados contábeis
+        if (dadosSped.saldoClientes && dadosSped.receitaBruta && dadosSped.receitaBruta > 0) {
+            ciclo.pmr = Math.round((dadosSped.saldoClientes / (dadosSped.receitaBruta / 12)) * 30);
+            ciclo.pmr = Math.max(1, Math.min(180, ciclo.pmr));
+        }
+
+        if (dadosSped.saldoFornecedores && dadosSped.receitaBruta && dadosSped.receitaBruta > 0) {
+            const comprasEstimadas = dadosSped.receitaBruta * 0.6;
+            ciclo.pmp = Math.round((dadosSped.saldoFornecedores / (comprasEstimadas / 12)) * 30);
+            ciclo.pmp = Math.max(1, Math.min(180, ciclo.pmp));
+        }
+
+        if (dadosSped.saldoEstoques && dadosSped.receitaBruta && dadosSped.receitaBruta > 0) {
+            const cmvEstimado = dadosSped.receitaBruta * 0.7;
+            ciclo.pme = Math.round((dadosSped.saldoEstoques / (cmvEstimado / 12)) * 30);
+            ciclo.pme = Math.max(1, Math.min(180, ciclo.pme));
+        }
+
+        // Calcular percentual de vendas à vista
+        if (dadosSped.documentos?.length > 0) {
+            const resultado = analisarVendasVista(dadosSped.documentos);
+            ciclo.percVista = resultado.percVista;
+            ciclo.percPrazo = 1 - resultado.percVista;
+        }
+
+        console.log('SPED-EXTRACTOR: Ciclo financeiro calculado:', ciclo);
+        return ciclo;
+    }
+
+    /**
+     * Analisa percentual de vendas à vista
+     */
+    function analisarVendasVista(documentos) {
+        const documentosSaida = documentos.filter(doc => doc.indOper === '1');
+        
+        if (documentosSaida.length === 0) {
+            return { percVista: 0.3, percPrazo: 0.7 };
+        }
+
+        let valorTotalVendas = 0;
+        let valorVendasVista = 0;
+
+        documentosSaida.forEach(doc => {
+            const valorDoc = doc.valorTotal || 0;
+            valorTotalVendas += valorDoc;
+
+            // Critérios para identificar venda à vista
+            if (doc.modelo === '65' || doc.condicaoPagamento === '0') {
+                valorVendasVista += valorDoc;
+            }
+        });
+
+        if (valorTotalVendas === 0) {
+            return { percVista: 0.3, percPrazo: 0.7 };
+        }
+
+        const percVista = Math.max(0.05, Math.min(0.95, valorVendasVista / valorTotalVendas));
+        return { percVista: percVista, percPrazo: 1 - percVista };
+    }
+
+    /**
+     * Extrai dados para configuração IVA
+     */
+    function extrairDadosIVA(dadosSped) {
+        const tipoEmpresa = determinarTipoEmpresa(dadosSped);
+        
+        // Mapeamento básico para setores do IVA
+        const setorBasico = {
+            'comercio': 'comercio',
+            'industria': 'industria',
+            'servicos': 'servicos'
+        }[tipoEmpresa] || 'comercio';
+
+        // Valores padrão para IVA Dual
+        return {
+            cbs: 0.088,                    // 8,8%
+            ibs: 0.177,                    // 17,7%
+            categoriaIva: 'standard',
+            reducaoEspecial: 0,
+            codigoSetor: setorBasico
+        };
+    }
+
+    // Interface pública
     return {
-        processarDadosConsolidados,
-        CONFIG,
-        
-        // Funções auxiliares expostas para testes
-        extrairInformacoesEmpresa,
-        processarComposicaoTributaria,
-        extrairDadosFinanceiros,
-        calcularCicloFinanceiro,
-        processarTransicaoTributaria,
-        validarIntegridadeDados,
-        avaliarQualidadeDados
+        extrairDadosParaSimulador,
+        versao: '2.0.0-enhanced'
     };
 })();
+
+// Garantir carregamento global
+if (typeof window !== 'undefined') {
+    window.SpedExtractor = SpedExtractor;
+    console.log('SPED-EXTRACTOR: Módulo carregado com sucesso na versão', SpedExtractor.versao);
+}

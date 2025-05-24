@@ -527,8 +527,12 @@ function inicializarEventosPrincipais() {
     }
 
     /**
-     * Limpa o log de importação
+     * Correções e adições para o arquivo main.js
+     * Adiciona suporte aos botões de log e melhora a integração SPED
+     * VERSÃO CORRIGIDA - Janeiro 2025
      */
+
+    // Função para limpar log de importação
     function limparLogImportacao() {
         const logArea = document.getElementById('import-log');
         if (logArea) {
@@ -542,201 +546,443 @@ function inicializarEventosPrincipais() {
             if (element) element.textContent = '0';
         });
 
-        // Ocultar estatísticas
-        const logStats = document.getElementById('log-statistics');
-        if (logStats) {
-            logStats.style.display = 'none';
+        // Ocultar seção de estatísticas
+        const logStatistics = document.getElementById('log-statistics');
+        if (logStatistics) {
+            logStatistics.style.display = 'none';
         }
 
-        console.log('LOG-IMPORT: Log de importação limpo');
+        console.log('MAIN: Log de importação limpo');
     }
 
-    /**
-     * Exporta o log de importação para arquivo de texto
-     */
+    // Função para exportar log de importação
     function exportarLogImportacao() {
         const logArea = document.getElementById('import-log');
-        if (!logArea) {
-            alert('Nenhum log disponível para exportação.');
-            return;
-        }
+        if (!logArea) return;
 
         const logContent = logArea.innerText || logArea.textContent;
 
         if (!logContent || logContent.trim() === 'Log limpo pelo usuário.' || 
             logContent.includes('Selecione os arquivos SPED')) {
-            alert('Nenhum log de importação disponível para exportação.');
+            alert('Não há dados de log para exportar.');
             return;
         }
 
-        // Criar conteúdo do arquivo
-        const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
-        const header = `Log de Importação SPED - ${timestamp}\n` +
-                      `Sistema: Simulador Split Payment\n` +
-                      `Versão: 1.0.0\n` +
-                      `${'='.repeat(50)}\n\n`;
-
-        const fullContent = header + logContent;
-
-        // Criar e baixar arquivo
-        const blob = new Blob([fullContent], { type: 'text/plain;charset=utf-8' });
+        const blob = new Blob([logContent], { type: 'text/plain;charset=utf-8' });
         const url = window.URL.createObjectURL(blob);
 
         const a = document.createElement('a');
         a.href = url;
-        a.download = `log-importacao-sped-${timestamp}.txt`;
+        a.download = `log-importacao-sped-${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.txt`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
         window.URL.revokeObjectURL(url);
 
-        console.log('LOG-IMPORT: Log exportado com sucesso');
+        console.log('MAIN: Log de importação exportado');
     }
 
-    /**
-     * Aplica filtros de visualização no log
-     */
+    // Função para aplicar filtros de log
     function aplicarFiltrosLog() {
         const logArea = document.getElementById('import-log');
         if (!logArea) return;
 
         const filtros = {
-            'filtro-info': document.getElementById('filtro-info')?.checked || false,
-            'filtro-warning': document.getElementById('filtro-warning')?.checked || false,
-            'filtro-error': document.getElementById('filtro-error')?.checked || false,
-            'filtro-success': document.getElementById('filtro-success')?.checked || false
+            info: document.getElementById('filtro-info')?.checked !== false,
+            warning: document.getElementById('filtro-warning')?.checked !== false,
+            error: document.getElementById('filtro-error')?.checked !== false,
+            success: document.getElementById('filtro-success')?.checked !== false
         };
 
-        // Se todos estão desmarcados, mostrar tudo
-        const algumFiltroAtivo = Object.values(filtros).some(ativo => ativo);
-        if (!algumFiltroAtivo) {
-            // Mostrar todas as entradas
-            const todasEntradas = logArea.querySelectorAll('.log-entry');
-            todasEntradas.forEach(entrada => {
-                entrada.style.display = 'block';
-            });
-            return;
-        }
+        const logItems = logArea.querySelectorAll('p[class*="log-"]');
 
-        // Aplicar filtros específicos
-        const entradas = logArea.querySelectorAll('.log-entry');
-        entradas.forEach(entrada => {
-            const classes = entrada.className;
+        logItems.forEach(item => {
             let mostrar = false;
 
-            if (filtros['filtro-info'] && classes.includes('text-info')) mostrar = true;
-            if (filtros['filtro-warning'] && classes.includes('text-warning')) mostrar = true;
-            if (filtros['filtro-error'] && classes.includes('text-danger')) mostrar = true;
-            if (filtros['filtro-success'] && classes.includes('text-success')) mostrar = true;
+            Object.keys(filtros).forEach(tipo => {
+                if (item.classList.contains(`log-${tipo}`) && filtros[tipo]) {
+                    mostrar = true;
+                }
+            });
 
-            entrada.style.display = mostrar ? 'block' : 'none';
+            item.style.display = mostrar ? 'block' : 'none';
         });
+
+        console.log('MAIN: Filtros de log aplicados', filtros);
     }
 
-    /**
-     * Exibe detalhes completos da importação
-     */
+    // Função para exibir detalhes da importação SPED
     function exibirDetalhesImportacao() {
         if (!window.dadosImportadosSped) {
             alert('Nenhum dado SPED foi importado ainda.');
             return;
         }
 
-        const dados = window.dadosImportadosSped;
-
-        // Criar modal com detalhes
+        // Criar modal com detalhes da importação
         const modal = document.createElement('div');
         modal.className = 'modal-backdrop';
         modal.style.cssText = `
             position: fixed;
-            top: 0; left: 0;
-            width: 100%; height: 100%;
-            background: rgba(0,0,0,0.5);
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
             display: flex;
             justify-content: center;
             align-items: center;
-            z-index: 10000;
+            z-index: 1000;
         `;
 
-        const modalContent = document.createElement('div');
-        modalContent.className = 'modal-detalhes';
-        modalContent.style.cssText = `
-            background: white;
-            padding: 30px;
-            border-radius: 8px;
-            max-width: 800px;
-            max-height: 80vh;
-            overflow-y: auto;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-        `;
+        const dados = window.dadosImportadosSped;
+        const empresa = dados.empresa || {};
+        const parametrosFiscais = dados.parametrosFiscais || {};
+        const metadados = dados.metadados || {};
 
-        modalContent.innerHTML = `
-            <div class="modal-header" style="margin-bottom: 20px; border-bottom: 1px solid #eee; padding-bottom: 15px;">
-                <h3 style="margin: 0; color: #333;">📊 Detalhes da Importação SPED</h3>
-                <button type="button" class="btn-close" style="float: right; background: none; border: none; font-size: 24px; cursor: pointer;">&times;</button>
-            </div>
-
-            <div class="detalhes-content">
-                <div class="secao-detalhes">
-                    <h4>🏢 Dados da Empresa</h4>
-                    <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
-                        <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Razão Social:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${dados.empresa?.nome || 'N/A'}</td></tr>
-                        <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>CNPJ:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${dados.empresa?.cnpj || 'N/A'}</td></tr>
-                        <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Faturamento Mensal:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${window.DataManager?.formatarMoeda(dados.empresa?.faturamento || 0) || 'N/A'}</td></tr>
-                        <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Margem Operacional:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${((dados.empresa?.margem || 0) * 100).toFixed(2)}%</td></tr>
-                    </table>
+        modal.innerHTML = `
+            <div class="modal" style="max-width: 800px; max-height: 80vh; overflow-y: auto; background: white; border-radius: 8px; padding: 0;">
+                <div class="modal-header" style="padding: 20px; border-bottom: 1px solid #ddd; display: flex; justify-content: space-between; align-items: center;">
+                    <h3 style="margin: 0;">Detalhes da Importação SPED</h3>
+                    <button type="button" class="modal-close" style="background: none; border: none; font-size: 24px; cursor: pointer;">&times;</button>
                 </div>
+                <div class="modal-body" style="padding: 20px;">
+                    <h4 style="color: #0056b3; border-bottom: 2px solid #0056b3; padding-bottom: 5px;">Dados da Empresa</h4>
+                    <div style="margin-bottom: 20px;">
+                        <p><strong>Razão Social:</strong> ${empresa.nome || 'N/A'}</p>
+                        <p><strong>CNPJ:</strong> ${empresa.cnpj || 'N/A'}</p>
+                        <p><strong>Faturamento Mensal:</strong> ${formatarMoedaDetalhes(empresa.faturamento || 0)}</p>
+                        <p><strong>Margem Operacional:</strong> ${((empresa.margem || 0) * 100).toFixed(2)}%</p>
+                        <p><strong>Tipo de Empresa:</strong> ${empresa.tipoEmpresa || 'N/A'}</p>
+                        <p><strong>Regime Tributário:</strong> ${empresa.regime || 'N/A'}</p>
+                    </div>
 
-                <div class="secao-detalhes">
-                    <h4>💼 Composição Tributária</h4>
-                    <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
-                        <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Alíquota Efetiva Total:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${((dados.parametrosFiscais?.aliquota || 0) * 100).toFixed(2)}%</td></tr>
-                        <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>PIS (Créditos):</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${window.DataManager?.formatarMoeda(dados.parametrosFiscais?.creditos?.pis || 0) || 'N/A'}</td></tr>
-                        <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>COFINS (Créditos):</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${window.DataManager?.formatarMoeda(dados.parametrosFiscais?.creditos?.cofins || 0) || 'N/A'}</td></tr>
-                        <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>ICMS (Créditos):</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${window.DataManager?.formatarMoeda(dados.parametrosFiscais?.creditos?.icms || 0) || 'N/A'}</td></tr>
-                    </table>
+                    <h4 style="color: #0056b3; border-bottom: 2px solid #0056b3; padding-bottom: 5px;">Composição Tributária</h4>
+                    <div style="margin-bottom: 20px;">
+                        ${parametrosFiscais.composicaoTributaria ? gerarTabelaComposicao(parametrosFiscais.composicaoTributaria) : '<p>Dados não disponíveis</p>'}
+                    </div>
+
+                    <h4 style="color: #0056b3; border-bottom: 2px solid #0056b3; padding-bottom: 5px;">Metadados da Importação</h4>
+                    <div style="margin-bottom: 20px;">
+                        <p><strong>Fonte dos Dados:</strong> ${metadados.fonteDados || 'N/A'}</p>
+                        <p><strong>Data de Importação:</strong> ${metadados.timestampImportacao ? new Date(metadados.timestampImportacao).toLocaleString('pt-BR') : 'N/A'}</p>
+                        <p><strong>Qualidade dos Dados:</strong> ${metadados.qualidadeDados?.classificacao || 'N/A'}</p>
+                        ${metadados.arquivosProcessados?.length ? `
+                            <p><strong>Arquivos Processados:</strong></p>
+                            <ul>
+                                ${metadados.arquivosProcessados.map(arquivo => `
+                                    <li>${arquivo.nomeArquivo || 'Arquivo'} (${arquivo.tipoArquivo || 'Tipo desconhecido'})</li>
+                                `).join('')}
+                            </ul>
+                        ` : ''}
+                    </div>
                 </div>
-
-                <div class="secao-detalhes">
-                    <h4>⏱️ Ciclo Financeiro</h4>
-                    <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
-                        <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>PMR (dias):</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${dados.cicloFinanceiro?.pmr || 'N/A'}</td></tr>
-                        <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>PME (dias):</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${dados.cicloFinanceiro?.pme || 'N/A'}</td></tr>
-                        <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>PMP (dias):</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${dados.cicloFinanceiro?.pmp || 'N/A'}</td></tr>
-                    </table>
+                <div class="modal-footer" style="padding: 20px; border-top: 1px solid #ddd; text-align: right;">
+                    <button type="button" class="btn btn-secondary" style="padding: 8px 16px; border: 1px solid #6c757d; background: #6c757d; color: white; border-radius: 4px; cursor: pointer;">Fechar</button>
                 </div>
-
-                <div class="secao-detalhes">
-                    <h4>ℹ️ Metadados</h4>
-                    <table style="width: 100%; border-collapse: collapse;">
-                        <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Fonte dos Dados:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${dados.metadados?.fonteDados || 'Manual'}</td></tr>
-                        <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Data de Importação:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${dados.metadados?.timestampImportacao ? new Date(dados.metadados.timestampImportacao).toLocaleString('pt-BR') : 'N/A'}</td></tr>
-                        <tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>Precisão dos Cálculos:</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${dados.metadados?.precisaoCalculos || 'Padrão'}</td></tr>
-                    </table>
-                </div>
-            </div>
-
-            <div class="modal-footer" style="margin-top: 20px; text-align: center; border-top: 1px solid #eee; padding-top: 15px;">
-                <button type="button" class="btn btn-secondary btn-fechar">Fechar</button>
             </div>
         `;
 
-        modal.appendChild(modalContent);
-        document.body.appendChild(modal);
-
-        // Event listeners para fechar modal
-        const btnClose = modalContent.querySelector('.btn-close');
-        const btnFechar = modalContent.querySelector('.btn-fechar');
+        // Adicionar event listeners
+        const closeBtn = modal.querySelector('.modal-close');
+        const footerBtn = modal.querySelector('.btn-secondary');
 
         const fecharModal = () => {
             document.body.removeChild(modal);
         };
 
-        btnClose.addEventListener('click', fecharModal);
-        btnFechar.addEventListener('click', fecharModal);
+        closeBtn.addEventListener('click', fecharModal);
+        footerBtn.addEventListener('click', fecharModal);
         modal.addEventListener('click', (e) => {
             if (e.target === modal) fecharModal();
         });
+
+        document.body.appendChild(modal);
+    }
+
+    // Função auxiliar para gerar tabela de composição tributária
+    function gerarTabelaComposicao(composicao) {
+        const { debitos, creditos, aliquotasEfetivas } = composicao;
+
+        return `
+            <table style="width: 100%; border-collapse: collapse; margin: 10px 0;">
+                <thead>
+                    <tr style="background-color: #f8f9fa;">
+                        <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Imposto</th>
+                        <th style="border: 1px solid #ddd; padding: 8px; text-align: right;">Débitos</th>
+                        <th style="border: 1px solid #ddd; padding: 8px; text-align: right;">Créditos</th>
+                        <th style="border: 1px solid #ddd; padding: 8px; text-align: right;">Alíquota Efetiva</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${['pis', 'cofins', 'icms', 'ipi', 'iss'].map(imposto => `
+                        <tr>
+                            <td style="border: 1px solid #ddd; padding: 8px;">${imposto.toUpperCase()}</td>
+                            <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">${formatarMoedaDetalhes(debitos[imposto] || 0)}</td>
+                            <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">${formatarMoedaDetalhes(creditos[imposto] || 0)}</td>
+                            <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">${(aliquotasEfetivas[imposto] || 0).toFixed(3)}%</td>
+                        </tr>
+                    `).join('')}
+                    <tr style="background-color: #f8f9fa; font-weight: bold;">
+                        <td style="border: 1px solid #ddd; padding: 8px;">TOTAL</td>
+                        <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">${formatarMoedaDetalhes(Object.values(debitos).reduce((sum, val) => sum + (val || 0), 0))}</td>
+                        <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">${formatarMoedaDetalhes(Object.values(creditos).reduce((sum, val) => sum + (val || 0), 0))}</td>
+                        <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">${(aliquotasEfetivas.total || 0).toFixed(3)}%</td>
+                    </tr>
+                </tbody>
+            </table>
+        `;
+    }
+
+    // Função auxiliar para formatação de moeda nos detalhes
+    function formatarMoedaDetalhes(valor) {
+        if (isNaN(valor) || valor === null || valor === undefined) {
+            valor = 0;
+        }
+
+        return new Intl.NumberFormat('pt-BR', {
+            style: 'currency',
+            currency: 'BRL',
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+        }).format(valor);
+    }
+
+    // Função para ajustar campos tributários
+    function ajustarCamposTributarios() {
+        const regime = document.getElementById('regime')?.value;
+        const camposSimples = document.getElementById('campos-simples');
+        const camposLucro = document.getElementById('campos-lucro');
+
+        // Ocultar todos os campos específicos primeiro
+        if (camposSimples) camposSimples.style.display = 'none';
+        if (camposLucro) camposLucro.style.display = 'none';
+
+        // Mostrar campos baseado no regime selecionado
+        switch(regime) {
+            case 'simples':
+                if (camposSimples) camposSimples.style.display = 'block';
+                break;
+            case 'presumido':
+            case 'real':
+                if (camposLucro) camposLucro.style.display = 'block';
+                // Configurar regime PIS/COFINS padrão
+                const regimePisCofins = document.getElementById('pis-cofins-regime');
+                if (regimePisCofins && !regimePisCofins.value) {
+                    regimePisCofins.value = regime === 'real' ? 'nao-cumulativo' : 'cumulativo';
+                    ajustarAliquotasPisCofins();
+                }
+                break;
+        }
+
+        // Ajustar campos específicos por tipo de operação
+        ajustarCamposOperacao();
+
+        // Recalcular créditos após mudança de regime
+        if (typeof window.calcularCreditosTributarios === 'function') {
+            setTimeout(() => {
+                window.calcularCreditosTributarios();
+            }, 100);
+        }
+
+        console.log('MAIN: Campos tributários ajustados para regime:', regime);
+    }
+
+    // Função para ajustar campos por tipo de operação
+    function ajustarCamposOperacao() {
+        const tipoEmpresa = document.getElementById('tipo-empresa')?.value;
+        const camposICMS = document.getElementById('campos-icms');
+        const camposIPI = document.getElementById('campos-ipi');
+        const camposISS = document.getElementById('campos-iss');
+
+        // Ocultar todos os campos primeiro
+        if (camposICMS) camposICMS.style.display = 'none';
+        if (camposIPI) camposIPI.style.display = 'none';
+        if (camposISS) camposISS.style.display = 'none';
+
+        // Mostrar campos baseado no tipo de empresa
+        switch(tipoEmpresa) {
+            case 'comercio':
+                if (camposICMS) camposICMS.style.display = 'block';
+                break;
+            case 'industria':
+                if (camposICMS) camposICMS.style.display = 'block';
+                if (camposIPI) camposIPI.style.display = 'block';
+                break;
+            case 'servicos':
+                if (camposISS) camposISS.style.display = 'block';
+                break;
+        }
+
+        console.log('MAIN: Campos de operação ajustados para tipo:', tipoEmpresa);
+    }
+
+    // Função para alternar dados financeiros detalhados
+    function toggleDadosFinanceiros() {
+        const checkbox = document.getElementById('usar-dados-financeiros');
+        const camposFinanceiros = document.querySelectorAll('#receita-bruta, #receita-liquida, #custo-total, #despesas-operacionais');
+
+        camposFinanceiros.forEach(campo => {
+            campo.readOnly = !checkbox.checked;
+            if (checkbox.checked) {
+                campo.classList.remove('disabled');
+                campo.style.backgroundColor = '';
+            } else {
+                campo.classList.add('disabled');
+                campo.style.backgroundColor = '#f8f9fa';
+            }
+        });
+
+        if (checkbox.checked) {
+            calcularDadosFinanceiros();
+        }
+
+        console.log('MAIN: Dados financeiros detalhados', checkbox.checked ? 'habilitados' : 'desabilitados');
+    }
+
+    // Função para calcular dados financeiros
+    function calcularDadosFinanceiros() {
+        if (!window.DataManager) return;
+
+        const receitaLiquida = window.DataManager.extrairValorNumerico('receita-liquida');
+        const custoTotal = window.DataManager.extrairValorNumerico('custo-total');
+        const despesasOperacionais = window.DataManager.extrairValorNumerico('despesas-operacionais');
+
+        // Calcular lucro operacional
+        const lucroOperacional = receitaLiquida - custoTotal - despesasOperacionais;
+        const campoLucroOperacional = document.getElementById('lucro-operacional');
+        if (campoLucroOperacional) {
+            campoLucroOperacional.value = window.DataManager.formatarMoeda(lucroOperacional);
+        }
+
+        // Calcular margem operacional
+        const margemOperacional = receitaLiquida > 0 ? (lucroOperacional / receitaLiquida) * 100 : 0;
+        const campoMargemOperacional = document.getElementById('margem-operacional-calc');
+        if (campoMargemOperacional) {
+            campoMargemOperacional.value = margemOperacional.toFixed(2);
+        }
+
+        console.log('MAIN: Dados financeiros calculados - Lucro:', lucroOperacional, 'Margem:', margemOperacional);
+    }
+
+    // Função melhorada para inicialização do sistema
+    function inicializarSistemaCorrigido() {
+        console.log('MAIN: Iniciando sistema corrigido...');
+
+        // Verificar dependências críticas
+        const dependencias = [
+            { nome: 'SpedParser', objeto: window.SpedParser },
+            { nome: 'SpedExtractor', objeto: window.SpedExtractor },
+            { nome: 'DataManager', objeto: window.DataManager },
+            { nome: 'ImportacaoController', objeto: window.ImportacaoController }
+        ];
+
+        let todasDisponíveis = true;
+        dependencias.forEach(dep => {
+            if (!dep.objeto) {
+                console.error(`MAIN: ${dep.nome} não encontrado`);
+                todasDisponíveis = false;
+            } else {
+                console.log(`MAIN: ✓ ${dep.nome} disponível`);
+            }
+        });
+
+        if (!todasDisponíveis) {
+            console.error('MAIN: Nem todas as dependências estão disponíveis');
+            return false;
+        }
+
+        // Inicializar ImportacaoController
+        if (window.ImportacaoController && typeof window.ImportacaoController.inicializar === 'function') {
+            try {
+                window.ImportacaoController.inicializar();
+                console.log('MAIN: ✓ ImportacaoController inicializado');
+            } catch (error) {
+                console.error('MAIN: ✗ Erro ao inicializar ImportacaoController:', error);
+            }
+        }
+
+        // Configurar event listeners para botões de log
+        const btnLimparLog = document.getElementById('btn-limpar-log');
+        if (btnLimparLog) {
+            btnLimparLog.addEventListener('click', limparLogImportacao);
+            console.log('MAIN: ✓ Botão limpar log configurado');
+        }
+
+        const btnExportarLog = document.getElementById('btn-exportar-log');
+        if (btnExportarLog) {
+            btnExportarLog.addEventListener('click', exportarLogImportacao);
+            console.log('MAIN: ✓ Botão exportar log configurado');
+        }
+
+        // Configurar filtros de log
+        const filtrosLog = ['filtro-info', 'filtro-warning', 'filtro-error', 'filtro-success'];
+        filtrosLog.forEach(filtroId => {
+            const filtro = document.getElementById(filtroId);
+            if (filtro) {
+                filtro.addEventListener('change', aplicarFiltrosLog);
+            }
+        });
+
+        // Configurar campos tributários e financeiros
+        const campoRegime = document.getElementById('regime');
+        if (campoRegime) {
+            campoRegime.addEventListener('change', ajustarCamposTributarios);
+        }
+
+        const campoTipoEmpresa = document.getElementById('tipo-empresa');
+        if (campoTipoEmpresa) {
+            campoTipoEmpresa.addEventListener('change', ajustarCamposOperacao);
+        }
+
+        const checkboxDadosFinanceiros = document.getElementById('usar-dados-financeiros');
+        if (checkboxDadosFinanceiros) {
+            checkboxDadosFinanceiros.addEventListener('change', toggleDadosFinanceiros);
+        }
+
+        // Aplicar formatação de moeda em campos financeiros
+        if (window.CurrencyFormatter) {
+            const camposFinanceiros = [
+                'receita-bruta', 'receita-liquida', 'custo-total', 
+                'despesas-operacionais', 'lucro-operacional'
+            ];
+
+            camposFinanceiros.forEach(id => {
+                const campo = document.getElementById(id);
+                if (campo) {
+                    window.CurrencyFormatter.aplicarFormatacaoMoeda(campo);
+                    campo.addEventListener('input', calcularDadosFinanceiros);
+                }
+            });
+        }
+
+        // Configuração inicial dos campos
+        ajustarCamposTributarios();
+        ajustarCamposOperacao();
+
+        console.log('MAIN: Sistema corrigido inicializado com sucesso');
+        return true;
+    }
+
+    // Adicionar funções ao escopo global para serem chamadas pelo HTML
+    if (typeof window !== 'undefined') {
+        window.limparLogImportacao = limparLogImportacao;
+        window.exportarLogImportacao = exportarLogImportacao;
+        window.aplicarFiltrosLog = aplicarFiltrosLog;
+        window.exibirDetalhesImportacao = exibirDetalhesImportacao;
+        window.ajustarCamposTributarios = ajustarCamposTributarios;
+        window.ajustarCamposOperacao = ajustarCamposOperacao;
+        window.toggleDadosFinanceiros = toggleDadosFinanceiros;
+        window.calcularDadosFinanceiros = calcularDadosFinanceiros;
+        window.inicializarSistemaCorrigido = inicializarSistemaCorrigido;
+
+        // Executar inicialização quando o DOM estiver pronto
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', inicializarSistemaCorrigido);
+        } else {
+            inicializarSistemaCorrigido();
+        }
+
+        console.log('MAIN: Funções de correção carregadas no escopo global');
     }
 
     /**
