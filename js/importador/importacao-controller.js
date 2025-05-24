@@ -1349,7 +1349,7 @@ const ImportacaoController = (function() {
             // Preencher dados financeiros (NOVO)
             preencherDadosFinanceiros(dadosNormalizados.dadosFinanceiros, dadosNormalizados.empresa);
             adicionarLog('Dados financeiros preenchidos com sucesso.', 'success');
-
+            
             // Configurar IVA Dual
             if (dadosNormalizados.ivaConfig) {
                 preencherDadosIVADual(dadosNormalizados.ivaConfig);
@@ -1542,127 +1542,52 @@ const ImportacaoController = (function() {
                 adicionarLog(`Regime tributário não reconhecido: ${dadosEmpresa.regime}`, 'warning');
             }
         }
-    }
+    }  
     
     /**
-     * Preenche os dados financeiros no formulário
-     * @param {Object} dadosFinanceiros - Dados financeiros extraídos ou calculados
-     * @param {Object} dadosEmpresa - Dados da empresa para cálculos complementares
+     * Função auxiliar para validar valores monetários
+     * @param {number|string} valor - Valor a ser validado
+     * @return {number} Valor numérico validado
      */
-    function preencherDadosFinanceiros(dadosFinanceiros, dadosEmpresa) {
-        console.log('IMPORTACAO-CONTROLLER: Preenchendo dados financeiros:', dadosFinanceiros);
-
-        if (!dadosFinanceiros) {
-            // Se não temos dados financeiros, vamos calculá-los a partir dos dados da empresa
-            dadosFinanceiros = {
-                receitaBrutaMensal: dadosEmpresa.faturamento || 0,
-                receitaLiquidaMensal: dadosEmpresa.faturamento ? dadosEmpresa.faturamento * 0.92 : 0, // Estimativa considerando impostos
-                custoTotalMensal: dadosEmpresa.faturamento ? dadosEmpresa.faturamento * 0.65 : 0, // Estimativa
-                despesasOperacionais: dadosEmpresa.faturamento ? dadosEmpresa.faturamento * 0.15 : 0, // Estimativa
-                margemOperacional: dadosEmpresa.margem || 0.15
-            };
-            console.log('IMPORTACAO-CONTROLLER: Dados financeiros estimados:', dadosFinanceiros);
-        }
-
-        // Receita Bruta Mensal
-        const campoReceitaBruta = document.getElementById('receita-bruta-mensal');
-        if (campoReceitaBruta && dadosFinanceiros.receitaBrutaMensal) {
-            const valor = validarValorMonetario(dadosFinanceiros.receitaBrutaMensal);
-            campoReceitaBruta.value = formatarMoeda(valor);
-            marcarCampoComoSped(campoReceitaBruta);
-            console.log(`IMPORTACAO-CONTROLLER: Receita bruta mensal preenchida: ${formatarMoeda(valor)}`);
-        }
-
-        // Receita Líquida Mensal
-        const campoReceitaLiquida = document.getElementById('receita-liquida-mensal');
-        if (campoReceitaLiquida && dadosFinanceiros.receitaLiquidaMensal) {
-            const valor = validarValorMonetario(dadosFinanceiros.receitaLiquidaMensal);
-            campoReceitaLiquida.value = formatarMoeda(valor);
-            marcarCampoComoSped(campoReceitaLiquida);
-            console.log(`IMPORTACAO-CONTROLLER: Receita líquida mensal preenchida: ${formatarMoeda(valor)}`);
-        }
-
-        // Custo Total Mensal
-        const campoCustoTotal = document.getElementById('custo-total-mensal');
-        if (campoCustoTotal && dadosFinanceiros.custoTotalMensal) {
-            const valor = validarValorMonetario(dadosFinanceiros.custoTotalMensal);
-            campoCustoTotal.value = formatarMoeda(valor);
-            marcarCampoComoSped(campoCustoTotal);
-            console.log(`IMPORTACAO-CONTROLLER: Custo total mensal preenchido: ${formatarMoeda(valor)}`);
-        }
-
-        // Despesas Operacionais
-        const campoDespesasOp = document.getElementById('despesas-operacionais');
-        if (campoDespesasOp && dadosFinanceiros.despesasOperacionais) {
-            const valor = validarValorMonetario(dadosFinanceiros.despesasOperacionais);
-            campoDespesasOp.value = formatarMoeda(valor);
-            marcarCampoComoSped(campoDespesasOp);
-            console.log(`IMPORTACAO-CONTROLLER: Despesas operacionais preenchidas: ${formatarMoeda(valor)}`);
-        }
-
-        // Lucro Operacional
-        const campoLucroOp = document.getElementById('lucro-operacional');
-        if (campoLucroOp) {
-            const receitaLiquida = validarValorMonetario(dadosFinanceiros.receitaLiquidaMensal);
-            const custoTotal = validarValorMonetario(dadosFinanceiros.custoTotalMensal);
-            const despesasOp = validarValorMonetario(dadosFinanceiros.despesasOperacionais);
-
-            const lucroOperacional = receitaLiquida - custoTotal - despesasOp;
-            campoLucroOp.value = formatarMoeda(lucroOperacional);
-            marcarCampoComoSped(campoLucroOp);
-            console.log(`IMPORTACAO-CONTROLLER: Lucro operacional calculado: ${formatarMoeda(lucroOperacional)}`);
-        }
-
-        // Margem Operacional (%)
-        const campoMargemOp = document.getElementById('margem-operacional-percentual');
-        if (campoMargemOp) {
-            let margem = dadosFinanceiros.margemOperacional;
-            if (margem > 1) {
-                margem = margem / 100; // Converter de percentual para decimal se necessário
-            }
-            const margemPercentual = margem * 100;
-            campoMargemOp.value = margemPercentual.toFixed(2);
-            marcarCampoComoSped(campoMargemOp);
-            console.log(`IMPORTACAO-CONTROLLER: Margem operacional preenchida: ${margemPercentual.toFixed(2)}%`);
-        }
-
-        // Checkbox para usar dados detalhados
-        const checkboxDetalhado = document.getElementById('utilizar-dados-detalhados');
-        if (checkboxDetalhado) {
-            checkboxDetalhado.checked = true;
-            checkboxDetalhado.dispatchEvent(new Event('change', { bubbles: true }));
-            console.log('IMPORTACAO-CONTROLLER: Checkbox de utilizar dados financeiros detalhados marcado');
-        }
-    }
-
-    // Função auxiliar para validar valores monetários
     function validarValorMonetario(valor) {
+        // Caso 1: Valor indefinido ou nulo
         if (valor === undefined || valor === null) {
             return 0;
         }
 
+        // Caso 2: Já é um número
         if (typeof valor === 'number') {
-            return isNaN(valor) ? 0 : valor;
-        }
-
-        if (typeof valor === 'string') {
-            // Remover formatação monetária (R$, pontos, espaços)
-            const valorLimpo = valor.replace(/[^\d,.-]/g, '')
-                                   .replace(',', '.')
-                                   .trim();
-
-            // Verificar se há múltiplos pontos (formato brasileiro)
-            if ((valorLimpo.match(/\./g) || []).length > 1) {
-                // Formato com separador de milhar (1.234.567,89)
-                const valorSemPontos = valorLimpo.replace(/\./g, '');
-                const valorFinal = valorSemPontos.replace(',', '.');
-                return parseFloat(valorFinal) || 0;
+            // Verificar se é um número válido e dentro de limites razoáveis
+            if (!isNaN(valor) && valor >= 0 && valor < 1000000000000) { // Até 1 trilhão
+                return valor;
+            } else {
+                console.warn(`IMPORTACAO-CONTROLLER: Valor numérico inválido ou fora dos limites: ${valor}`);
+                return 0;
             }
-
-            const valorNumerico = parseFloat(valorLimpo);
-            return isNaN(valorNumerico) ? 0 : valorNumerico;
         }
 
+        // Caso 3: É uma string que precisa ser convertida
+        if (typeof valor === 'string') {
+            try {
+                // Remover formatação monetária (R$, pontos, etc)
+                const valorLimpo = valor.replace(/[^\d,.-]/g, '').replace(',', '.');
+                const valorNumerico = parseFloat(valorLimpo);
+
+                // Validar resultado da conversão
+                if (!isNaN(valorNumerico) && valorNumerico >= 0 && valorNumerico < 1000000000000) {
+                    return valorNumerico;
+                } else {
+                    console.warn(`IMPORTACAO-CONTROLLER: Valor monetário string inválido ou fora dos limites: ${valor}`);
+                    return 0;
+                }
+            } catch (erro) {
+                console.error(`IMPORTACAO-CONTROLLER: Erro ao processar valor monetário: ${valor}`, erro);
+                return 0;
+            }
+        }
+
+        // Caso default: tipo desconhecido
+        console.warn(`IMPORTACAO-CONTROLLER: Tipo de valor monetário não suportado: ${typeof valor}`);
         return 0;
     }
     
@@ -1718,9 +1643,6 @@ const ImportacaoController = (function() {
     /**
      * Preenche a composição tributária detalhada
      */
-    /**
-     * Preenche a composição tributária detalhada com indicadores de fonte
-     */
     function preencherComposicaoTributaria(composicao) {
         console.log('IMPORTACAO-CONTROLLER: Preenchendo composição tributária:', composicao);
 
@@ -1737,72 +1659,74 @@ const ImportacaoController = (function() {
             return;
         }
 
-        // Preencher débitos com indicadores de fonte
-        Object.keys(debitos).forEach(imposto => {
-            const dadoDebito = debitos[imposto];
-            const valor = extrairValorNumerico(dadoDebito);
-            const fonte = dadoDebito?.fonte || 'sped';
+        // Validar e processar débitos
+        const debitosValidados = {};
+        Object.entries(debitos).forEach(([imposto, valor]) => {
+            // Garantir que temos um valor monetário válido
+            debitosValidados[imposto] = validarValorMonetario(valor);
 
-            if (valor >= 0) {
-                preencherCampoComValorEFonte(`debito-${imposto}`, valor, fonte);
-                console.log(`IMPORTACAO-CONTROLLER: Débito ${imposto} preenchido: ${valor} (${fonte})`);
+            if (debitosValidados[imposto] > 0) {
+                preencherCampoComValor(`debito-${imposto}`, debitosValidados[imposto], 
+                                        fontesDados && fontesDados[imposto] === 'sped' ? 'SPED' : null);
+                console.log(`IMPORTACAO-CONTROLLER: Débito ${imposto} preenchido: ${debitosValidados[imposto]}`);
+            } else {
+                console.warn(`IMPORTACAO-CONTROLLER: Débito ${imposto} inválido ou zero: ${valor}`);
             }
         });
 
-        // Preencher créditos com indicadores de fonte
-        Object.keys(creditos).forEach(imposto => {
-            const dadoCredito = creditos[imposto];
-            const valor = extrairValorNumerico(dadoCredito);
-            const fonte = dadoCredito?.fonte || 'sped';
+        // Validar e processar créditos
+        const creditosValidados = {};
+        Object.entries(creditos).forEach(([imposto, valor]) => {
+            // Garantir que temos um valor monetário válido
+            creditosValidados[imposto] = validarValorMonetario(valor);
 
-            if (valor >= 0) {
-                preencherCampoComValorEFonte(`credito-${imposto}`, valor, fonte);
-                console.log(`IMPORTACAO-CONTROLLER: Crédito ${imposto} preenchido: ${valor} (${fonte})`);
+            if (creditosValidados[imposto] > 0) {
+                preencherCampoComValor(`credito-${imposto}`, creditosValidados[imposto], 
+                                        fontesDados && fontesDados[imposto] === 'sped' ? 'SPED' : null);
+                console.log(`IMPORTACAO-CONTROLLER: Crédito ${imposto} preenchido: ${creditosValidados[imposto]}`);
+            } else {
+                console.warn(`IMPORTACAO-CONTROLLER: Crédito ${imposto} inválido ou zero: ${valor}`);
             }
         });
 
-        // Preencher alíquotas efetivas com formatação correta
-        if (aliquotasEfetivas) {
-            Object.keys(aliquotasEfetivas).forEach(imposto => {
-                const dadoAliquota = aliquotasEfetivas[imposto];
-                let aliquota = extrairValorNumerico(dadoAliquota);
-                const fonte = dadoAliquota?.fonte || 'calculado';
+        // Validar e processar alíquotas efetivas
+        if (aliquotasEfetivas && typeof aliquotasEfetivas === 'object') {
+            Object.entries(aliquotasEfetivas).forEach(([imposto, aliquota]) => {
+                // Validar e normalizar alíquota
+                let aliquotaValidada = parseFloat(aliquota);
 
-                // Garantir que está em formato percentual correto
-                if (aliquota > 1) {
-                    aliquota = aliquota; // Já está em percentual
-                } else {
-                    aliquota = aliquota * 100; // Converter de decimal para percentual
+                // Converter de decimal para percentual se necessário (0.01 -> 1%)
+                if (aliquotaValidada > 0 && aliquotaValidada <= 1) {
+                    aliquotaValidada = aliquotaValidada * 100;
                 }
 
-                // Validar alíquota (entre 0 e 100%)
-                aliquota = Math.max(0, Math.min(100, aliquota));
+                // Garantir que é um valor válido entre 0 e 100%
+                aliquotaValidada = Math.max(0, Math.min(100, aliquotaValidada));
 
-                preencherCampoComValorEFonte(`aliquota-efetiva-${imposto}`, aliquota, fonte, 3);
-                console.log(`IMPORTACAO-CONTROLLER: Alíquota efetiva ${imposto} preenchida: ${aliquota.toFixed(3)}% (${fonte})`);
+                if (!isNaN(aliquotaValidada)) {
+                    preencherCampoComValor(`aliquota-efetiva-${imposto}`, aliquotaValidada, null, 3);
+                    console.log(`IMPORTACAO-CONTROLLER: Alíquota efetiva ${imposto} preenchida: ${aliquotaValidada.toFixed(3)}%`);
+                } else {
+                    console.warn(`IMPORTACAO-CONTROLLER: Alíquota ${imposto} inválida: ${aliquota}`);
+                }
             });
         }
 
-        // Calcular e preencher totais corretos
-        const totalDebitos = Object.keys(debitos).reduce((sum, imposto) => {
-            return sum + extrairValorNumerico(debitos[imposto]);
-        }, 0);
+        // Calcular e preencher totais com precisão
+        const totalDebitos = Object.values(debitosValidados).reduce((sum, val) => sum + (val || 0), 0);
+        const totalCreditos = Object.values(creditosValidados).reduce((sum, val) => sum + (val || 0), 0);
 
-        const totalCreditos = Object.keys(creditos).reduce((sum, imposto) => {
-            return sum + extrairValorNumerico(creditos[imposto]);
-        }, 0);
+        // Determinar a fonte dos totais (SPED se pelo menos um valor vier do SPED)
+        const fonteTotais = Object.values(fontesDados || {}).includes('sped') ? 'SPED' : null;
 
-        preencherCampoComValorEFonte('total-debitos', totalDebitos, 'calculado');
-        preencherCampoComValorEFonte('total-creditos', totalCreditos, 'calculado');
+        preencherCampoComValor('total-debitos', totalDebitos, fonteTotais);
+        preencherCampoComValor('total-creditos', totalCreditos, fonteTotais);
+        console.log(`IMPORTACAO-CONTROLLER: Totais calculados - Débitos: ${totalDebitos.toFixed(2)}, Créditos: ${totalCreditos.toFixed(2)}`);
 
-        // Calcular alíquota efetiva total
-        const faturamento = obterFaturamentoAtual();
-        if (faturamento > 0) {
-            const aliquotaTotal = (totalDebitos / faturamento) * 100;
-            preencherCampoComValorEFonte('aliquota-efetiva-total', aliquotaTotal, 'calculado', 3);
+        // Adicionar indicadores de fonte
+        if (fontesDados) {
+            adicionarIndicadoresFonte(fontesDados);
         }
-
-        console.log(`IMPORTACAO-CONTROLLER: Totais preenchidos - Débitos: ${totalDebitos}, Créditos: ${totalCreditos}`);
     }
 
     /**
@@ -1954,6 +1878,10 @@ const ImportacaoController = (function() {
     
     /**
      * Preenche um campo com valor formatado
+     * @param {string} campoId - ID do campo a ser preenchido
+     * @param {number|string} valor - Valor a ser preenchido
+     * @param {string} fonte - Fonte dos dados (SPED ou null)
+     * @param {number} decimais - Número de casas decimais para formatação (default: 2)
      */
     function preencherCampoComValor(campoId, valor, fonte = null, decimais = 2) {
         const elemento = document.getElementById(campoId);
@@ -1962,42 +1890,70 @@ const ImportacaoController = (function() {
             return;
         }
 
-        // Validar valor
-        let valorValidado = validarValorMonetario(valor);
+        try {
+            // Validar valor conforme o tipo de campo
+            let valorValidado;
+            let isPercentual = campoId.includes('aliquota') || campoId.includes('percentual') || campoId.includes('perc');
 
-        // Formatar valor de acordo com o tipo
-        let valorFormatado;
-        if (campoId.includes('aliquota-efetiva') || campoId.includes('efetiv')) {
-            // Alíquotas são percentuais - converter para formato percentual adequado
-            // Verificar se o valor já está em percentual (0-100) ou decimal (0-1)
-            if (valorValidado <= 1 && valorValidado > 0) {
-                valorValidado = valorValidado * 100; // Converter de decimal para percentual
+            if (isPercentual) {
+                // Para campos percentuais
+                valorValidado = parseFloat(valor);
+                if (isNaN(valorValidado)) valorValidado = 0;
+
+                // Converter de decimal para percentual se necessário
+                if (valorValidado > 0 && valorValidado <= 1) {
+                    valorValidado = valorValidado * 100;
+                }
+
+                // Limitar valores percentuais entre 0 e 100
+                valorValidado = Math.max(0, Math.min(100, valorValidado));
+            } else {
+                // Para campos monetários
+                valorValidado = validarValorMonetario(valor);
             }
 
-            // Formato percentual com precisão específica (3 casas para alíquotas)
-            valorFormatado = valorValidado.toFixed(decimais);
-        } else {
-            // Formato monetário
-            valorFormatado = formatarMoeda(valorValidado);
+            // Formatar valor conforme o tipo
+            let valorFormatado;
+            if (isPercentual) {
+                // Formato percentual com precisão específica
+                valorFormatado = valorValidado.toFixed(decimais);
+                if (!valorFormatado.includes('%')) {
+                    valorFormatado = valorFormatado + '%';
+                }
+            } else {
+                // Formato monetário
+                valorFormatado = formatarMoeda(valorValidado);
 
-            // Se o campo tem dataset.rawValue (para CurrencyFormatter)
-            if (elemento.dataset) {
-                elemento.dataset.rawValue = valorValidado.toString();
+                // Preservar valor numérico para uso em cálculos
+                if (elemento.dataset) {
+                    elemento.dataset.rawValue = valorValidado.toString();
+                }
             }
+
+            // Definir valor e atributos do campo
+            elemento.value = valorFormatado;
+
+            // Garantir que o campo não esteja definido como readonly
+            if (elemento.hasAttribute('readonly') && 
+                !elemento.classList.contains('calc-only') && 
+                !campoId.includes('ciclo-financeiro')) {
+                elemento.removeAttribute('readonly');
+            }
+
+            // Marcar campo como preenchido pelo SPED se aplicável
+            if (fonte === 'SPED') {
+                marcarCampoComoSped(elemento);
+            }
+
+            // Disparar evento para recalcular campos dependentes
+            elemento.dispatchEvent(new Event('input', { bubbles: true }));
+
+            console.log(`IMPORTACAO-CONTROLLER: Campo ${campoId} preenchido com valor ${valorFormatado}`);
+            return true;
+        } catch (erro) {
+            console.error(`IMPORTACAO-CONTROLLER: Erro ao preencher campo ${campoId}:`, erro);
+            return false;
         }
-
-        // Atribuir valor formatado
-        elemento.value = valorFormatado;
-
-        // Marcar campo como preenchido pelo SPED
-        if (fonte === 'SPED') {
-            marcarCampoComoSped(elemento);
-        }
-
-        // Disparar evento para atualizar cálculos dependentes
-        elemento.dispatchEvent(new Event('input', { bubbles: true }));
-
-        console.log(`IMPORTACAO-CONTROLLER: Campo ${campoId} preenchido com valor ${valorFormatado}`);
     }
     
     /**
@@ -2016,75 +1972,67 @@ const ImportacaoController = (function() {
      * Adiciona indicadores visuais da fonte dos dados
      */
     function adicionarIndicadoresFonte(fontesDados) {
+        // Verificar se as fontes estão disponíveis
+        if (!fontesDados || typeof fontesDados !== 'object') {
+            console.warn('IMPORTACAO-CONTROLLER: Fontes de dados não disponíveis para indicadores');
+            return;
+        }
+
         console.log('IMPORTACAO-CONTROLLER: Adicionando indicadores de fonte para:', fontesDados);
 
+        // Para cada imposto e sua fonte
         Object.entries(fontesDados).forEach(([imposto, fonte]) => {
+            // Criar elemento de indicador
             const indicador = document.createElement('span');
-            indicador.className = `fonte-dados ${fonte}`;
+            indicador.className = `fonte-dados fonte-dados-${fonte.toLowerCase()}`;
             indicador.textContent = fonte === 'sped' ? 'SPED' : 'EST';
             indicador.title = fonte === 'sped' ? 'Dados extraídos do SPED' : 'Dados estimados';
-            indicador.style.cssText = `
-                display: inline-block;
-                margin-left: 5px;
-                padding: 2px 6px;
-                border-radius: 3px;
-                font-size: 10px;
-                font-weight: bold;
-                color: white;
-                background-color: ${fonte === 'sped' ? '#28a745' : '#ffc107'};
-            `;
 
-            // Adicionar indicador próximo aos campos de débito
-            const campoDebito = document.getElementById(`debito-${imposto}`);
-            if (campoDebito && !campoDebito.parentNode.querySelector('.fonte-dados')) {
-                campoDebito.parentNode.appendChild(indicador.cloneNode(true));
+            // Aplicar estilos CSS via classe, não inline
+            if (!document.getElementById('fonte-dados-style')) {
+                const style = document.createElement('style');
+                style.id = 'fonte-dados-style';
+                style.textContent = `
+                    .fonte-dados {
+                        display: inline-block;
+                        margin-left: 5px;
+                        padding: 2px 6px;
+                        border-radius: 3px;
+                        font-size: 10px;
+                        font-weight: bold;
+                        color: white;
+                    }
+                    .fonte-dados-sped {
+                        background-color: #28a745;
+                    }
+                    .fonte-dados-estimado {
+                        background-color: #ffc107;
+                    }
+                `;
+                document.head.appendChild(style);
             }
 
-            // Adicionar indicador próximo aos campos de crédito
-            const campoCredito = document.getElementById(`credito-${imposto}`);
-            if (campoCredito && !campoCredito.parentNode.querySelector('.fonte-dados')) {
-                const indicadorCredito = indicador.cloneNode(true);
-                campoCredito.parentNode.appendChild(indicadorCredito);
-            }
+            // Adicionar indicador para todos os campos relevantes
+            const camposAlvos = [
+                { id: `debito-${imposto}`, adicionado: false },
+                { id: `credito-${imposto}`, adicionado: false },
+                { id: `aliquota-efetiva-${imposto}`, adicionado: false }
+            ];
 
-            // Adicionar indicador próximo às alíquotas efetivas
-            const campoAliquota = document.getElementById(`aliquota-efetiva-${imposto}`);
-            if (campoAliquota && !campoAliquota.parentNode.querySelector('.fonte-dados')) {
-                const indicadorAliquota = indicador.cloneNode(true);
-                campoAliquota.parentNode.appendChild(indicadorAliquota);
-            }
+            camposAlvos.forEach(campo => {
+                const elemento = document.getElementById(campo.id);
+                if (elemento && !elemento.parentNode.querySelector('.fonte-dados')) {
+                    elemento.parentNode.appendChild(indicador.cloneNode(true));
+                    campo.adicionado = true;
+                    console.log(`IMPORTACAO-CONTROLLER: Indicador adicionado para ${campo.id}`);
+                }
+            });
         });
-
-        // Também adicionar indicadores para os totais
-        const totalDebitosIndicador = document.createElement('span');
-        totalDebitosIndicador.className = 'fonte-dados sped';
-        totalDebitosIndicador.textContent = 'SPED';
-        totalDebitosIndicador.title = 'Calculado a partir dos dados do SPED';
-        totalDebitosIndicador.style.cssText = `
-            display: inline-block;
-            margin-left: 5px;
-            padding: 2px 6px;
-            border-radius: 3px;
-            font-size: 10px;
-            font-weight: bold;
-            color: white;
-            background-color: #28a745;
-        `;
-
-        const campoTotalDebitos = document.getElementById('total-debitos');
-        if (campoTotalDebitos && !campoTotalDebitos.parentNode.querySelector('.fonte-dados')) {
-            campoTotalDebitos.parentNode.appendChild(totalDebitosIndicador.cloneNode(true));
-        }
-
-        const campoTotalCreditos = document.getElementById('total-creditos');
-        if (campoTotalCreditos && !campoTotalCreditos.parentNode.querySelector('.fonte-dados')) {
-            const totalCreditosIndicador = totalDebitosIndicador.cloneNode(true);
-            campoTotalCreditos.parentNode.appendChild(totalCreditosIndicador);
-        }
     }
     
     /**
      * Preenche dados do ciclo financeiro
+     * @param {Object} cicloFinanceiro - Objeto com dados do ciclo financeiro
      */
     function preencherCicloFinanceiro(cicloFinanceiro) {
         console.log('IMPORTACAO-CONTROLLER: Preenchendo ciclo financeiro:', cicloFinanceiro);
@@ -2094,99 +2042,182 @@ const ImportacaoController = (function() {
             return;
         }
 
-        // PMR - Prazo Médio de Recebimento
-        const campoPmr = document.getElementById('pmr');
-        if (campoPmr && cicloFinanceiro.pmr !== undefined) {
-            // Garantir que é um valor válido
-            const pmr = parseInt(cicloFinanceiro.pmr);
-            if (!isNaN(pmr) && pmr > 0 && pmr <= 180) { // Entre 1 e 180 dias
-                campoPmr.value = pmr;
-                marcarCampoComoSped(campoPmr);
-                campoPmr.dispatchEvent(new Event('input', { bubbles: true }));
-                console.log(`IMPORTACAO-CONTROLLER: PMR preenchido: ${pmr} dias`);
-            } else {
-                console.warn(`IMPORTACAO-CONTROLLER: PMR inválido: ${cicloFinanceiro.pmr}`);
-            }
-        }
+        try {
+            // PMR - Prazo Médio de Recebimento
+            const campoPmr = document.getElementById('pmr');
+            if (campoPmr && cicloFinanceiro.pmr !== undefined) {
+                // Garantir que é um valor válido
+                const pmr = parseInt(cicloFinanceiro.pmr);
+                if (!isNaN(pmr) && pmr > 0 && pmr <= 180) { // Entre 1 e 180 dias
+                    // Garantir que o campo não está readonly
+                    if (campoPmr.hasAttribute('readonly')) {
+                        campoPmr.removeAttribute('readonly');
+                    }
 
-        // PMP - Prazo Médio de Pagamento
-        const campoPmp = document.getElementById('pmp');
-        if (campoPmp && cicloFinanceiro.pmp !== undefined) {
-            // Garantir que é um valor válido
-            const pmp = parseInt(cicloFinanceiro.pmp);
-            if (!isNaN(pmp) && pmp > 0 && pmp <= 180) { // Entre 1 e 180 dias
-                campoPmp.value = pmp;
-                marcarCampoComoSped(campoPmp);
-                campoPmp.dispatchEvent(new Event('input', { bubbles: true }));
-                console.log(`IMPORTACAO-CONTROLLER: PMP preenchido: ${pmp} dias`);
-            } else {
-                console.warn(`IMPORTACAO-CONTROLLER: PMP inválido: ${cicloFinanceiro.pmp}`);
-            }
-        }
-
-        // PME - Prazo Médio de Estoque
-        const campoPme = document.getElementById('pme');
-        if (campoPme && cicloFinanceiro.pme !== undefined) {
-            // Garantir que é um valor válido
-            const pme = parseInt(cicloFinanceiro.pme);
-            if (!isNaN(pme) && pme > 0 && pme <= 180) { // Entre 1 e 180 dias
-                campoPme.value = pme;
-                marcarCampoComoSped(campoPme);
-                campoPme.dispatchEvent(new Event('input', { bubbles: true }));
-                console.log(`IMPORTACAO-CONTROLLER: PME preenchido: ${pme} dias`);
-            } else {
-                console.warn(`IMPORTACAO-CONTROLLER: PME inválido: ${cicloFinanceiro.pme}`);
-            }
-        }
-
-        // Ciclo Financeiro (calculado automaticamente)
-        const campoCiclo = document.getElementById('ciclo-financeiro');
-        if (campoCiclo) {
-            const pmr = parseInt(cicloFinanceiro.pmr) || 0;
-            const pmp = parseInt(cicloFinanceiro.pmp) || 0;
-            const pme = parseInt(cicloFinanceiro.pme) || 0;
-
-            const cicloCalculado = Math.max(0, pmr + pme - pmp);
-            campoCiclo.value = cicloCalculado;
-            marcarCampoComoSped(campoCiclo);
-            console.log(`IMPORTACAO-CONTROLLER: Ciclo financeiro calculado: ${cicloCalculado} dias`);
-        }
-
-        // Checkbox Split Payment
-        const checkboxSplit = document.getElementById('considerar-split');
-        if (checkboxSplit) {
-            checkboxSplit.checked = true;
-            checkboxSplit.dispatchEvent(new Event('change', { bubbles: true }));
-            console.log('IMPORTACAO-CONTROLLER: Checkbox de considerar Split Payment marcado');
-        }
-
-        // Percentual de vendas à vista
-        const campoPercVista = document.getElementById('perc-vista');
-        if (campoPercVista && cicloFinanceiro.percVista !== undefined) {
-            // Garantir que está em formato percentual (0-100)
-            let percVista = cicloFinanceiro.percVista;
-            if (percVista <= 1) {
-                percVista = percVista * 100; // Converter de decimal para percentual
+                    campoPmr.value = pmr;
+                    marcarCampoComoSped(campoPmr);
+                    campoPmr.dispatchEvent(new Event('input', { bubbles: true }));
+                    console.log(`IMPORTACAO-CONTROLLER: PMR preenchido: ${pmr} dias`);
+                } else {
+                    console.warn(`IMPORTACAO-CONTROLLER: PMR inválido: ${cicloFinanceiro.pmr}`);
+                }
             }
 
-            // Garantir que está entre 0 e 100
-            percVista = Math.max(0, Math.min(100, percVista));
+            // PMP - Prazo Médio de Pagamento
+            const campoPmp = document.getElementById('pmp');
+            if (campoPmp && cicloFinanceiro.pmp !== undefined) {
+                const pmp = parseInt(cicloFinanceiro.pmp);
+                if (!isNaN(pmp) && pmp > 0 && pmp <= 180) {
+                    // Garantir que o campo não está readonly
+                    if (campoPmp.hasAttribute('readonly')) {
+                        campoPmp.removeAttribute('readonly');
+                    }
 
-            campoPercVista.value = percVista.toFixed(1);
-            marcarCampoComoSped(campoPercVista);
-            campoPercVista.dispatchEvent(new Event('input', { bubbles: true }));
-            console.log(`IMPORTACAO-CONTROLLER: Percentual de vendas à vista preenchido: ${percVista.toFixed(1)}%`);
+                    campoPmp.value = pmp;
+                    marcarCampoComoSped(campoPmp);
+                    campoPmp.dispatchEvent(new Event('input', { bubbles: true }));
+                    console.log(`IMPORTACAO-CONTROLLER: PMP preenchido: ${pmp} dias`);
+                } else {
+                    console.warn(`IMPORTACAO-CONTROLLER: PMP inválido: ${cicloFinanceiro.pmp}`);
+                }
+            }
+
+            // PME - Prazo Médio de Estoque
+            const campoPme = document.getElementById('pme');
+            if (campoPme && cicloFinanceiro.pme !== undefined) {
+                const pme = parseInt(cicloFinanceiro.pme);
+                if (!isNaN(pme) && pme > 0 && pme <= 180) {
+                    // Garantir que o campo não está readonly
+                    if (campoPme.hasAttribute('readonly')) {
+                        campoPme.removeAttribute('readonly');
+                    }
+
+                    campoPme.value = pme;
+                    marcarCampoComoSped(campoPme);
+                    campoPme.dispatchEvent(new Event('input', { bubbles: true }));
+                    console.log(`IMPORTACAO-CONTROLLER: PME preenchido: ${pme} dias`);
+                } else {
+                    console.warn(`IMPORTACAO-CONTROLLER: PME inválido: ${cicloFinanceiro.pme}`);
+                }
+            }
+
+            // Percentual de vendas à vista
+            const campoPercVista = document.getElementById('perc-vista');
+            if (campoPercVista && cicloFinanceiro.percVista !== undefined) {
+                let percVista = cicloFinanceiro.percVista;
+                if (percVista <= 1) {
+                    percVista = percVista * 100; // Converter de decimal para percentual
+                }
+
+                // Garantir que está entre 0 e 100
+                percVista = Math.max(0, Math.min(100, percVista));
+
+                // Garantir que o campo não está readonly
+                if (campoPercVista.hasAttribute('readonly')) {
+                    campoPercVista.removeAttribute('readonly');
+                }
+
+                campoPercVista.value = percVista.toFixed(1);
+                marcarCampoComoSped(campoPercVista);
+                campoPercVista.dispatchEvent(new Event('input', { bubbles: true }));
+                console.log(`IMPORTACAO-CONTROLLER: Percentual de vendas à vista preenchido: ${percVista.toFixed(1)}%`);
+            }
+
+            return true;
+        } catch (erro) {
+            console.error('IMPORTACAO-CONTROLLER: Erro ao preencher ciclo financeiro:', erro);
+            return false;
+        }
+    }
+    
+    /**
+     * Preenche os dados financeiros no formulário
+     * @param {Object} dadosFinanceiros - Dados financeiros extraídos ou calculados
+     * @param {Object} dadosEmpresa - Dados da empresa para cálculos complementares
+     */
+    function preencherDadosFinanceiros(dadosFinanceiros, dadosEmpresa) {
+        console.log('IMPORTACAO-CONTROLLER: Preenchendo dados financeiros:', dadosFinanceiros);
+
+        if (!dadosFinanceiros) {
+            // Se não temos dados financeiros, vamos calculá-los a partir dos dados da empresa
+            dadosFinanceiros = {
+                receitaBrutaMensal: dadosEmpresa.faturamento || 0,
+                receitaLiquidaMensal: dadosEmpresa.faturamento ? dadosEmpresa.faturamento * 0.92 : 0, // Estimativa considerando impostos
+                custoTotalMensal: dadosEmpresa.faturamento ? dadosEmpresa.faturamento * 0.65 : 0, // Estimativa
+                despesasOperacionais: dadosEmpresa.faturamento ? dadosEmpresa.faturamento * 0.15 : 0, // Estimativa
+                margemOperacional: dadosEmpresa.margem || 0.15
+            };
+            console.log('IMPORTACAO-CONTROLLER: Dados financeiros estimados:', dadosFinanceiros);
         }
 
-        // Percentual de vendas a prazo (calculado automaticamente)
-        const campoPercPrazo = document.getElementById('perc-prazo');
-        if (campoPercPrazo && cicloFinanceiro.percVista !== undefined) {
-            let percPrazo = 100 - (cicloFinanceiro.percVista <= 1 ? cicloFinanceiro.percVista * 100 : cicloFinanceiro.percVista);
-            percPrazo = Math.max(0, Math.min(100, percPrazo));
+        // Receita Bruta Mensal
+        const campoReceitaBruta = document.getElementById('receita-bruta-mensal');
+        if (campoReceitaBruta && dadosFinanceiros.receitaBrutaMensal) {
+            const valor = validarValorMonetario(dadosFinanceiros.receitaBrutaMensal);
+            campoReceitaBruta.value = formatarMoeda(valor);
+            marcarCampoComoSped(campoReceitaBruta);
+            console.log(`IMPORTACAO-CONTROLLER: Receita bruta mensal preenchida: ${formatarMoeda(valor)}`);
+        }
 
-            campoPercPrazo.value = percPrazo.toFixed(1) + '%'; // Adicionar símbolo de percentual
-            marcarCampoComoSped(campoPercPrazo);
-            console.log(`IMPORTACAO-CONTROLLER: Percentual de vendas a prazo calculado: ${percPrazo.toFixed(1)}%`);
+        // Receita Líquida Mensal
+        const campoReceitaLiquida = document.getElementById('receita-liquida-mensal');
+        if (campoReceitaLiquida && dadosFinanceiros.receitaLiquidaMensal) {
+            const valor = validarValorMonetario(dadosFinanceiros.receitaLiquidaMensal);
+            campoReceitaLiquida.value = formatarMoeda(valor);
+            marcarCampoComoSped(campoReceitaLiquida);
+            console.log(`IMPORTACAO-CONTROLLER: Receita líquida mensal preenchida: ${formatarMoeda(valor)}`);
+        }
+
+        // Custo Total Mensal
+        const campoCustoTotal = document.getElementById('custo-total-mensal');
+        if (campoCustoTotal && dadosFinanceiros.custoTotalMensal) {
+            const valor = validarValorMonetario(dadosFinanceiros.custoTotalMensal);
+            campoCustoTotal.value = formatarMoeda(valor);
+            marcarCampoComoSped(campoCustoTotal);
+            console.log(`IMPORTACAO-CONTROLLER: Custo total mensal preenchido: ${formatarMoeda(valor)}`);
+        }
+
+        // Despesas Operacionais
+        const campoDespesasOp = document.getElementById('despesas-operacionais');
+        if (campoDespesasOp && dadosFinanceiros.despesasOperacionais) {
+            const valor = validarValorMonetario(dadosFinanceiros.despesasOperacionais);
+            campoDespesasOp.value = formatarMoeda(valor);
+            marcarCampoComoSped(campoDespesasOp);
+            console.log(`IMPORTACAO-CONTROLLER: Despesas operacionais preenchidas: ${formatarMoeda(valor)}`);
+        }
+
+        // Lucro Operacional
+        const campoLucroOp = document.getElementById('lucro-operacional');
+        if (campoLucroOp) {
+            const receitaLiquida = validarValorMonetario(dadosFinanceiros.receitaLiquidaMensal);
+            const custoTotal = validarValorMonetario(dadosFinanceiros.custoTotalMensal);
+            const despesasOp = validarValorMonetario(dadosFinanceiros.despesasOperacionais);
+
+            const lucroOperacional = receitaLiquida - custoTotal - despesasOp;
+            campoLucroOp.value = formatarMoeda(lucroOperacional);
+            marcarCampoComoSped(campoLucroOp);
+            console.log(`IMPORTACAO-CONTROLLER: Lucro operacional calculado: ${formatarMoeda(lucroOperacional)}`);
+        }
+
+        // Margem Operacional (%)
+        const campoMargemOp = document.getElementById('margem-operacional-percentual');
+        if (campoMargemOp) {
+            let margem = dadosFinanceiros.margemOperacional;
+            if (margem > 1) {
+                margem = margem / 100; // Converter de percentual para decimal se necessário
+            }
+            const margemPercentual = margem * 100;
+            campoMargemOp.value = margemPercentual.toFixed(2);
+            marcarCampoComoSped(campoMargemOp);
+            console.log(`IMPORTACAO-CONTROLLER: Margem operacional preenchida: ${margemPercentual.toFixed(2)}%`);
+        }
+
+        // Checkbox para usar dados detalhados
+        const checkboxDetalhado = document.getElementById('utilizar-dados-detalhados');
+        if (checkboxDetalhado) {
+            checkboxDetalhado.checked = true;
+            checkboxDetalhado.dispatchEvent(new Event('change', { bubbles: true }));
+            console.log('IMPORTACAO-CONTROLLER: Checkbox de utilizar dados financeiros detalhados marcado');
         }
     }
     

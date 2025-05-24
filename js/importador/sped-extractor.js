@@ -88,7 +88,6 @@ function extrairValorNumerico(dadoComFonte) {
     return parseValorMonetario(dadoComFonte);
 }
 
-
     const SpedExtractor = (function() {
 
         /**
@@ -213,6 +212,30 @@ function extrairValorNumerico(dadoComFonte) {
                         confiabilidade: 'baixa'
                     }
                 };
+            }
+            // Dentro da função extrairDadosParaSimulador:
+
+            // Adicionar estrutura para rastrear fontes dos dados
+            const fontesDados = {
+                pis: 'estimado',
+                cofins: 'estimado',
+                icms: 'estimado',
+                ipi: 'estimado',
+                iss: 'estimado'
+            };
+
+            // Ao processar parâmetros fiscais
+            if (dadosSped.fiscal || dadosSped.contribuicoes) {
+                const parametros = calcularParametrosFiscais(dadosSped.fiscal, dadosSped.contribuicoes);
+                dados.parametrosFiscais = { ...dados.parametrosFiscais, ...parametros };
+
+                // Adicionar fontesDados à composição tributária
+                if (dados.parametrosFiscais.composicaoTributaria) {
+                    dados.parametrosFiscais.composicaoTributaria.fontesDados = {
+                        ...fontesDados,
+                        ...parametros.composicaoTributaria?.fontesDados
+                    };
+                }
             }
         }
 
@@ -2474,7 +2497,6 @@ function extrairValorNumerico(dadoComFonte) {
             return dadosFinanceiros;
         }
     }
-
     
     /**
      * Processa arquivo SPED Fiscal (EFD ICMS/IPI)
