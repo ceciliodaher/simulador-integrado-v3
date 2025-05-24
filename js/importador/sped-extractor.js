@@ -52,6 +52,43 @@ function parseValorMonetario(valorString) {
     }
 }
 
+/**
+ * Sistema de rastreamento da fonte dos dados
+ */
+const FonteDados = {
+    SPED: 'sped',
+    ESTIMADO: 'estimado',
+    CALCULADO: 'calculado'
+};
+
+/**
+ * Cria objeto com rastreamento de fonte
+ */
+function criarValorComFonte(valor, fonte = FonteDados.SPED, metadados = {}) {
+    return {
+        valor: parseValorMonetario(valor),
+        fonte: fonte,
+        metadados: {
+            timestamp: new Date().toISOString(),
+            ...metadados
+        }
+    };
+}
+
+/**
+ * Extrai apenas o valor numérico, ignorando metadados de fonte
+ */
+function extrairValorNumerico(dadoComFonte) {
+    if (typeof dadoComFonte === 'number') {
+        return dadoComFonte;
+    }
+    if (dadoComFonte && typeof dadoComFonte === 'object' && dadoComFonte.valor !== undefined) {
+        return dadoComFonte.valor;
+    }
+    return parseValorMonetario(dadoComFonte);
+}
+
+
     const SpedExtractor = (function() {
 
         /**
@@ -2341,34 +2378,101 @@ function parseValorMonetario(valorString) {
         };
     }
     
-    function extrairDadosFinanceiros(dadosECD, dadosFiscal, dadosContribuicoes) {
-        const faturamento = dadosContribuicoes?.receitas?.receitaBrutaTotal || 
-                           dadosFiscal?.totalizadores?.valorTotalSaidas || 0;
+    /**
+     * Extrai dados financeiros do SPED ECF e outros
+     */
+    function extrairDadosFinanceiros(dadosSped) {
+        console.log('SPED-EXTRACTOR: Extraindo dados financeiros');
 
-        // Se temos dados da ECD, usar informações contábeis detalhadas
-        if (dadosECD?.dre) {
-            return {
-                receitaBrutaMensal: dadosECD.dre.receitaBruta || faturamento,
-                custoTotalMensal: dadosECD.dre.custoVendas || 0,
-                receitaLiquidaMensal: dadosECD.dre.receitaLiquida || faturamento,
-                despesasOperacionais: dadosECD.dre.despesasOperacionais || 0,
-                margemOperacional: calcularMargemOperacional(dadosECD.dre),
-                utilizarDetalhado: true
-            };
-        }
-
-        // Caso contrário, usar estimativas baseadas no setor
-        const margemEstimada = 15; // 15% padrão para indústria alimentícia
-        const custoEstimado = faturamento * (1 - margemEstimada / 100);
-
-        return {
-            receitaBrutaMensal: faturamento,
-            custoTotalMensal: custoEstimado,
-            receitaLiquidaMensal: faturamento,
-            despesasOperacionais: custoEstimado * 0.1, // 10% do custo
-            margemOperacional: margemEstimada,
-            utilizarDetalhado: false
+        const dadosFinanceiros = {
+            receitaBruta: 0,
+            receitaLiquida: 0,
+            custoTotal: 0,
+            despesasOperacionais: 0,
+            lucroOperacional: 0,
+            margem: 0.15 // padrão
         };
+
+        try {
+            // Extrair da ECF (mais confiável para dados financeiros)
+            if (dadosSped.ecf?.demonstracaoResultado?.length > 0) {
+                const dre = dadosSped.ecf.demonstracaoResultado;
+
+                // Buscar receita bruta
+                const receitaBruta = dre.find(conta => 
+                    conta.codigoConta?.startsWith('3.01') || 
+                    conta.descricao?.toLowerCase().includes('receita') && 
+                    conta.descricao?.toLowerCase().includes('bruta')
+                );
+                if (receitaBruta) {
+                    dadosFinanceiros.receitaBruta = parseValorMonetario(receitaBruta.valor || receitaBruta.saldo);
+                }
+
+                // Buscar receita líquida
+                const receitaLiquida = dre.find(conta => 
+                    conta.codigoConta?.startsWith('3.02') || 
+                    conta.descricao?.toLowerCase().includes('receita') && 
+                    conta.descricao?.toLowerCase().includes('líquida')
+                );
+                if (receitaLiquida) {
+                    dadosFinanceiros.receitaLiquida = parseValorMonetario(receitaLiquida.valor || receitaLiquida.saldo);
+                }
+
+                // Buscar custo das vendas
+                const custoVendas = dre.find(conta => 
+                    conta.codigoConta?.startsWith('3.03') || 
+                    conta.descricao?.toLowerCase().includes('custo') && 
+                    (conta.descricao?.toLowerCase().includes('vendas') || conta.descricao?.toLowerCase().includes('mercadorias'))
+                );
+                if (custoVendas) {
+                    dadosFinanceiros.custoTotal = parseValorMonetario(custoVendas.valor || custoVendas.saldo);
+                }
+
+                // Buscar despesas operacionais
+                const despesasOper = dre.filter(conta => 
+                    conta.codigoConta?.startsWith('3.04') || 
+                    conta.descricao?.toLowerCase().includes('despesas') && 
+                    conta.descricao?.toLowerCase().includes('operacionais')
+                );
+                if (despesasOper.length > 0) {
+                    dadosFinanceiros.despesasOperacionais = despesasOper.reduce((sum, conta) => 
+                        sum + parseValorMonetario(conta.valor || conta.saldo), 0
+                    );
+                }
+
+                // Calcular lucro operacional
+                dadosFinanceiros.lucroOperacional = dadosFinanceiros.receitaLiquida - 
+                                                   dadosFinanceiros.custoTotal - 
+                                                   dadosFinanceiros.despesasOperacionais;
+
+                // Calcular margem
+                if (dadosFinanceiros.receitaLiquida > 0) {
+                    dadosFinanceiros.margem = dadosFinanceiros.lucroOperacional / dadosFinanceiros.receitaLiquida;
+                }
+            }
+
+            // Fallback: tentar estimar baseado em outros dados disponíveis
+            if (dadosFinanceiros.receitaBruta === 0) {
+                // Usar faturamento do SPED Fiscal ou Contribuições
+                if (dadosSped.empresa?.faturamento > 0) {
+                    dadosFinanceiros.receitaBruta = dadosSped.empresa.faturamento;
+                    dadosFinanceiros.receitaLiquida = dadosFinanceiros.receitaBruta * 0.9; // Estimativa: 10% de deduções
+                }
+            }
+
+            // Validar e ajustar valores
+            if (dadosFinanceiros.custoTotal === 0 && dadosFinanceiros.receitaLiquida > 0) {
+                // Estimar custo como 60% da receita líquida (padrão para comércio)
+                dadosFinanceiros.custoTotal = dadosFinanceiros.receitaLiquida * 0.6;
+            }
+
+            console.log('SPED-EXTRACTOR: Dados financeiros extraídos:', dadosFinanceiros);
+            return dadosFinanceiros;
+
+        } catch (erro) {
+            console.error('SPED-EXTRACTOR: Erro ao extrair dados financeiros:', erro);
+            return dadosFinanceiros;
+        }
     }
 
     
@@ -2684,108 +2788,175 @@ function parseValorMonetario(valorString) {
         return composicao;
     }
 
-    function calcularParametrosFiscais(dadosFiscal, dadosContribuicoes) {
-        console.log('Calculando parâmetros fiscais...');
+    /**
+     * Calcula parâmetros fiscais com rastreamento de fonte
+     */
+    function calcularParametrosFiscais(spedFiscal, spedContribuicoes) {
+        console.log('SPED-EXTRACTOR: Calculando parâmetros fiscais com rastreamento de fonte');
 
         const parametros = {
-            composicaoTributaria: {
-                debitos: { pis: 0, cofins: 0, icms: 0, ipi: 0, iss: 0 },
-                creditos: { pis: 0, cofins: 0, icms: 0, ipi: 0, iss: 0 }
+            sistemaAtual: {
+                regimeTributario: 'real',
+                regimePISCOFINS: 'não-cumulativo'
             },
-            aliquotasEfetivas: {
-                pisEfetivo: 0,
-                cofinsEfetivo: 0,
-                icmsEfetivo: 0,
-                ipiEfetivo: 0,
-                issEfetivo: 0
+            composicaoTributaria: {
+                debitos: {},
+                creditos: {},
+                aliquotasEfetivas: {},
+                fontesDados: {} // Novo: rastreamento de fontes
             }
         };
 
-        // Calcular faturamento base
-        const faturamento = dadosContribuicoes?.receitas?.receitaBrutaTotal || 
-                           dadosFiscal?.totalizadores?.valorTotalSaidas || 1;
+        try {
+            // Processar débitos e créditos PIS
+            if (spedContribuicoes?.debitos?.pis) {
+                const totalDebitoPIS = spedContribuicoes.debitos.pis.reduce((sum, d) => 
+                    sum + parseValorMonetario(d.valorTotalContribuicao || d.valorContribuicaoAPagar || 0), 0
+                );
+                parametros.composicaoTributaria.debitos.pis = criarValorComFonte(totalDebitoPIS, FonteDados.SPED, {
+                    registros: spedContribuicoes.debitos.pis.length,
+                    fonte_sped: 'contribuicoes'
+                });
+                parametros.composicaoTributaria.fontesDados.pis_debito = FonteDados.SPED;
+            }
 
-        // ===== DÉBITOS PIS/COFINS =====
-        if (dadosContribuicoes?.detalhesPIS) {
-            parametros.composicaoTributaria.debitos.pis = dadosContribuicoes.detalhesPIS.reduce((acc, item) => 
-                acc + (item.valorContribuicao || 0), 0);
+            if (spedContribuicoes?.creditos?.pis) {
+                const totalCreditoPIS = spedContribuicoes.creditos.pis.reduce((sum, c) => 
+                    sum + parseValorMonetario(c.valorCredito || 0), 0
+                );
+                parametros.composicaoTributaria.creditos.pis = criarValorComFonte(totalCreditoPIS, FonteDados.SPED, {
+                    registros: spedContribuicoes.creditos.pis.length,
+                    fonte_sped: 'contribuicoes'
+                });
+                parametros.composicaoTributaria.fontesDados.pis_credito = FonteDados.SPED;
+            }
+
+            // Processar débitos e créditos COFINS
+            if (spedContribuicoes?.debitos?.cofins) {
+                const totalDebitoCOFINS = spedContribuicoes.debitos.cofins.reduce((sum, d) => 
+                    sum + parseValorMonetario(d.valorTotalContribuicao || d.valorContribuicaoAPagar || 0), 0
+                );
+                parametros.composicaoTributaria.debitos.cofins = criarValorComFonte(totalDebitoCOFINS, FonteDados.SPED, {
+                    registros: spedContribuicoes.debitos.cofins.length,
+                    fonte_sped: 'contribuicoes'
+                });
+                parametros.composicaoTributaria.fontesDados.cofins_debito = FonteDados.SPED;
+            }
+
+            if (spedContribuicoes?.creditos?.cofins) {
+                const totalCreditoCOFINS = spedContribuicoes.creditos.cofins.reduce((sum, c) => 
+                    sum + parseValorMonetario(c.valorCredito || 0), 0
+                );
+                parametros.composicaoTributaria.creditos.cofins = criarValorComFonte(totalCreditoCOFINS, FonteDados.SPED, {
+                    registros: spedContribuicoes.creditos.cofins.length,
+                    fonte_sped: 'contribuicoes'
+                });
+                parametros.composicaoTributaria.fontesDados.cofins_credito = FonteDados.SPED;
+            }
+
+            // Processar ICMS do SPED Fiscal
+            if (spedFiscal?.debitos?.icms) {
+                const totalDebitoICMS = spedFiscal.debitos.icms.reduce((sum, d) => 
+                    sum + parseValorMonetario(d.valorTotalDebitos || 0), 0
+                );
+                parametros.composicaoTributaria.debitos.icms = criarValorComFonte(totalDebitoICMS, FonteDados.SPED, {
+                    registros: spedFiscal.debitos.icms.length,
+                    fonte_sped: 'fiscal'
+                });
+                parametros.composicaoTributaria.fontesDados.icms_debito = FonteDados.SPED;
+            }
+
+            if (spedFiscal?.creditos?.icms) {
+                const totalCreditoICMS = spedFiscal.creditos.icms.reduce((sum, c) => 
+                    sum + parseValorMonetario(c.valorCredito || 0), 0
+                );
+                parametros.composicaoTributaria.creditos.icms = criarValorComFonte(totalCreditoICMS, FonteDados.SPED, {
+                    registros: spedFiscal.creditos.icms.length,
+                    fonte_sped: 'fiscal'
+                });
+                parametros.composicaoTributaria.fontesDados.icms_credito = FonteDados.SPED;
+            }
+
+            // Processar IPI do SPED Fiscal
+            if (spedFiscal?.debitos?.ipi) {
+                const totalDebitoIPI = spedFiscal.debitos.ipi.reduce((sum, d) => 
+                    sum + parseValorMonetario(d.valorTotalDebitos || 0), 0
+                );
+                parametros.composicaoTributaria.debitos.ipi = criarValorComFonte(totalDebitoIPI, FonteDados.SPED, {
+                    registros: spedFiscal.debitos.ipi.length,
+                    fonte_sped: 'fiscal'
+                });
+                parametros.composicaoTributaria.fontesDados.ipi_debito = FonteDados.SPED;
+            }
+
+            // Calcular alíquotas efetivas com fonte
+            const faturamento = extrairValorNumerico(parametros.faturamentoMensal) || 1; // Evitar divisão por zero
+
+            Object.keys(parametros.composicaoTributaria.debitos).forEach(imposto => {
+                const debito = extrairValorNumerico(parametros.composicaoTributaria.debitos[imposto]);
+                if (debito > 0 && faturamento > 0) {
+                    const aliquotaEfetiva = (debito / faturamento) * 100;
+                    parametros.composicaoTributaria.aliquotasEfetivas[imposto] = criarValorComFonte(
+                        aliquotaEfetiva, 
+                        FonteDados.CALCULADO,
+                        { baseCalculo: faturamento, valorDebito: debito }
+                    );
+                }
+            });
+
+            // Estimar valores ausentes
+            estimarValoresAusentes(parametros, spedFiscal, spedContribuicoes);
+
+            return parametros;
+
+        } catch (erro) {
+            console.error('SPED-EXTRACTOR: Erro ao calcular parâmetros fiscais:', erro);
+            return parametros;
+        }
+    }
+
+    /**
+     * Estima valores ausentes com base em dados disponíveis
+     */
+    function estimarValoresAusentes(parametros, spedFiscal, spedContribuicoes) {
+        const composicao = parametros.composicaoTributaria;
+
+        // Se não tem COFINS mas tem PIS, estimar COFINS (proporção 7,6/1,65)
+        if (!composicao.debitos.cofins && composicao.debitos.pis) {
+            const valorPIS = extrairValorNumerico(composicao.debitos.pis);
+            const cofinsEstimado = valorPIS * (7.6 / 1.65);
+            composicao.debitos.cofins = criarValorComFonte(cofinsEstimado, FonteDados.ESTIMADO, {
+                baseadoEm: 'PIS',
+                proporcao: '7.6/1.65'
+            });
+            composicao.fontesDados.cofins_debito = FonteDados.ESTIMADO;
         }
 
-        if (dadosContribuicoes?.detalhesCOFINS) {
-            parametros.composicaoTributaria.debitos.cofins = dadosContribuicoes.detalhesCOFINS.reduce((acc, item) => 
-                acc + (item.valorContribuicao || 0), 0);
+        // Se não tem PIS mas tem COFINS, estimar PIS
+        if (!composicao.debitos.pis && composicao.debitos.cofins) {
+            const valorCOFINS = extrairValorNumerico(composicao.debitos.cofins);
+            const pisEstimado = valorCOFINS * (1.65 / 7.6);
+            composicao.debitos.pis = criarValorComFonte(pisEstimado, FonteDados.ESTIMADO, {
+                baseadoEm: 'COFINS',
+                proporcao: '1.65/7.6'
+            });
+            composicao.fontesDados.pis_debito = FonteDados.ESTIMADO;
         }
 
-        // ===== CRÉDITOS PIS/COFINS =====
-        if (dadosContribuicoes?.creditosPIS) {
-            parametros.composicaoTributaria.creditos.pis = dadosContribuicoes.creditosPIS.reduce((acc, item) => 
-                acc + (item.valorCredito || 0), 0);
+        // Estimar ICMS se ausente (baseado na média do setor)
+        if (!composicao.debitos.icms) {
+            const valorPISCOFINS = (extrairValorNumerico(composicao.debitos.pis) || 0) + 
+                                  (extrairValorNumerico(composicao.debitos.cofins) || 0);
+            if (valorPISCOFINS > 0) {
+                // Estimativa: ICMS geralmente é 3-4x o valor de PIS+COFINS
+                const icmsEstimado = valorPISCOFINS * 3.5;
+                composicao.debitos.icms = criarValorComFonte(icmsEstimado, FonteDados.ESTIMADO, {
+                    baseadoEm: 'PIS+COFINS',
+                    multiplicador: '3.5'
+                });
+                composicao.fontesDados.icms_debito = FonteDados.ESTIMADO;
+            }
         }
-
-        if (dadosContribuicoes?.creditosCOFINS) {
-            parametros.composicaoTributaria.creditos.cofins = dadosContribuicoes.creditosCOFINS.reduce((acc, item) => 
-                acc + (item.valorCredito || 0), 0);
-        }
-
-        // Verificar também os novos formatos de creditos
-        if (dadosContribuicoes?.creditos?.pis?.length > 0) {
-            parametros.composicaoTributaria.creditos.pis = dadosContribuicoes.creditos.pis.reduce((acc, item) => 
-                acc + (item.valorCredito || 0), 0);
-        }
-
-        if (dadosContribuicoes?.creditos?.cofins?.length > 0) {
-            parametros.composicaoTributaria.creditos.cofins = dadosContribuicoes.creditos.cofins.reduce((acc, item) => 
-                acc + (item.valorCredito || 0), 0);
-        }
-
-        // ===== ICMS =====
-        if (dadosFiscal?.totalizadores) {
-            parametros.composicaoTributaria.debitos.icms = dadosFiscal.totalizadores.valorICMS || 0;
-            parametros.composicaoTributaria.creditos.icms = dadosFiscal.apuracaoICMS?.valorTotalCreditos || 0;
-        }
-
-        // ===== IPI =====
-        if (dadosFiscal?.totalizadores) {
-            parametros.composicaoTributaria.debitos.ipi = dadosFiscal.totalizadores.valorIPI || 0;
-        }
-
-        // ===== ALÍQUOTAS EFETIVAS =====
-        if (faturamento > 0) {
-            parametros.aliquotasEfetivas.pisEfetivo = (parametros.composicaoTributaria.debitos.pis / faturamento) * 100;
-            parametros.aliquotasEfetivas.cofinsEfetivo = (parametros.composicaoTributaria.debitos.cofins / faturamento) * 100;
-            parametros.aliquotasEfetivas.icmsEfetivo = (parametros.composicaoTributaria.debitos.icms / faturamento) * 100;
-            parametros.aliquotasEfetivas.ipiEfetivo = (parametros.composicaoTributaria.debitos.ipi / faturamento) * 100;
-        }
-
-        // ===== PARÂMETROS ESPECÍFICOS =====
-        parametros.parametrosPIS = {
-            aliquota: dadosContribuicoes?.regime === 'cumulativo' ? 0.65 : 1.65,
-            baseCalculo: dadosContribuicoes?.receitas?.receitaTributavel ? 
-                (dadosContribuicoes.receitas.receitaTributavel / faturamento) * 100 : 100,
-            percentualAproveitamento: parametros.composicaoTributaria.debitos.pis > 0 ? 
-                Math.min((parametros.composicaoTributaria.creditos.pis / parametros.composicaoTributaria.debitos.pis) * 100, 100) : 100
-        };
-
-        parametros.parametrosCOFINS = {
-            aliquota: dadosContribuicoes?.regime === 'cumulativo' ? 3.0 : 7.6,
-            baseCalculo: parametros.parametrosPIS.baseCalculo,
-            percentualAproveitamento: parametros.composicaoTributaria.debitos.cofins > 0 ? 
-                Math.min((parametros.composicaoTributaria.creditos.cofins / parametros.composicaoTributaria.debitos.cofins) * 100, 100) : 100
-        };
-
-        parametros.parametrosICMS = {
-            aliquota: calcularAliquotaMediaICMS(dadosFiscal),
-            baseCalculo: dadosFiscal?.totalizadores?.baseCalculoICMS ? 
-                (dadosFiscal.totalizadores.baseCalculoICMS / faturamento) * 100 : 60,
-            percentualAproveitamento: 100
-        };
-
-        // Log dos resultados
-        console.log(`PIS: Débito R$ ${parametros.composicaoTributaria.debitos.pis.toLocaleString('pt-BR', {minimumFractionDigits: 2})}, Crédito R$ ${parametros.composicaoTributaria.creditos.pis.toLocaleString('pt-BR', {minimumFractionDigits: 2})}`);
-        console.log(`COFINS: Débito R$ ${parametros.composicaoTributaria.debitos.cofins.toLocaleString('pt-BR', {minimumFractionDigits: 2})}, Crédito R$ ${parametros.composicaoTributaria.creditos.cofins.toLocaleString('pt-BR', {minimumFractionDigits: 2})}`);
-        console.log(`ICMS: Débito R$ ${parametros.composicaoTributaria.debitos.icms.toLocaleString('pt-BR', {minimumFractionDigits: 2})}, Crédito R$ ${parametros.composicaoTributaria.creditos.icms.toLocaleString('pt-BR', {minimumFractionDigits: 2})}`);
-
-        return parametros;
     }
 
     function calcularAliquotaMediaICMS(dadosFiscal) {

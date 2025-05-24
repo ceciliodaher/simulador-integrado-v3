@@ -971,6 +971,7 @@ const SpedParser = (function() {
     // =============================
 
     // Registro 0000 - Abertura do arquivo e identificação da entidade
+    // Registro 0000 - Abertura do arquivo e identificação da entidade
     function parseRegistro0000(campos) {
         if (!validarEstruturaRegistro(campos, 15)) {
             console.warn('Registro 0000 com estrutura insuficiente:', campos.length, 'campos encontrados');
@@ -978,6 +979,18 @@ const SpedParser = (function() {
         }
 
         try {
+            // CORREÇÃO: Campos corretos conforme layout SPED
+            const nome = validarCampo(campos, 6); // Nome empresarial está no campo 6
+            const cnpj = validarCampo(campos, 7); // CNPJ está no campo 7
+
+            if (!nome || nome.trim() === '') {
+                console.warn('Nome da empresa não encontrado no registro 0000 (campo 6)');
+            }
+
+            if (!cnpj || cnpj.trim() === '') {
+                console.warn('CNPJ da empresa não encontrado no registro 0000 (campo 7)');
+            }
+
             return {
                 tipo: 'empresa',
                 categoria: 'identificacao',
@@ -985,18 +998,19 @@ const SpedParser = (function() {
                 finalidade: validarCampo(campos, 4),
                 dataInicial: validarCampo(campos, 5),
                 dataFinal: validarCampo(campos, 6),
-                nomeEmpresarial: validarCampo(campos, 7), // ✅ Corrigido: campo 7
-                cnpj: validarCampo(campos, 8), // ✅ Corrigido: campo 8
-                uf: validarCampo(campos, 9), // ✅ Corrigido: campo 9
-                ie: validarCampo(campos, 10), // ✅ Corrigido: campo 10
-                codMunicipio: validarCampo(campos, 11), // ✅ Corrigido: campo 11
-                im: validarCampo(campos, 12),
-                suframa: validarCampo(campos, 13),
-                perfil: validarCampo(campos, 14),
-                atividade: validarCampo(campos, 15)
+                nomeEmpresarial: nome,
+                cnpj: cnpj,
+                nome: nome, // Nome correto
+                uf: validarCampo(campos, 8), // UF está no campo 8
+                ie: validarCampo(campos, 9), // IE está no campo 9
+                codMunicipio: validarCampo(campos, 10), // Código do município está no campo 10
+                im: validarCampo(campos, 11),
+                suframa: validarCampo(campos, 12),
+                perfil: validarCampo(campos, 13),
+                atividade: validarCampo(campos, 14)
             };
         } catch (erro) {
-            console.warn('Erro ao processar registro 0000:', erro.message);
+            console.warn('Erro ao processar registro 0000:', erro.message, 'Conteúdo do campo:', JSON.stringify(campos));
             return null;
         }
     }
