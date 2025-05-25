@@ -381,23 +381,56 @@ const ImportacaoController = (function() {
         switch(tipo) {
             case 'fiscal':
                 if (dados.debitos?.icms?.length > 0) {
-                    const valorICMS = dados.debitos.icms.reduce((sum, d) => sum + (d.valorTotalDebitos || 0), 0);
-                    adicionarLog(`ICMS: ${dados.debitos.icms.length} registros, valor total R$ ${valorICMS.toFixed(2)}`, 'info');
+                    // Obter valor diretamente do registro E110
+                    const registroE110 = dados.debitos.icms.find(d => d.origem === 'registro_e110' || d.valorTotalDebitos !== undefined);
+                    if (registroE110) {
+                        const valorICMS = registroE110.valorTotalDebitos || 0;
+                        adicionarLog(`ICMS: Valor total débitos R$ ${valorICMS.toFixed(2)}`, 'info');
+
+                        const valorCreditos = registroE110.valorTotalCreditos || 0;
+                        adicionarLog(`ICMS: Valor total créditos R$ ${valorCreditos.toFixed(2)}`, 'info');
+                    }
+                }
+
+                if (dados.debitos?.ipi?.length > 0) {
+                    // Obter valor diretamente do registro E200
+                    const registroE200 = dados.debitos.ipi.find(d => d.origem === 'registro_e200' || d.valorTotalDebitos !== undefined);
+                    if (registroE200) {
+                        const valorIPI = registroE200.valorTotalDebitos || 0;
+                        adicionarLog(`IPI: Valor total débitos R$ ${valorIPI.toFixed(2)}`, 'info');
+
+                        const valorCreditos = registroE200.valorTotalCreditos || 0;
+                        adicionarLog(`IPI: Valor total créditos R$ ${valorCreditos.toFixed(2)}`, 'info');
+                    }
                 }
                 break;
 
             case 'contribuicoes':
-                ['pis', 'cofins'].forEach(imposto => {
-                    if (dados.debitos?.[imposto]?.length > 0) {
-                        const valor = dados.debitos[imposto].reduce((sum, d) => sum + (d.valorTotalContribuicao || 0), 0);
-                        adicionarLog(`${imposto.toUpperCase()}: ${dados.debitos[imposto].length} registros, valor R$ ${valor.toFixed(2)}`, 'info');
+                // PIS
+                if (dados.debitos?.pis?.length > 0) {
+                    // Obter valor diretamente do registro M200
+                    const registroM200 = dados.debitos.pis.find(d => d.origem === 'registro_m200' || d.valorTotalDebitos !== undefined);
+                    if (registroM200) {
+                        const valorPIS = registroM200.valorTotalDebitos || 0;
+                        adicionarLog(`PIS: Valor total débitos R$ ${valorPIS.toFixed(2)}`, 'info');
+
+                        const valorCreditos = registroM200.valorCredito || 0;
+                        adicionarLog(`PIS: Valor total créditos R$ ${valorCreditos.toFixed(2)}`, 'info');
                     }
-                    
-                    if (dados.creditos?.[imposto]?.length > 0) {
-                        const valor = dados.creditos[imposto].reduce((sum, c) => sum + (c.valorCredito || 0), 0);
-                        adicionarLog(`Créditos ${imposto.toUpperCase()}: ${dados.creditos[imposto].length} registros, valor R$ ${valor.toFixed(2)}`, 'info');
+                }
+
+                // COFINS
+                if (dados.debitos?.cofins?.length > 0) {
+                    // Obter valor diretamente do registro M600
+                    const registroM600 = dados.debitos.cofins.find(d => d.origem === 'registro_m600' || d.valorTotalDebitos !== undefined);
+                    if (registroM600) {
+                        const valorCOFINS = registroM600.valorTotalDebitos || 0;
+                        adicionarLog(`COFINS: Valor total débitos R$ ${valorCOFINS.toFixed(2)}`, 'info');
+
+                        const valorCreditos = registroM600.valorCredito || 0;
+                        adicionarLog(`COFINS: Valor total créditos R$ ${valorCreditos.toFixed(2)}`, 'info');
                     }
-                });
+                }
                 break;
 
             case 'ecf':

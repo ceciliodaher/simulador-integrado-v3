@@ -1820,14 +1820,15 @@ const SpedParser = (function() {
             return {
                 tipo: 'debito',
                 categoria: 'pis',
+                valorTotalDebitos: parseValorMonetario(validarCampo(campos, 4, '0')), // VL_TOT_DEB_APU_PER (campo 4)
+                valorCredito: parseValorMonetario(validarCampo(campos, 6, '0')), // VL_TOT_CRED_DESC_PER (campo 6)
                 valorContribuicaoApurada: parseValorMonetario(validarCampo(campos, 5, '0')), // VL_TOT_CONT_NC_PER
-                valorCredito: parseValorMonetario(validarCampo(campos, 6, '0')), // VL_TOT_CRED_DESC_PER
                 valorContribuicaoDevida: parseValorMonetario(validarCampo(campos, 8, '0')), // VL_TOT_CONT_NC_DEV
                 valorTotalRetencoes: parseValorMonetario(validarCampo(campos, 9, '0')), // VL_RET_NC_PER
-                valorTotalContribuicao: parseValorMonetario(validarCampo(campos, 2, '0')), // VL_TOT_CONT_NC_PER_ANT (Campo 2: VL_PER_APUR_ANT) - Assuming this is for prior period's total. Or map to VL_TOT_DEB_APUR_PER (campo 4) if current period total debit is intended. Let's use campo 2 for now.
                 valorTotalDeducoes: parseValorMonetario(validarCampo(campos, 10, '0')), // VL_OUT_DED_NC_PER
                 valorContribuicaoAPagar: parseValorMonetario(validarCampo(campos, 11, '0')), // VL_CONT_NC_PAG
-                saldoCredorPeriodo: parseValorMonetario(validarCampo(campos, 12, '0'))
+                saldoCredorPeriodo: parseValorMonetario(validarCampo(campos, 12, '0')),
+                origem: 'registro_m200'
             };
         } catch (erro) {
             console.warn('Erro ao processar registro M200:', erro.message);
@@ -1972,14 +1973,15 @@ const SpedParser = (function() {
             return {
                 tipo: 'debito',
                 categoria: 'cofins',
+                valorTotalDebitos: parseValorMonetario(validarCampo(campos, 4, '0')), // VL_TOT_DEB_APU_PER (campo 4)
+                valorCredito: parseValorMonetario(validarCampo(campos, 6, '0')), // VL_TOT_CRED_DESC_PER (campo 6)
                 valorContribuicaoApurada: parseValorMonetario(validarCampo(campos, 5, '0')), // VL_TOT_CONT_NC_PER
-                valorCredito: parseValorMonetario(validarCampo(campos, 6, '0')), // VL_TOT_CRED_DESC_PER
                 valorContribuicaoDevida: parseValorMonetario(validarCampo(campos, 8, '0')), // VL_TOT_CONT_NC_DEV
                 valorTotalRetencoes: parseValorMonetario(validarCampo(campos, 9, '0')), // VL_RET_NC_PER
-                valorTotalContribuicao: parseValorMonetario(validarCampo(campos, 2, '0')), // VL_PER_APUR_ANT (Campo 2: VL_PER_APUR_ANT) - Assuming this is for prior period's total. Or map to VL_TOT_DEB_APUR_PER (campo 4) if current period total debit is intended. Let's use campo 2 for now.
                 valorTotalDeducoes: parseValorMonetario(validarCampo(campos, 10, '0')), // VL_OUT_DED_NC_PER
                 valorContribuicaoAPagar: parseValorMonetario(validarCampo(campos, 11, '0')), // VL_CONT_NC_PAG
-                saldoCredorPeriodo: parseValorMonetario(validarCampo(campos, 12, '0'))
+                saldoCredorPeriodo: parseValorMonetario(validarCampo(campos, 12, '0')),
+                origem: 'registro_m600'
             };
         } catch (erro) {
             console.warn('Erro ao processar registro M600:', erro.message);
