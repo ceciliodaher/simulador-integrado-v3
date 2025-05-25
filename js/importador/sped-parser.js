@@ -131,6 +131,7 @@ const SpedParser = (function() {
             'M200': parseRegistroM200,  // Consolidação contribuição PIS
             'M205': parseRegistroM205,  // Ajustes consolidação PIS
             'M210': parseRegistroM210,  // Detalhamento consolidação PIS
+            'M215': parseRegistroM215, // NOVO - Detalhamento ajustes BC PIS
             'M220': parseRegistroM220,  // Demonstrativo de saldo credor PIS
             'M225': parseRegistroM225,  // Detalhamento demonstrativo PIS
             'M400': parseRegistroM400,  // Receita não tributada PIS
@@ -148,6 +149,7 @@ const SpedParser = (function() {
             'M625': parseRegistroM625,  // Detalhamento demonstrativo COFINS
             'M800': parseRegistroM800,  // Receita não tributada COFINS
             'M810': parseRegistroM810,  // Detalhamento receita não tributada COFINS
+            'M615': parseRegistroM615, // NOVO - Detalhamento ajustes BC COFINS
             
             // BLOCO P - Apuração da contribuição previdenciária
             'P100': parseRegistroP100,  // Contribuição previdenciária
@@ -482,16 +484,67 @@ const SpedParser = (function() {
 
         return resultado;
     }
+    
+    /**
+     * Extrai um registro específico de um conjunto de linhas
+     * @param {Array} linhas - Linhas do arquivo SPED
+     * @param {string} codigoRegistro - Código do registro a ser extraído (ex: 'E110', 'M200')
+     * @returns {Array} - Array com as linhas do registro específico
+     */
+    function extrairRegistroEspecifico(linhas, codigoRegistro) {
+        if (!linhas || !Array.isArray(linhas) || linhas.length === 0) {
+            console.warn(`SPED-PARSER: Nenhuma linha disponível para extrair registro ${codigoRegistro}`);
+            return [];
+        }
+
+        const registrosEncontrados = [];
+        for (const linha of linhas) {
+            if (!linha.trim()) continue;
+            try {
+                const campos = linha.split('|');
+                if (campos.length < 2) continue;
+                const registro = campos[1];
+                if (registro === codigoRegistro) {
+                    registrosEncontrados.push(campos);
+                    console.log(`SPED-PARSER: Registro ${codigoRegistro} encontrado`);
+                }
+            } catch (erro) {
+                console.warn(`SPED-PARSER: Erro ao processar linha para extração de ${codigoRegistro}:`, erro.message);
+            }
+        }
+        console.log(`SPED-PARSER: Total de registros ${codigoRegistro} encontrados: ${registrosEncontrados.length}`);
+        return registrosEncontrados;
+    }
+
 
     // =============================
     // FUNÇÕES UTILITÁRIAS
     // =============================
 
     /**
-     * Valida se o registro tem o número mínimo de campos
+     * Valida se o registro tem o número mínimo de campos e estrutura esperada
+     * @param {Array} campos - Array de campos do registro
+     * @param {number} minCampos - Número mínimo de campos esperados
+     * @returns {boolean} - Verdadeiro se o registro tem a estrutura válida
      */
     function validarEstruturaRegistro(campos, minCampos) {
-        return Array.isArray(campos) && campos.length >= minCampos;
+        if (!Array.isArray(campos)) {
+            console.warn('SPED-PARSER: Campos não é um array');
+            return false;
+        }
+
+        if (campos.length < minCampos) {
+            console.warn(`SPED-PARSER: Registro com número insuficiente de campos: ${campos.length} (esperado >= ${minCampos})`);
+            return false;
+        }
+
+        // Verificar se o primeiro campo é um pipe (estrutura de SPED)
+        if (campos[0] !== '') {
+            console.warn('SPED-PARSER: Estrutura de registro inválida - primeiro campo deve ser vazio');
+            return false;
+        }
+
+        return true;
     }
 
     /**
@@ -557,8 +610,8 @@ const SpedParser = (function() {
                 // Bloco I
                 'I100', 'I199',
                 // Bloco M
-                'M100', 'M105', 'M110', 'M115', 'M200', 'M205', 'M210', 'M220', 'M225', 'M400', 'M410',
-                'M500', 'M505', 'M510', 'M515', 'M600', 'M605', 'M610', 'M620', 'M625', 'M800', 'M810',
+                'M100', 'M105', 'M110', 'M115', 'M200', 'M205', 'M210', 'M215', 'M220', 'M225', 'M400', 'M410',
+                'M500', 'M505', 'M510', 'M515', 'M600', 'M605', 'M610', 'M615', 'M620', 'M625', 'M800', 'M810',
                 // Bloco P
                 'P100', 'P110', 'P199', 'P200', 'P210',
                 // Blocos de totalização
@@ -754,6 +807,122 @@ const SpedParser = (function() {
         // Não foi possível determinar pelo nome
         return 'indefinido';
     }
+    
+    function validarConsistenciaAjustesBc(dadosM210, dadosM215) {
+        if (!dadosM210 || !dadosM215 || dadosM215.length === 0) return true;
+
+        // Somar ajustes de acréscimo dos registros M215
+        const totalAcrescimo = dadosM215
+            .filter(item => item.indAjusteBc === '0')
+            .reduce((total, item) => total + item.valorAjusteBc, 0);
+
+        // Somar ajustes de redução dos registros M215
+        const totalReducao = dadosM215
+            .filter(item => item.indAjusteBc === '1')
+            .reduce((total, item) => total + item.valorAjusteBc, 0);
+
+        // Validar consistência
+        const consisteAcrescimo = Math.abs(totalAcrescimo - dadosM210.valorAjustesAcrescimoBc) < 0.01;
+        const consisteReducao = Math.abs(totalReducao - dadosM210.valorAjustesReducaoBc) < 0.01;
+
+        if (!consisteAcrescimo || !consisteReducao) {
+            console.warn('Inconsistência detectada entre M210 e M215:', {
+                m210Acrescimo: dadosM210.valorAjustesAcrescimoBc,
+                m215Acrescimo: totalAcrescimo,
+                m210Reducao: dadosM210.valorAjustesReducaoBc,
+                m215Reducao: totalReducao
+            });
+            return false;
+        }
+
+        return true;
+    }
+    
+    /**
+     * Valida a consistência entre ajustes BC no M210 e detalhamentos M215
+     * @param {Object} dadosM210 - Dados do registro M210
+     * @param {Array} dadosM215 - Array de registros M215 relacionados
+     * @returns {boolean} - Verdadeiro se consistente
+     */
+    function validarConsistenciaAjustesBC(dadosM210, dadosM215) {
+        if (!dadosM210 || !dadosM215 || dadosM215.length === 0) return true;
+
+        // Somar ajustes de acréscimo dos registros M215
+        const totalAcrescimo = dadosM215
+            .filter(item => item.indAjusteBc === '0')
+            .reduce((total, item) => total + item.valorAjusteBc, 0);
+
+        // Somar ajustes de redução dos registros M215
+        const totalReducao = dadosM215
+            .filter(item => item.indAjusteBc === '1')
+            .reduce((total, item) => total + item.valorAjusteBc, 0);
+
+        // Validar consistência
+        const consisteAcrescimo = Math.abs(totalAcrescimo - dadosM210.valorAjustesAcrescimoBc) < 0.01;
+        const consisteReducao = Math.abs(totalReducao - dadosM210.valorAjustesReducaoBc) < 0.01;
+
+        if (!consisteAcrescimo || !consisteReducao) {
+            console.warn('Inconsistência detectada entre M210 e M215:', {
+                m210Acrescimo: dadosM210.valorAjustesAcrescimoBc,
+                m215Acrescimo: totalAcrescimo,
+                m210Reducao: dadosM210.valorAjustesReducaoBc,
+                m215Reducao: totalReducao
+            });
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Verifica consistência da base de cálculo ajustada
+     * @param {Object} dados - Registro M210 ou M610
+     * @returns {boolean} - Verdadeiro se cálculo consistente
+     */
+    function verificarConsistenciaBaseCalculada(dados) {
+        if (!dados) return true;
+
+        // Fórmula: BC Ajustada = BC Original + Acréscimos - Reduções
+        const baseCalculada = dados.valorBaseCalculoAntes + dados.valorAjustesAcrescimoBc - dados.valorAjustesReducaoBc;
+        const baseInformada = dados.valorBaseCalculoAjustada;
+
+        // Tolerância de 0.01 para diferenças de arredondamento
+        const consistente = Math.abs(baseCalculada - baseInformada) < 0.01;
+
+        if (!consistente) {
+            console.warn('Inconsistência na base de cálculo ajustada:', {
+                baseOriginal: dados.valorBaseCalculoAntes,
+                acrescimos: dados.valorAjustesAcrescimoBc,
+                reducoes: dados.valorAjustesReducaoBc,
+                baseCalculada: baseCalculada,
+                baseInformada: baseInformada,
+                diferenca: Math.abs(baseCalculada - baseInformada)
+            });
+            return false;
+        }
+
+        return true;
+    }
+
+    function calcularBaseCalculoAjustada(baseOriginal, acrescimo, reducao) {
+        return baseOriginal + acrescimo - reducao;
+    }
+
+    function calcularContribuicaoComAjustes(dados) {
+        if (!dados.valorBaseCalculoAjustada || !dados.aliqPis) return 0;
+
+        // Para contribuições por percentual
+        if (dados.aliqPis > 0) {
+            return dados.valorBaseCalculoAjustada * (dados.aliqPis / 100);
+        }
+
+        // Para contribuições por quantidade
+        if (dados.quantBcPis > 0 && dados.aliqPisQuant > 0) {
+            return dados.quantBcPis * dados.aliqPisQuant;
+        }
+
+        return 0;
+    }
 
     /**
      * Integra dados do registro no resultado final
@@ -859,6 +1028,37 @@ const SpedParser = (function() {
                 break;
         }
     }
+    
+    function integrarDadosContribuicoes(resultado, dadosRegistro, registro) {
+        if (!dadosRegistro || !dadosRegistro.tipo) return;
+
+        switch (dadosRegistro.tipo) {
+            case 'detalhamento_contribuicao':
+                if (!resultado.detalhamentoContribuicoes) {
+                    resultado.detalhamentoContribuicoes = {};
+                }
+                if (!resultado.detalhamentoContribuicoes[dadosRegistro.categoria]) {
+                    resultado.detalhamentoContribuicoes[dadosRegistro.categoria] = [];
+                }
+                resultado.detalhamentoContribuicoes[dadosRegistro.categoria].push(dadosRegistro);
+                break;
+
+            case 'ajuste_base_calculo':
+                if (!resultado.ajustesBaseCalculo) {
+                    resultado.ajustesBaseCalculo = {};
+                }
+                if (!resultado.ajustesBaseCalculo[dadosRegistro.categoria]) {
+                    resultado.ajustesBaseCalculo[dadosRegistro.categoria] = [];
+                }
+                resultado.ajustesBaseCalculo[dadosRegistro.categoria].push(dadosRegistro);
+                break;
+
+            default:
+                // Manter integração existente para outros tipos
+                integrarDados(resultado, dadosRegistro, registro);
+                break;
+        }
+    }
 
     /**
      * Processa relações entre dados após a extração
@@ -918,53 +1118,222 @@ const SpedParser = (function() {
             });
         }
     }
-
+   
     /**
-     * Calcula totais por categoria de impostos
+     * Calcula totais por categoria de impostos com maior precisão
      */
     function calcularTotaisPorCategoria(resultado) {
-        // Calcular totais de créditos
+        console.log('SPED-PARSER: Calculando totais por categoria de impostos');
+        // Inicializar objetos para acumular valores
+        const totaisPorImposto = {
+            pis: { 
+                creditos: 0, 
+                debitos: 0, 
+                ajustesCredito: 0, 
+                ajustesDebito: 0, 
+                ajustesAcrescimoBc: 0, // Novo campo para ajustes de acréscimo na BC
+                ajustesReducaoBc: 0,   // Novo campo para ajustes de redução na BC
+                baseCalculoOriginal: 0, // Base de cálculo antes dos ajustes
+                baseCalculoAjustada: 0, // Base de cálculo após ajustes
+                saldoAnterior: 0, 
+                total: 0 
+            },
+            cofins: { 
+                creditos: 0, 
+                debitos: 0, 
+                ajustesCredito: 0, 
+                ajustesDebito: 0, 
+                ajustesAcrescimoBc: 0, // Novo campo para ajustes de acréscimo na BC
+                ajustesReducaoBc: 0,   // Novo campo para ajustes de redução na BC
+                baseCalculoOriginal: 0, // Base de cálculo antes dos ajustes
+                baseCalculoAjustada: 0, // Base de cálculo após ajustes
+                saldoAnterior: 0, 
+                total: 0 
+            },
+            icms: { creditos: 0, debitos: 0, ajustesCredito: 0, ajustesDebito: 0, saldoAnterior: 0, total: 0 },
+            ipi: { creditos: 0, debitos: 0, ajustesCredito: 0, ajustesDebito: 0, saldoAnterior: 0, total: 0 }
+        };
+
+        // Processar créditos
         Object.keys(resultado.creditos).forEach(categoria => {
+            // Código existente para processar créditos...
             const creditos = resultado.creditos[categoria];
-            let total = 0;
-            
+            let totalCreditos = 0;
             creditos.forEach(credito => {
-                if (credito.valorCredito) {
-                    total += credito.valorCredito;
+                const valorCredito = credito.valorCredito ||
+                    credito.valorCreditoDisp ||
+                    credito.valorTotalCreditos || 0;
+                if (valorCredito > 0) {
+                    totalCreditos += valorCredito;
+                    console.log(`SPED-PARSER: Crédito ${categoria} encontrado: ${valorCredito.toFixed(2)}`);
                 }
             });
-            
-            if (total > 0) {
-                if (!resultado.calculoImposto[categoria]) {
-                    resultado.calculoImposto[categoria] = {};
-                }
-                resultado.calculoImposto[categoria].totalCreditos = total;
-            }
+            // Resto do código para totalização de créditos...
         });
 
-        // Calcular totais de débitos
+        // Processar débitos e ajustes de base de cálculo
         Object.keys(resultado.debitos).forEach(categoria => {
             const debitos = resultado.debitos[categoria];
-            let total = 0;
-            
+            let totalDebitos = 0;
+            let saldoAnterior = 0;
+            let baseCalculoOriginal = 0;
+            let ajustesAcrescimoBc = 0;
+            let ajustesReducaoBc = 0;
+            let baseCalculoAjustada = 0;
+
             debitos.forEach(debito => {
-                if (debito.valorTotalDebitos) {
-                    total += debito.valorTotalDebitos;
-                } else if (debito.valorTotalContribuicao) {
-                    total += debito.valorTotalContribuicao;
-                } else if (debito.valorContribuicaoAPagar) {
-                    total += debito.valorContribuicaoAPagar;
+                // Verificar todos os possíveis campos que contêm valor de débito
+                const valorDebito = debito.valorTotalDebitos ||
+                    debito.valorTotalContribuicao ||
+                    debito.valorContribuicaoAPagar || 0;
+
+                // Capturar saldo anterior
+                if (debito.valorSaldoCredorAnterior > 0) {
+                    saldoAnterior = debito.valorSaldoCredorAnterior;
+                }
+
+                // Capturar base de cálculo e ajustes (novos campos)
+                if (debito.valorBaseCalculo > 0 || debito.valorBaseCalculoAntes > 0) {
+                    baseCalculoOriginal += debito.valorBaseCalculo || debito.valorBaseCalculoAntes || 0;
+                }
+
+                // Novos campos de ajuste da base de cálculo
+                if (debito.valorAjustesAcrescimoBc > 0) {
+                    ajustesAcrescimoBc += debito.valorAjustesAcrescimoBc;
+                }
+
+                if (debito.valorAjustesReducaoBc > 0) {
+                    ajustesReducaoBc += debito.valorAjustesReducaoBc;
+                }
+
+                // Base de cálculo ajustada
+                if (debito.valorBaseCalculoAjustada > 0) {
+                    baseCalculoAjustada += debito.valorBaseCalculoAjustada;
+                } else if (baseCalculoOriginal > 0) {
+                    // Calcular a base ajustada se não estiver explicitamente disponível
+                    baseCalculoAjustada = baseCalculoOriginal + ajustesAcrescimoBc - ajustesReducaoBc;
+                }
+
+                if (valorDebito > 0) {
+                    totalDebitos += valorDebito;
+                    console.log(`SPED-PARSER: Débito ${categoria} encontrado: ${valorDebito.toFixed(2)}`);
                 }
             });
-            
-            if (total > 0) {
+
+            // Atualizar totais e armazenar no resultado
+            if (totaisPorImposto[categoria]) {
+                totaisPorImposto[categoria].debitos = totalDebitos;
+                totaisPorImposto[categoria].saldoAnterior = saldoAnterior;
+                totaisPorImposto[categoria].baseCalculoOriginal = baseCalculoOriginal;
+                totaisPorImposto[categoria].ajustesAcrescimoBc = ajustesAcrescimoBc;
+                totaisPorImposto[categoria].ajustesReducaoBc = ajustesReducaoBc;
+                totaisPorImposto[categoria].baseCalculoAjustada = baseCalculoAjustada;
+
+                // Logs detalhados...
+            }
+
+            // Armazenar no resultado.calculoImposto
+            if (!resultado.calculoImposto[categoria]) {
+                resultado.calculoImposto[categoria] = {};
+            }
+
+            resultado.calculoImposto[categoria].totalDebitos = totalDebitos;
+            resultado.calculoImposto[categoria].baseCalculoOriginal = baseCalculoOriginal;
+            resultado.calculoImposto[categoria].ajustesAcrescimoBc = ajustesAcrescimoBc;
+            resultado.calculoImposto[categoria].ajustesReducaoBc = ajustesReducaoBc;
+            resultado.calculoImposto[categoria].baseCalculoAjustada = baseCalculoAjustada;
+        });
+
+        // Processar ajustes de contribuição (M220/M620)
+        // Código existente para processar ajustes...
+
+        // Processar ajustes de base de cálculo (M215/M615) - NOVO
+        if (resultado.ajustesBaseCalculo) {
+            Object.keys(resultado.ajustesBaseCalculo).forEach(categoria => {
+                const ajustesBC = resultado.ajustesBaseCalculo[categoria];
+
+                // Inicializar contadores se não existirem
                 if (!resultado.calculoImposto[categoria]) {
                     resultado.calculoImposto[categoria] = {};
                 }
-                resultado.calculoImposto[categoria].totalDebitos = total;
+
+                if (!resultado.calculoImposto[categoria].detalhamentoAjustesBC) {
+                    resultado.calculoImposto[categoria].detalhamentoAjustesBC = [];
+                }
+
+                let totalAcrescimos = 0;
+                let totalReducoes = 0;
+
+                ajustesBC.forEach(ajuste => {
+                    // Verificar tipo de ajuste (acréscimo ou redução)
+                    if (ajuste.indAjusteBc === '0' || ajuste.tipoAjuste === 'acrescimo') {
+                        totalAcrescimos += ajuste.valorAjusteBc || 0;
+                        console.log(`SPED-PARSER: Ajuste acréscimo BC ${categoria}: ${ajuste.valorAjusteBc?.toFixed(2) || 0}`);
+                    } else if (ajuste.indAjusteBc === '1' || ajuste.tipoAjuste === 'reducao') {
+                        totalReducoes += ajuste.valorAjusteBc || 0;
+                        console.log(`SPED-PARSER: Ajuste redução BC ${categoria}: ${ajuste.valorAjusteBc?.toFixed(2) || 0}`);
+                    }
+
+                    // Armazenar detalhamento do ajuste
+                    resultado.calculoImposto[categoria].detalhamentoAjustesBC.push({
+                        tipo: ajuste.tipoAjuste || (ajuste.indAjusteBc === '0' ? 'acrescimo' : 'reducao'),
+                        codigo: ajuste.codAjusteBc,
+                        descricao: ajuste.descrAjusteBc,
+                        valor: ajuste.valorAjusteBc || 0,
+                        dataRef: ajuste.dataRef,
+                        documento: ajuste.numDoc,
+                        cnpj: ajuste.cnpj,
+                        infoCompl: ajuste.infoCompl
+                    });
+                });
+
+                // Atualizar totais dos ajustes
+                totaisPorImposto[categoria].ajustesAcrescimoBc += totalAcrescimos;
+                totaisPorImposto[categoria].ajustesReducaoBc += totalReducoes;
+
+                // Atualizar valores no resultado
+                resultado.calculoImposto[categoria].totalAjustesAcrescimoBC = totalAcrescimos;
+                resultado.calculoImposto[categoria].totalAjustesReducaoBC = totalReducoes;
+            });
+        }
+
+        // Calcular valores líquidos finais e atualizar o resultado
+        Object.keys(totaisPorImposto).forEach(imposto => {
+            const valores = totaisPorImposto[imposto];
+
+            // Atualizar base de cálculo ajustada se necessário
+            if (valores.baseCalculoOriginal > 0 && valores.baseCalculoAjustada === 0) {
+                valores.baseCalculoAjustada = valores.baseCalculoOriginal + valores.ajustesAcrescimoBc - valores.ajustesReducaoBc;
             }
+
+            // Cálculo com ajustes
+            const creditosComAjustes = valores.creditos + valores.ajustesCredito;
+            const debitosComAjustes = valores.debitos + valores.ajustesDebito;
+
+            // Valor total considerando saldo anterior
+            valores.total = Math.max(0, debitosComAjustes - creditosComAjustes - valores.saldoAnterior);
+
+            // Atualizar calculoImposto com valores finais
+            if (!resultado.calculoImposto[imposto]) {
+                resultado.calculoImposto[imposto] = {};
+            }
+
+            resultado.calculoImposto[imposto].valorTotal = valores.total;
+            resultado.calculoImposto[imposto].creditosComAjustes = creditosComAjustes;
+            resultado.calculoImposto[imposto].debitosComAjustes = debitosComAjustes;
+
+            if (valores.baseCalculoAjustada > 0) {
+                resultado.calculoImposto[imposto].baseCalculoAjustada = valores.baseCalculoAjustada;
+            }
+
+            // Logs finais
+            console.log(`SPED-PARSER: Valor líquido ${imposto}: ${valores.total.toFixed(2)}`);
         });
+
+        console.log('SPED-PARSER: Cálculo de totais concluído');
+        return resultado.calculoImposto;
     }
+
 
     // =============================
     // FUNÇÕES DE PARSING ESPECÍFICAS - SPED FISCAL
@@ -1183,14 +1552,29 @@ const SpedParser = (function() {
     }
 
    function parseRegistroE110(campos) {
-        if (!validarEstruturaRegistro(campos, 7)) return null;
+        if (!validarEstruturaRegistro(campos, 15)) {
+            console.warn('Registro E110 com estrutura insuficiente:', campos.length, 'campos encontrados (esperado 15+)');
+            return null;
+        }
 
         try {
             return {
                 tipo: 'debito',
                 categoria: 'icms',
-                valorTotalDebitos: parseValorMonetario(validarCampo(campos, 2, '0')),  // Campo 2: VL_TOT_DEBITOS
-                valorTotalCreditos: parseValorMonetario(validarCampo(campos, 6, '0')), // Campo 6: VL_TOT_CREDITOS
+                valorTotalDebitos: parseValorMonetario(validarCampo(campos, 2, '0')),      // Campo 02: VL_TOT_DEBITOS
+                valorAjustesDebitos: parseValorMonetario(validarCampo(campos, 3, '0')),    // Campo 03: VL_AJ_DEBITOS
+                valorTotalAjDebitos: parseValorMonetario(validarCampo(campos, 4, '0')),    // Campo 04: VL_TOT_AJ_DEBITOS
+                valorEstornosCredito: parseValorMonetario(validarCampo(campos, 5, '0')),   // Campo 05: VL_ESTORNOS_CRED
+                valorTotalCreditos: parseValorMonetario(validarCampo(campos, 6, '0')),     // Campo 06: VL_TOT_CREDITOS
+                valorAjustesCreditos: parseValorMonetario(validarCampo(campos, 7, '0')),   // Campo 07: VL_AJ_CREDITOS
+                valorTotalAjCreditos: parseValorMonetario(validarCampo(campos, 8, '0')),   // Campo 08: VL_TOT_AJ_CREDITOS
+                valorEstornosDebito: parseValorMonetario(validarCampo(campos, 9, '0')),    // Campo 09: VL_ESTORNOS_DEB
+                valorSaldoCredorAnterior: parseValorMonetario(validarCampo(campos, 10, '0')), // Campo 10: VL_SLD_CREDOR_ANT
+                valorSaldoApurado: parseValorMonetario(validarCampo(campos, 11, '0')),     // Campo 11: VL_SLD_APURADO
+                valorTotalDeducoes: parseValorMonetario(validarCampo(campos, 12, '0')),    // Campo 12: VL_TOT_DED
+                valorIcmsRecolher: parseValorMonetario(validarCampo(campos, 13, '0')),     // Campo 13: VL_ICMS_RECOLHER
+                valorSaldoCredorTransportar: parseValorMonetario(validarCampo(campos, 14, '0')), // Campo 14: VL_SLD_CREDOR_TRANSPORTAR
+                valorDebitosEspeciais: parseValorMonetario(validarCampo(campos, 15, '0')), // Campo 15: DEB_ESP
                 registro: 'E110'
             };
         } catch (erro) {
@@ -1223,14 +1607,25 @@ const SpedParser = (function() {
     }
 
     function parseRegistroE200(campos) {
-        if (!validarEstruturaRegistro(campos, 4)) return null;
+        if (!validarEstruturaRegistro(campos, 15)) {
+            console.warn('Registro E200 com estrutura insuficiente:', campos.length, 'campos encontrados (esperado 15+)');
+            return null;
+        }
 
         try {
             return {
                 tipo: 'debito',
                 categoria: 'ipi',
-                valorTotalDebitos: parseValorMonetario(validarCampo(campos, 2, '0')),  // Campo 2: VL_TOT_DEBITOS
-                valorTotalCreditos: parseValorMonetario(validarCampo(campos, 3, '0')),  // Campo 3: VL_TOT_CREDITOS
+                codigoApuracao: validarCampo(campos, 1, ''),                         // Identificador da apuração
+                periodoApuracao: validarCampo(campos, 2, ''),                        // Período de apuração
+                valorTotalDebitos: parseValorMonetario(validarCampo(campos, 3, '0')),  // Campo 02: VL_TOT_DEBITOS
+                valorTotalCreditos: parseValorMonetario(validarCampo(campos, 4, '0')),  // Campo 03: VL_TOT_CREDITOS
+                valorSaldoApurado: parseValorMonetario(validarCampo(campos, 5, '0')),   // Campo 04: VL_SLD_APURADO
+                valorSaldoAnterior: parseValorMonetario(validarCampo(campos, 6, '0')),  // Campo 05: VL_SLD_CREDOR_ANT
+                valorDeducoes: parseValorMonetario(validarCampo(campos, 7, '0')),       // Campo 06: VL_TOT_DED
+                valorIpiRecolher: parseValorMonetario(validarCampo(campos, 8, '0')),    // Campo 07: VL_IPI_RECOLHER
+                valorSaldoCredorTransportar: parseValorMonetario(validarCampo(campos, 9, '0')), // Campo 08: VL_SLD_CREDOR_TRANSPORTAR
+                valorDebitosEspeciais: parseValorMonetario(validarCampo(campos, 10, '0')), // Campo 09: DEB_ESP_ST
                 registro: 'E200'
             };
         } catch (erro) {
@@ -1764,9 +2159,7 @@ const SpedParser = (function() {
     }
 
     function parseRegistroM105(campos) {
-        // Layout M105: REG, NAT_BC_CRED, CST_PIS, VL_BC_PIS_TOT, VL_BC_PIS_CUM, VL_BC_PIS_NC, VL_CRED_PIS_UTIL, VL_CRED_PIS_TRANS, COD_CTA
-        // Indices:      0,           1,       2,             3,             4,             5,                6,                 7,       8
-        if (!validarEstruturaRegistro(campos, 9)) { // M105 has 9 fields
+        if (!validarEstruturaRegistro(campos, 9)) {
             console.warn('Registro M105 com estrutura insuficiente (esperado 9):', campos.length);
             return null;
         }
@@ -1775,15 +2168,15 @@ const SpedParser = (function() {
             return {
                 tipo: 'credito_detalhe',
                 categoria: 'pis',
-                natBcCred: validarCampo(campos, 1), // Campo 02 - NAT_BC_CRED
-                cstPis: validarCampo(campos, 2),    // Campo 03 - CST_PIS
-                // VL_BC_PIS_TOT (Total Base de Cálculo) em campos[3]
-                // VL_BC_PIS_CUM (Base de Cálculo Cumulativa) em campos[4]
-                valorBcPis: parseValorMonetario(validarCampo(campos, 5, '0')), // Campo 06 - VL_BC_PIS_NC (Base de Cálculo Não Cumulativa)
-                // aliqPis: No direct aliquot field in M105, values are totals.
-                valorCredito: parseValorMonetario(validarCampo(campos, 6, '0')), // Campo 07 - VL_CRED_PIS_UTIL
-                valorCreditoTransferido: parseValorMonetario(validarCampo(campos, 7, '0')), // Campo 08 - VL_CRED_PIS_TRANS
-                codCta: validarCampo(campos, 8) // Campo 09 - COD_CTA
+                natBcCred: validarCampo(campos, 1),                              // Campo 02: NAT_BC_CRED
+                cstPis: validarCampo(campos, 2),                                 // Campo 03: CST_PIS
+                valorBcPisTotal: parseValorMonetario(validarCampo(campos, 3, '0')),   // Campo 04: VL_BC_PIS_TOT
+                valorBcPisCum: parseValorMonetario(validarCampo(campos, 4, '0')),     // Campo 05: VL_BC_PIS_CUM
+                valorBcPis: parseValorMonetario(validarCampo(campos, 5, '0')),        // Campo 06: VL_BC_PIS_NC
+                valorCredito: parseValorMonetario(validarCampo(campos, 6, '0')),      // Campo 07: VL_CRED_PIS_UTIL
+                valorCreditoTransferido: parseValorMonetario(validarCampo(campos, 7, '0')), // Campo 08: VL_CRED_PIS_TRANS
+                codCta: validarCampo(campos, 8),                                // Campo 09: COD_CTA
+                descricao: validarCampo(campos, 9, '')                          // Campo 10: DESC_CRED (se existir)
             };
         } catch (erro) {
             console.warn('Erro ao processar registro M105:', erro.message);
@@ -1814,14 +2207,30 @@ const SpedParser = (function() {
     }
 
     function parseRegistroM200(campos) {
-        if (!validarEstruturaRegistro(campos, 7)) return null;
+        if (!validarEstruturaRegistro(campos, 16)) {
+            console.warn('Registro M200 com estrutura insuficiente:', campos.length, 'campos encontrados (esperado 16+)');
+            return null;
+        }
 
         try {
             return {
                 tipo: 'debito',
                 categoria: 'pis',
-                valorTotalDebitos: parseValorMonetario(validarCampo(campos, 4, '0')),  // Campo 4: VL_TOT_DEB_APU_PER
-                valorTotalCreditos: parseValorMonetario(validarCampo(campos, 6, '0')), // Campo 6: VL_TOT_CRED_DESC_PER
+                valorTotalCreditosNoPeriodo: parseValorMonetario(validarCampo(campos, 3, '0')),  // Campo 03: VL_CRED_APR_NO_PER
+                valorTotalCreditosRecebidos: parseValorMonetario(validarCampo(campos, 4, '0')),  // Campo 04: VL_CRED_RECEBIDO
+                valorTotalCreditosApurados: parseValorMonetario(validarCampo(campos, 5, '0')),   // Campo 05: VL_TOT_CRED_APR
+                valorRetidoNaFonte: parseValorMonetario(validarCampo(campos, 6, '0')),           // Campo 06: VL_CONTRIB_RET (NC)
+                valorOutrasDeducoes: parseValorMonetario(validarCampo(campos, 7, '0')),          // Campo 07: VL_TOT_DED (NC)
+                valorContribNaoCumulativa: parseValorMonetario(validarCampo(campos, 8, '0')),    // Campo 08: VL_TOT_CONTRIB_NC
+                valorTotalDebitos: parseValorMonetario(validarCampo(campos, 4, '0')),            // Campo 04: VL_TOT_DEB_APU_PER
+                valorTotalCreditos: parseValorMonetario(validarCampo(campos, 6, '0')),           // Campo 06: VL_TOT_CRED_DESC_PER
+                valorRetidoFonteCumulativo: parseValorMonetario(validarCampo(campos, 10, '0')),  // Campo 10: VL_CONTRIB_RET (C)
+                valorDeducoesCumulativas: parseValorMonetario(validarCampo(campos, 11, '0')),    // Campo 11: VL_TOT_DED (C)
+                valorContribCumulativa: parseValorMonetario(validarCampo(campos, 12, '0')),      // Campo 12: VL_TOT_CONTRIB_C
+                valorTotalAjusteCredito: parseValorMonetario(validarCampo(campos, 13, '0')),     // Campo 13: VL_TOT_AJ_CREDITO
+                valorSaldoCredorAnterior: parseValorMonetario(validarCampo(campos, 14, '0')),    // Campo 14: VL_SLD_CRED_ANT
+                valorTotalContribApurada: parseValorMonetario(validarCampo(campos, 15, '0')),    // Campo 15: VL_TOT_CONTRIB_APUR
+                valorSaldoCredorFinal: parseValorMonetario(validarCampo(campos, 16, '0')),       // Campo 16: VL_SLD_CRED_FIM
                 registro: 'M200'
             };
         } catch (erro) {
@@ -1842,15 +2251,43 @@ const SpedParser = (function() {
     }
 
     function parseRegistroM210(campos) {
-        if (!validarEstruturaRegistro(campos, 8)) return null;
+        if (!validarEstruturaRegistro(campos, 16)) {
+            console.warn('Registro M210 com estrutura insuficiente:', campos.length, 'campos encontrados (esperado 16+)');
+            return null;
+        }
 
         try {
             return {
-                tipo: 'ajuste',
+                tipo: 'detalhamento_contribuicao',
                 categoria: 'pis',
-                valorTotalAjDebitos: parseValorMonetario(validarCampo(campos, 5, '0')),  // Campo 5: VL_TOT_AJ_DEB_PER
-                valorTotalAjCreditos: parseValorMonetario(validarCampo(campos, 7, '0')), // Campo 7: VL_TOT_AJ_CRED_PER
-                registro: 'M210'
+                codCont: validarCampo(campos, 2), // Campo 02: COD_CONT
+                valorReceitaBruta: parseValorMonetario(validarCampo(campos, 3, '0')), // Campo 03: VL_REC_BRT
+                valorBaseCalculoAntes: parseValorMonetario(validarCampo(campos, 4, '0')), // Campo 04: VL_BC_CONT (antes ajustes)
+
+                // NOVOS CAMPOS DE AJUSTE
+                valorAjustesAcrescimoBc: parseValorMonetario(validarCampo(campos, 5, '0')), // Campo 05: VL_AJUS_ACRES_BC_PIS
+                valorAjustesReducaoBc: parseValorMonetario(validarCampo(campos, 6, '0')), // Campo 06: VL_AJUS_REDUC_BC_PIS
+                valorBaseCalculoAjustada: parseValorMonetario(validarCampo(campos, 7, '0')), // Campo 07: VL_BC_CONT_AJUS
+
+                // CAMPOS RENUMERADOS (eram 05-13, agora 08-16)
+                aliqPis: parseFloat(validarCampo(campos, 8, '0').replace(',', '.')) || 0, // Campo 08: ALIQ_PIS
+                quantBcPis: parseValorMonetario(validarCampo(campos, 9, '0')), // Campo 09: QUANT_BC_PIS
+                aliqPisQuant: parseValorMonetario(validarCampo(campos, 10, '0')), // Campo 10: ALIQ_PIS_QUANT
+                valorContribApurada: parseValorMonetario(validarCampo(campos, 11, '0')), // Campo 11: VL_CONT_APUR
+                valorAjustesAcrescimo: parseValorMonetario(validarCampo(campos, 12, '0')), // Campo 12: VL_AJUS_ACRES
+                valorAjustesReducao: parseValorMonetario(validarCampo(campos, 13, '0')), // Campo 13: VL_AJUS_REDUC
+                valorContribDiferir: parseValorMonetario(validarCampo(campos, 14, '0')), // Campo 14: VL_CONT_DIFER
+                valorContribDiferidaAnt: parseValorMonetario(validarCampo(campos, 15, '0')), // Campo 15: VL_CONT_DIFER_ANT
+                valorContribPeriodo: parseValorMonetario(validarCampo(campos, 16, '0')), // Campo 16: VL_CONT_PER
+
+                // Metadados
+                registro: 'M210',
+                versaoLayout: 'nova', // Identificar nova versão
+
+                // Cálculos derivados
+                baseCalculoOriginal: parseValorMonetario(validarCampo(campos, 4, '0')),
+                baseCalculoFinal: parseValorMonetario(validarCampo(campos, 7, '0')),
+                diferencaAjustes: parseValorMonetario(validarCampo(campos, 5, '0')) - parseValorMonetario(validarCampo(campos, 6, '0'))
             };
         } catch (erro) {
             console.warn('Erro ao processar registro M210:', erro.message);
@@ -1916,28 +2353,23 @@ const SpedParser = (function() {
     }
 
     function parseRegistroM505(campos) {
-        // Layout M505: REG, NAT_BC_CRED, CST_COFINS, VL_BC_COFINS_TOT, VL_BC_COFINS_CUM, VL_BC_COFINS_NC, VL_CRED_COFINS_UTIL, VL_CRED_COFINS_TRANS, COD_CTA
-        // Indices:      0,           1,          2,                3,                4,                5,                   6,                    7,       8
-        if (!validarEstruturaRegistro(campos, 9)) { // M505 has 9 fields
+        if (!validarEstruturaRegistro(campos, 9)) {
             console.warn('Registro M505 com estrutura insuficiente (esperado 9):', campos.length);
             return null;
         }
         try {
-            // const baseCalculo = parseValorMonetario(validarCampo(campos, 6, '0')); // This was incorrect, campos[6] is credit value
-            // const aliquota = parseValorMonetario(validarCampo(campos, 7, '0')); // This was incorrect, campos[7] is transferred credit
-            // const valorCredito = parseValorMonetario(validarCampo(campos, 8, '0')); // This was incorrect, campos[8] is COD_CTA
             return {
                 tipo: 'credito_detalhe',
                 categoria: 'cofins',
-                natBcCred: validarCampo(campos, 1), // Campo 02 - NAT_BC_CRED
-                cstCofins: validarCampo(campos, 2), // Campo 03 - CST_COFINS
-                // VL_BC_COFINS_TOT em campos[3]
-                // VL_BC_COFINS_CUM em campos[4]
-                valorBcCofins: parseValorMonetario(validarCampo(campos, 5, '0')), // Campo 06 - VL_BC_COFINS_NC
-                // aliquotaCredito: No direct aliquot field in M505
-                valorCredito: parseValorMonetario(validarCampo(campos, 6, '0')), // Campo 07 - VL_CRED_COFINS_UTIL
-                valorCreditoTransferido: parseValorMonetario(validarCampo(campos, 7, '0')), // Campo 08 - VL_CRED_COFINS_TRANS
-                codCta: validarCampo(campos, 8) // Campo 09 - COD_CTA
+                natBcCred: validarCampo(campos, 1),                                 // Campo 02: NAT_BC_CRED
+                cstCofins: validarCampo(campos, 2),                                 // Campo 03: CST_COFINS
+                valorBcCofinsTotal: parseValorMonetario(validarCampo(campos, 3, '0')),   // Campo 04: VL_BC_COFINS_TOT
+                valorBcCofinsCum: parseValorMonetario(validarCampo(campos, 4, '0')),     // Campo 05: VL_BC_COFINS_CUM
+                valorBcCofins: parseValorMonetario(validarCampo(campos, 5, '0')),        // Campo 06: VL_BC_COFINS_NC
+                valorCredito: parseValorMonetario(validarCampo(campos, 6, '0')),         // Campo 07: VL_CRED_COFINS_UTIL
+                valorCreditoTransferido: parseValorMonetario(validarCampo(campos, 7, '0')), // Campo 08: VL_CRED_COFINS_TRANS
+                codCta: validarCampo(campos, 8),                                   // Campo 09: COD_CTA
+                descricao: validarCampo(campos, 9, '')                             // Campo 10: DESC_CRED (se existir)
             };
         } catch (erro) {
             console.warn('Erro ao processar registro M505:', erro.message);
@@ -1968,14 +2400,30 @@ const SpedParser = (function() {
     }
 
     function parseRegistroM600(campos) {
-        if (!validarEstruturaRegistro(campos, 7)) return null;
+        if (!validarEstruturaRegistro(campos, 16)) {
+            console.warn('Registro M600 com estrutura insuficiente:', campos.length, 'campos encontrados (esperado 16+)');
+            return null;
+        }
 
         try {
             return {
                 tipo: 'debito',
                 categoria: 'cofins',
-                valorTotalDebitos: parseValorMonetario(validarCampo(campos, 4, '0')),  // Campo 4: VL_TOT_DEB_APU_PER
-                valorTotalCreditos: parseValorMonetario(validarCampo(campos, 6, '0')), // Campo 6: VL_TOT_CRED_DESC_PER
+                valorTotalCreditosNoPeriodo: parseValorMonetario(validarCampo(campos, 3, '0')),  // Campo 03: VL_CRED_APR_NO_PER
+                valorTotalCreditosRecebidos: parseValorMonetario(validarCampo(campos, 4, '0')),  // Campo 04: VL_CRED_RECEBIDO
+                valorTotalCreditosApurados: parseValorMonetario(validarCampo(campos, 5, '0')),   // Campo 05: VL_TOT_CRED_APR
+                valorRetidoNaFonte: parseValorMonetario(validarCampo(campos, 6, '0')),           // Campo 06: VL_CONTRIB_RET (NC)
+                valorOutrasDeducoes: parseValorMonetario(validarCampo(campos, 7, '0')),          // Campo 07: VL_TOT_DED (NC)
+                valorContribNaoCumulativa: parseValorMonetario(validarCampo(campos, 8, '0')),    // Campo 08: VL_TOT_CONTRIB_NC
+                valorTotalDebitos: parseValorMonetario(validarCampo(campos, 4, '0')),            // Campo 04: VL_TOT_DEB_APU_PER
+                valorTotalCreditos: parseValorMonetario(validarCampo(campos, 6, '0')),           // Campo 06: VL_TOT_CRED_DESC_PER
+                valorRetidoFonteCumulativo: parseValorMonetario(validarCampo(campos, 10, '0')),  // Campo 10: VL_CONTRIB_RET (C)
+                valorDeducoesCumulativas: parseValorMonetario(validarCampo(campos, 11, '0')),    // Campo 11: VL_TOT_DED (C)
+                valorContribCumulativa: parseValorMonetario(validarCampo(campos, 12, '0')),      // Campo 12: VL_TOT_CONTRIB_C
+                valorTotalAjusteCredito: parseValorMonetario(validarCampo(campos, 13, '0')),     // Campo 13: VL_TOT_AJ_CREDITO
+                valorSaldoCredorAnterior: parseValorMonetario(validarCampo(campos, 14, '0')),    // Campo 14: VL_SLD_CRED_ANT
+                valorTotalContribApurada: parseValorMonetario(validarCampo(campos, 15, '0')),    // Campo 15: VL_TOT_CONTRIB_APUR
+                valorSaldoCredorFinal: parseValorMonetario(validarCampo(campos, 16, '0')),       // Campo 16: VL_SLD_CRED_FIM
                 registro: 'M600'
             };
         } catch (erro) {
@@ -1996,18 +2444,108 @@ const SpedParser = (function() {
     }
 
     function parseRegistroM610(campos) {
-        if (!validarEstruturaRegistro(campos, 8)) return null;
+        if (!validarEstruturaRegistro(campos, 16)) {
+            console.warn('Registro M610 com estrutura insuficiente:', campos.length, 'campos encontrados (esperado 16+)');
+            return null;
+        }
 
         try {
             return {
-                tipo: 'ajuste',
+                tipo: 'detalhamento_contribuicao',
                 categoria: 'cofins',
-                valorTotalAjDebitos: parseValorMonetario(validarCampo(campos, 5, '0')),  // Campo 5: VL_TOT_AJ_DEB_PER
-                valorTotalAjCreditos: parseValorMonetario(validarCampo(campos, 7, '0')), // Campo 7: VL_TOT_AJ_CRED_PER
-                registro: 'M610'
+                codCont: validarCampo(campos, 2), // Campo 02: COD_CONT
+                valorReceitaBruta: parseValorMonetario(validarCampo(campos, 3, '0')), // Campo 03: VL_REC_BRT
+                valorBaseCalculoAntes: parseValorMonetario(validarCampo(campos, 4, '0')), // Campo 04: VL_BC_CONT (antes ajustes)
+
+                // NOVOS CAMPOS DE AJUSTE
+                valorAjustesAcrescimoBc: parseValorMonetario(validarCampo(campos, 5, '0')), // Campo 05: VL_AJUS_ACRES_BC_COFINS
+                valorAjustesReducaoBc: parseValorMonetario(validarCampo(campos, 6, '0')), // Campo 06: VL_AJUS_REDUC_BC_COFINS
+                valorBaseCalculoAjustada: parseValorMonetario(validarCampo(campos, 7, '0')), // Campo 07: VL_BC_CONT_AJUS
+
+                // CAMPOS RENUMERADOS (eram 05-13, agora 08-16)
+                aliqCofins: parseFloat(validarCampo(campos, 8, '0').replace(',', '.')) || 0, // Campo 08: ALIQ_COFINS
+                quantBcCofins: parseValorMonetario(validarCampo(campos, 9, '0')), // Campo 09: QUANT_BC_COFINS
+                aliqCofinsQuant: parseValorMonetario(validarCampo(campos, 10, '0')), // Campo 10: ALIQ_COFINS_QUANT
+                valorContribApurada: parseValorMonetario(validarCampo(campos, 11, '0')), // Campo 11: VL_CONT_APUR
+                valorAjustesAcrescimo: parseValorMonetario(validarCampo(campos, 12, '0')), // Campo 12: VL_AJUS_ACRES
+                valorAjustesReducao: parseValorMonetario(validarCampo(campos, 13, '0')), // Campo 13: VL_AJUS_REDUC
+                valorContribDiferir: parseValorMonetario(validarCampo(campos, 14, '0')), // Campo 14: VL_CONT_DIFER
+                valorContribDiferidaAnt: parseValorMonetario(validarCampo(campos, 15, '0')), // Campo 15: VL_CONT_DIFER_ANT
+                valorContribPeriodo: parseValorMonetario(validarCampo(campos, 16, '0')), // Campo 16: VL_CONT_PER
+
+                // Metadados
+                registro: 'M610',
+                versaoLayout: 'nova', // Identificar nova versão
+
+                // Cálculos derivados
+                baseCalculoOriginal: parseValorMonetario(validarCampo(campos, 4, '0')),
+                baseCalculoFinal: parseValorMonetario(validarCampo(campos, 7, '0')),
+                diferencaAjustes: parseValorMonetario(validarCampo(campos, 5, '0')) - parseValorMonetario(validarCampo(campos, 6, '0'))
             };
         } catch (erro) {
             console.warn('Erro ao processar registro M610:', erro.message);
+            return null;
+        }
+    }
+    
+    function parseRegistroM215(campos) {
+        if (!validarEstruturaRegistro(campos, 10)) {
+            console.warn('Registro M215 com estrutura insuficiente:', campos.length, 'campos encontrados (esperado 10+)');
+            return null;
+        }
+
+        try {
+            return {
+                tipo: 'ajuste_base_calculo',
+                categoria: 'pis',
+                indAjusteBc: validarCampo(campos, 2), // Campo 02: IND_AJ_BC (0=acréscimo, 1=redução)
+                valorAjusteBc: parseValorMonetario(validarCampo(campos, 3, '0')), // Campo 03: VL_AJ_BC
+                codAjusteBc: validarCampo(campos, 4), // Campo 04: COD_AJ_BC
+                numDoc: validarCampo(campos, 5), // Campo 05: NUM_DOC
+                descrAjusteBc: validarCampo(campos, 6), // Campo 06: DESCR_AJ_BC
+                dataRef: validarCampo(campos, 7), // Campo 07: DT_REF
+                codCta: validarCampo(campos, 8), // Campo 08: COD_CTA
+                cnpj: validarCampo(campos, 9), // Campo 09: CNPJ
+                infoCompl: validarCampo(campos, 10), // Campo 10: INFO_COMPL
+
+                // Campos derivados
+                tipoAjuste: validarCampo(campos, 2) === '0' ? 'acrescimo' : 'reducao',
+                registro: 'M215',
+                hierarquia: 4 // Registro filho de M210
+            };
+        } catch (erro) {
+            console.warn('Erro ao processar registro M215:', erro.message);
+            return null;
+        }
+    }
+
+    function parseRegistroM615(campos) {
+        if (!validarEstruturaRegistro(campos, 10)) {
+            console.warn('Registro M615 com estrutura insuficiente:', campos.length, 'campos encontrados (esperado 10+)');
+            return null;
+        }
+
+        try {
+            return {
+                tipo: 'ajuste_base_calculo',
+                categoria: 'cofins',
+                indAjusteBc: validarCampo(campos, 2), // Campo 02: IND_AJ_BC (0=acréscimo, 1=redução)
+                valorAjusteBc: parseValorMonetario(validarCampo(campos, 3, '0')), // Campo 03: VL_AJ_BC
+                codAjusteBc: validarCampo(campos, 4), // Campo 04: COD_AJ_BC
+                numDoc: validarCampo(campos, 5), // Campo 05: NUM_DOC
+                descrAjusteBc: validarCampo(campos, 6), // Campo 06: DESCR_AJ_BC
+                dataRef: validarCampo(campos, 7), // Campo 07: DT_REF
+                codCta: validarCampo(campos, 8), // Campo 08: COD_CTA
+                cnpj: validarCampo(campos, 9), // Campo 09: CNPJ
+                infoCompl: validarCampo(campos, 10), // Campo 10: INFO_COMPL
+
+                // Campos derivados
+                tipoAjuste: validarCampo(campos, 2) === '0' ? 'acrescimo' : 'reducao',
+                registro: 'M615',
+                hierarquia: 4 // Registro filho de M610
+            };
+        } catch (erro) {
+            console.warn('Erro ao processar registro M615:', erro.message);
             return null;
         }
     }

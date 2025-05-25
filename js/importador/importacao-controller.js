@@ -361,97 +361,63 @@ const ImportacaoController = (function() {
     }
     
     /**
-     * Verifica se os registros específicos de impostos estão presentes e consistentes
-     * conforme mapeamento da tabela de análise comparativa
+     * Verifica se os registros específicos de impostos estão presentes conforme novo layout
+     * Foca nos registros essenciais para extração de dados tributários
      */
     function verificarRegistrosImpostos(dados, tipo) {
         console.log(`IMPORTACAO-CONTROLLER: Verificando registros de impostos para tipo ${tipo}`);
 
-        // Verificação específica por tipo de arquivo
-        if (tipo === 'fiscal') {
-            // Verificar ICMS (E110)
-            const registrosE110 = dados.debitos?.icms?.filter(reg => reg.registro === 'E110') || [];
-            if (registrosE110.length > 0) {
-                console.log(`IMPORTACAO-CONTROLLER: Encontrados ${registrosE110.length} registros E110 para ICMS`);
-                // Verificar se os campos necessários estão presentes
-                registrosE110.forEach((reg, index) => {
-                    if (reg.valorTotalDebitos === undefined || reg.valorTotalCreditos === undefined) {
-                        console.warn(`IMPORTACAO-CONTROLLER: Registro E110 #${index+1} com campos incompletos`);
-                    }
+        if (tipo === 'contribuicoes') {
+            // Verificar registros principais PIS/COFINS
+            const registrosM210 = dados.debitos?.pis?.filter(reg => reg.registro === 'M210') || [];
+            const registrosM610 = dados.debitos?.cofins?.filter(reg => reg.registro === 'M610') || [];
+
+            // Log dos registros encontrados
+            if (registrosM210.length > 0) {
+                console.log(`IMPORTACAO-CONTROLLER: Encontrados ${registrosM210.length} registros M210 (PIS)`);
+                registrosM210.forEach((reg, index) => {
+                    console.log(`IMPORTACAO-CONTROLLER: M210 #${index+1} - Contrib.Período: ${reg.valorContribPeriodo || 'N/A'}, Contrib.Apurada: ${reg.valorContribApurada || 'N/A'}`);
                 });
+            } else {
+                console.warn('IMPORTACAO-CONTROLLER: Nenhum registro M210 (PIS) encontrado');
+            }
+
+            if (registrosM610.length > 0) {
+                console.log(`IMPORTACAO-CONTROLLER: Encontrados ${registrosM610.length} registros M610 (COFINS)`);
+                registrosM610.forEach((reg, index) => {
+                    console.log(`IMPORTACAO-CONTROLLER: M610 #${index+1} - Contrib.Período: ${reg.valorContribPeriodo || 'N/A'}, Contrib.Apurada: ${reg.valorContribApurada || 'N/A'}`);
+                });
+            } else {
+                console.warn('IMPORTACAO-CONTROLLER: Nenhum registro M610 (COFINS) encontrado');
+            }
+
+            // Verificar registros de detalhamento de ajustes (M215/M615)
+            const registrosM215 = dados.ajustes?.pis?.filter(reg => reg.registro === 'M215') || [];
+            const registrosM615 = dados.ajustes?.cofins?.filter(reg => reg.registro === 'M615') || [];
+
+            if (registrosM215.length > 0) {
+                console.log(`IMPORTACAO-CONTROLLER: Encontrados ${registrosM215.length} registros M215 (ajustes PIS)`);
+            }
+
+            if (registrosM615.length > 0) {
+                console.log(`IMPORTACAO-CONTROLLER: Encontrados ${registrosM615.length} registros M615 (ajustes COFINS)`);
+            }
+        } 
+        else if (tipo === 'fiscal') {
+            // Verificar ICMS (E110) e IPI (E200)
+            const registrosE110 = dados.debitos?.icms?.filter(reg => reg.registro === 'E110') || [];
+            const registrosE200 = dados.debitos?.ipi?.filter(reg => reg.registro === 'E200') || [];
+
+            if (registrosE110.length > 0) {
+                console.log(`IMPORTACAO-CONTROLLER: Encontrados ${registrosE110.length} registros E110 (ICMS)`);
             } else {
                 console.warn('IMPORTACAO-CONTROLLER: Nenhum registro E110 (ICMS) encontrado');
             }
 
-            // Verificar IPI (E200)
-            const registrosE200 = dados.debitos?.ipi?.filter(reg => reg.registro === 'E200') || [];
             if (registrosE200.length > 0) {
-                console.log(`IMPORTACAO-CONTROLLER: Encontrados ${registrosE200.length} registros E200 para IPI`);
-                // Verificar se os campos necessários estão presentes
-                registrosE200.forEach((reg, index) => {
-                    if (reg.valorTotalDebitos === undefined || reg.valorTotalCreditos === undefined) {
-                        console.warn(`IMPORTACAO-CONTROLLER: Registro E200 #${index+1} com campos incompletos`);
-                    }
-                });
+                console.log(`IMPORTACAO-CONTROLLER: Encontrados ${registrosE200.length} registros E200 (IPI)`);
             } else {
                 console.warn('IMPORTACAO-CONTROLLER: Nenhum registro E200 (IPI) encontrado');
-            }
-        } 
-        else if (tipo === 'contribuicoes') {
-            // Verificar PIS (M200)
-            const registrosM200 = dados.debitos?.pis?.filter(reg => reg.registro === 'M200') || [];
-            if (registrosM200.length > 0) {
-                console.log(`IMPORTACAO-CONTROLLER: Encontrados ${registrosM200.length} registros M200 para PIS`);
-                // Verificar se os campos necessários estão presentes
-                registrosM200.forEach((reg, index) => {
-                    if (reg.valorTotalDebitos === undefined || reg.valorTotalCreditos === undefined) {
-                        console.warn(`IMPORTACAO-CONTROLLER: Registro M200 #${index+1} com campos incompletos`);
-                    }
-                });
-            } else {
-                console.warn('IMPORTACAO-CONTROLLER: Nenhum registro M200 (PIS) encontrado');
-            }
-
-            // Verificar ajustes PIS (M210)
-            const registrosM210 = dados.ajustes?.pis?.filter(reg => reg.registro === 'M210') || [];
-            if (registrosM210.length > 0) {
-                console.log(`IMPORTACAO-CONTROLLER: Encontrados ${registrosM210.length} registros M210 para ajustes PIS`);
-                // Verificar se os campos necessários estão presentes
-                registrosM210.forEach((reg, index) => {
-                    if (reg.valorTotalAjDebitos === undefined || reg.valorTotalAjCreditos === undefined) {
-                        console.warn(`IMPORTACAO-CONTROLLER: Registro M210 #${index+1} com campos incompletos`);
-                    }
-                });
-            } else {
-                console.log('IMPORTACAO-CONTROLLER: Nenhum registro M210 (ajustes PIS) encontrado');
-            }
-
-            // Verificar COFINS (M600)
-            const registrosM600 = dados.debitos?.cofins?.filter(reg => reg.registro === 'M600') || [];
-            if (registrosM600.length > 0) {
-                console.log(`IMPORTACAO-CONTROLLER: Encontrados ${registrosM600.length} registros M600 para COFINS`);
-                // Verificar se os campos necessários estão presentes
-                registrosM600.forEach((reg, index) => {
-                    if (reg.valorTotalDebitos === undefined || reg.valorTotalCreditos === undefined) {
-                        console.warn(`IMPORTACAO-CONTROLLER: Registro M600 #${index+1} com campos incompletos`);
-                    }
-                });
-            } else {
-                console.warn('IMPORTACAO-CONTROLLER: Nenhum registro M600 (COFINS) encontrado');
-            }
-
-            // Verificar ajustes COFINS (M610)
-            const registrosM610 = dados.ajustes?.cofins?.filter(reg => reg.registro === 'M610') || [];
-            if (registrosM610.length > 0) {
-                console.log(`IMPORTACAO-CONTROLLER: Encontrados ${registrosM610.length} registros M610 para ajustes COFINS`);
-                // Verificar se os campos necessários estão presentes
-                registrosM610.forEach((reg, index) => {
-                    if (reg.valorTotalAjDebitos === undefined || reg.valorTotalAjCreditos === undefined) {
-                        console.warn(`IMPORTACAO-CONTROLLER: Registro M610 #${index+1} com campos incompletos`);
-                    }
-                });
-            } else {
-                console.log('IMPORTACAO-CONTROLLER: Nenhum registro M610 (ajustes COFINS) encontrado');
             }
         }
     }
@@ -1064,8 +1030,8 @@ const ImportacaoController = (function() {
             estruturaAdaptada.parametrosFiscais = {
                 ...estruturaAdaptada.parametrosFiscais,
                 sistemaAtual: {
-                    regimeTributario: dadosExtraidos.parametrosFiscais?.sistemaAtual?.regimeTributario || 'presumido',
-                    regimePISCOFINS: dadosExtraidos.parametrosFiscais?.sistemaAtual?.regimePISCOFINS || 'cumulativo'
+                    regimeTributario: dadosExtraidos.parametrosFiscais?.sistemaAtual?.regimeTributario || 'real',
+                    regimePISCOFINS: dadosExtraidos.parametrosFiscais?.sistemaAtual?.regimePISCOFINS || 'não cumulativo'
                 },
                 aliquota: window.DataManager.extrairValorPercentual(dadosExtraidos.parametrosFiscais?.aliquota || 0.265),
                 tipoOperacao: dadosExtraidos.parametrosFiscais?.tipoOperacao || '',
@@ -1775,154 +1741,285 @@ const ImportacaoController = (function() {
      */
 
     /**
-     * Obtém o valor de débito de PIS a partir do registro M200 (campo 4)
+     * Obtém o valor de débito de PIS seguindo hierarquia de prioridade do novo layout
+     * Prioridade: VL_CONT_PER (M210-16) > VL_CONT_APUR (M210-11) > Cálculo manual
      */
     function obterDebitoPIS(dados) {
-        // Buscar registro M200 no array de débitos PIS
-        const registrosM200 = dados.debitos?.pis?.filter(reg => reg.registro === 'M200') || [];
-        if (registrosM200.length > 0 && registrosM200[0].valorTotalDebitos !== undefined) {
-            return registrosM200[0].valorTotalDebitos;
+        // PRIORIDADE 1: Campo VL_CONT_PER (M210 - Campo 16) - Valor final do período
+        const registrosM210 = dados.debitos?.pis?.filter(reg => reg.registro === 'M210') || [];
+        if (registrosM210.length > 0) {
+            // Verificar se existe valor final do período (campo 16)
+            if (registrosM210[0].valorContribPeriodo !== undefined && registrosM210[0].valorContribPeriodo > 0) {
+                console.log(`IMPORTACAO-CONTROLLER: PIS débito obtido de VL_CONT_PER: ${registrosM210[0].valorContribPeriodo}`);
+                return registrosM210[0].valorContribPeriodo;
+            }
+
+            // PRIORIDADE 2: Campo VL_CONT_APUR (M210 - Campo 11) - Contribuição apurada
+            if (registrosM210[0].valorContribApurada !== undefined && registrosM210[0].valorContribApurada > 0) {
+                console.log(`IMPORTACAO-CONTROLLER: PIS débito obtido de VL_CONT_APUR: ${registrosM210[0].valorContribApurada}`);
+                return registrosM210[0].valorContribApurada;
+            }
+
+            // PRIORIDADE 3: Cálculo manual usando base ajustada × alíquota
+            if (registrosM210[0].valorBaseCalculoAjustada > 0 && registrosM210[0].aliqPis > 0) {
+                const valorCalculado = registrosM210[0].valorBaseCalculoAjustada * (registrosM210[0].aliqPis / 100);
+                console.log(`IMPORTACAO-CONTROLLER: PIS débito calculado: ${valorCalculado}`);
+                return valorCalculado;
+            }
         }
 
-        // Verificar se há dados em parametrosFiscais.debitos.pis (de um processamento anterior)
+        // Fallback para estrutura processada anteriormente
         if (dados.parametrosFiscais?.debitos?.pis !== undefined) {
             return dados.parametrosFiscais.debitos.pis;
         }
 
-        // Se não encontrou, retornar 0
+        console.warn('IMPORTACAO-CONTROLLER: Valor de débito PIS não encontrado');
         return 0;
     }
 
     /**
-     * Obtém o valor de crédito de PIS a partir do registro M200 (campo 6)
+     * Obtém o valor de crédito de PIS do registro M210 campo 6 (VL_TOT_CREDITOS)
+     * ou de registros M105 consolidados
      */
     function obterCreditoPIS(dados) {
-        // Buscar registro M200 no array de débitos PIS
+        // FONTE PRIMÁRIA: Registro M200 campo 6 (VL_TOT_CRED_DESC_PER)
         const registrosM200 = dados.debitos?.pis?.filter(reg => reg.registro === 'M200') || [];
         if (registrosM200.length > 0 && registrosM200[0].valorTotalCreditos !== undefined) {
+            console.log(`IMPORTACAO-CONTROLLER: PIS crédito obtido de M200: ${registrosM200[0].valorTotalCreditos}`);
             return registrosM200[0].valorTotalCreditos;
         }
 
-        // Verificar se há dados em parametrosFiscais.creditos.pis (de um processamento anterior)
+        // FONTE SECUNDÁRIA: Consolidação de registros M105 (detalhamento de créditos)
+        const registrosM105 = dados.creditos?.pis?.filter(reg => reg.tipo === 'credito_detalhe') || [];
+        if (registrosM105.length > 0) {
+            const totalCreditos = registrosM105.reduce((total, reg) => {
+                return total + (reg.valorCredito || reg.valorCreditoDisp || 0);
+            }, 0);
+
+            if (totalCreditos > 0) {
+                console.log(`IMPORTACAO-CONTROLLER: PIS crédito calculado de M105: ${totalCreditos}`);
+                return totalCreditos;
+            }
+        }
+
+        // Fallback para estrutura processada anteriormente
         if (dados.parametrosFiscais?.creditos?.pis !== undefined) {
             return dados.parametrosFiscais.creditos.pis;
         }
 
-        // Se não encontrou, retornar 0
+        console.warn('IMPORTACAO-CONTROLLER: Valor de crédito PIS não encontrado');
         return 0;
     }
+    
 
     /**
-     * Obtém o valor de outros débitos de PIS a partir do registro M210 (campo 5)
-     */
-    function obterAjusteDebitoPIS(dados) {
-        // Buscar registro M210 no array de ajustes PIS
-        const registrosM210 = dados.ajustes?.pis?.filter(reg => reg.registro === 'M210') || [];
-        if (registrosM210.length > 0 && registrosM210[0].valorTotalAjDebitos !== undefined) {
-            return registrosM210[0].valorTotalAjDebitos;
-        }
-
-        // Verificar se há dados em parametrosFiscais.ajustes.pisOutrosDebitos (de um processamento anterior)
-        if (dados.parametrosFiscais?.ajustes?.pisOutrosDebitos !== undefined) {
-            return dados.parametrosFiscais.ajustes.pisOutrosDebitos;
-        }
-
-        // Se não encontrou, retornar 0
-        return 0;
-    }
-
-    /**
-     * Obtém o valor de outros créditos de PIS a partir do registro M210 (campo 7)
-     */
-    function obterAjusteCreditoPIS(dados) {
-        // Buscar registro M210 no array de ajustes PIS
-        const registrosM210 = dados.ajustes?.pis?.filter(reg => reg.registro === 'M210') || [];
-        if (registrosM210.length > 0 && registrosM210[0].valorTotalAjCreditos !== undefined) {
-            return registrosM210[0].valorTotalAjCreditos;
-        }
-
-        // Verificar se há dados em parametrosFiscais.ajustes.pisOutrosCreditos (de um processamento anterior)
-        if (dados.parametrosFiscais?.ajustes?.pisOutrosCreditos !== undefined) {
-            return dados.parametrosFiscais.ajustes.pisOutrosCreditos;
-        }
-
-        // Se não encontrou, retornar 0
-        return 0;
-    }
-
-    /**
-     * Obtém o valor de débito de COFINS a partir do registro M600 (campo 4)
+     * Obtém o valor de débito de COFINS seguindo hierarquia de prioridade do novo layout
+     * Prioridade: VL_CONT_PER (M610-16) > VL_CONT_APUR (M610-11) > Cálculo manual
      */
     function obterDebitoCOFINS(dados) {
-        // Buscar registro M600 no array de débitos COFINS
-        const registrosM600 = dados.debitos?.cofins?.filter(reg => reg.registro === 'M600') || [];
-        if (registrosM600.length > 0 && registrosM600[0].valorTotalDebitos !== undefined) {
-            return registrosM600[0].valorTotalDebitos;
+        // PRIORIDADE 1: Campo VL_CONT_PER (M610 - Campo 16) - Valor final do período
+        const registrosM610 = dados.debitos?.cofins?.filter(reg => reg.registro === 'M610') || [];
+        if (registrosM610.length > 0) {
+            // Verificar se existe valor final do período (campo 16)
+            if (registrosM610[0].valorContribPeriodo !== undefined && registrosM610[0].valorContribPeriodo > 0) {
+                console.log(`IMPORTACAO-CONTROLLER: COFINS débito obtido de VL_CONT_PER: ${registrosM610[0].valorContribPeriodo}`);
+                return registrosM610[0].valorContribPeriodo;
+            }
+
+            // PRIORIDADE 2: Campo VL_CONT_APUR (M610 - Campo 11) - Contribuição apurada
+            if (registrosM610[0].valorContribApurada !== undefined && registrosM610[0].valorContribApurada > 0) {
+                console.log(`IMPORTACAO-CONTROLLER: COFINS débito obtido de VL_CONT_APUR: ${registrosM610[0].valorContribApurada}`);
+                return registrosM610[0].valorContribApurada;
+            }
+
+            // PRIORIDADE 3: Cálculo manual usando base ajustada × alíquota
+            if (registrosM610[0].valorBaseCalculoAjustada > 0 && registrosM610[0].aliqCofins > 0) {
+                const valorCalculado = registrosM610[0].valorBaseCalculoAjustada * (registrosM610[0].aliqCofins / 100);
+                console.log(`IMPORTACAO-CONTROLLER: COFINS débito calculado: ${valorCalculado}`);
+                return valorCalculado;
+            }
         }
 
-        // Verificar se há dados em parametrosFiscais.debitos.cofins (de um processamento anterior)
+        // Fallback para estrutura processada anteriormente
         if (dados.parametrosFiscais?.debitos?.cofins !== undefined) {
             return dados.parametrosFiscais.debitos.cofins;
         }
 
-        // Se não encontrou, retornar 0
+        console.warn('IMPORTACAO-CONTROLLER: Valor de débito COFINS não encontrado');
         return 0;
     }
 
     /**
-     * Obtém o valor de crédito de COFINS a partir do registro M600 (campo 6)
+     * Obtém o valor de crédito de COFINS do registro M600 campo 6 (VL_TOT_CRED_DESC_PER)
+     * ou de registros M505 consolidados
      */
     function obterCreditoCOFINS(dados) {
-        // Buscar registro M600 no array de débitos COFINS
+        // FONTE PRIMÁRIA: Registro M600 campo 6 (VL_TOT_CRED_DESC_PER)
         const registrosM600 = dados.debitos?.cofins?.filter(reg => reg.registro === 'M600') || [];
         if (registrosM600.length > 0 && registrosM600[0].valorTotalCreditos !== undefined) {
+            console.log(`IMPORTACAO-CONTROLLER: COFINS crédito obtido de M600: ${registrosM600[0].valorTotalCreditos}`);
             return registrosM600[0].valorTotalCreditos;
         }
 
-        // Verificar se há dados em parametrosFiscais.creditos.cofins (de um processamento anterior)
+        // FONTE SECUNDÁRIA: Consolidação de registros M505 (detalhamento de créditos)
+        const registrosM505 = dados.creditos?.cofins?.filter(reg => reg.tipo === 'credito_detalhe') || [];
+        if (registrosM505.length > 0) {
+            const totalCreditos = registrosM505.reduce((total, reg) => {
+                return total + (reg.valorCredito || reg.valorCreditoDisp || 0);
+            }, 0);
+
+            if (totalCreditos > 0) {
+                console.log(`IMPORTACAO-CONTROLLER: COFINS crédito calculado de M505: ${totalCreditos}`);
+                return totalCreditos;
+            }
+        }
+
+        // Fallback para estrutura processada anteriormente
         if (dados.parametrosFiscais?.creditos?.cofins !== undefined) {
             return dados.parametrosFiscais.creditos.cofins;
         }
 
-        // Se não encontrou, retornar 0
+        console.warn('IMPORTACAO-CONTROLLER: Valor de crédito COFINS não encontrado');
+        return 0;
+    }
+    
+    /**
+     * Obtém o valor de outros débitos de PIS a partir do registro M210 (campo 12)
+     * VL_AJUS_ACRES - Ajustes de acréscimo da contribuição
+     */
+    function obterAjusteDebitoPIS(dados) {
+        const registrosM210 = dados.debitos?.pis?.filter(reg => reg.registro === 'M210') || [];
+        if (registrosM210.length > 0 && registrosM210[0].valorAjustesAcrescimo !== undefined) {
+            console.log(`IMPORTACAO-CONTROLLER: PIS ajuste débito (M210-12): ${registrosM210[0].valorAjustesAcrescimo}`);
+            return registrosM210[0].valorAjustesAcrescimo;
+        }
+
+        // Verificar detalhamentos M215 para ajustes de base de cálculo tipo acréscimo
+        const registrosM215 = dados.ajustes?.pis?.filter(reg => 
+            reg.registro === 'M215' && reg.indAjusteBc === '0'
+        ) || [];
+
+        if (registrosM215.length > 0) {
+            const totalAjustesAcrescimo = registrosM215.reduce((total, reg) => {
+                return total + (reg.valorAjusteBc || 0);
+            }, 0);
+
+            if (totalAjustesAcrescimo > 0) {
+                console.log(`IMPORTACAO-CONTROLLER: PIS ajuste débito calculado de M215: ${totalAjustesAcrescimo}`);
+                return totalAjustesAcrescimo;
+            }
+        }
+
+        // Fallback
+        if (dados.parametrosFiscais?.ajustes?.pisOutrosDebitos !== undefined) {
+            return dados.parametrosFiscais.ajustes.pisOutrosDebitos;
+        }
+
         return 0;
     }
 
     /**
-     * Obtém o valor de outros débitos de COFINS a partir do registro M610 (campo 5)
+     * Obtém o valor de outros créditos de PIS a partir do registro M210 (campo 13)
+     * VL_AJUS_REDUC - Ajustes de redução da contribuição
      */
-    function obterAjusteDebitoCOFINS(dados) {
-        // Buscar registro M610 no array de ajustes COFINS
-        const registrosM610 = dados.ajustes?.cofins?.filter(reg => reg.registro === 'M610') || [];
-        if (registrosM610.length > 0 && registrosM610[0].valorTotalAjDebitos !== undefined) {
-            return registrosM610[0].valorTotalAjDebitos;
+    function obterAjusteCreditoPIS(dados) {
+        const registrosM210 = dados.debitos?.pis?.filter(reg => reg.registro === 'M210') || [];
+        if (registrosM210.length > 0 && registrosM210[0].valorAjustesReducao !== undefined) {
+            console.log(`IMPORTACAO-CONTROLLER: PIS ajuste crédito (M210-13): ${registrosM210[0].valorAjustesReducao}`);
+            return registrosM210[0].valorAjustesReducao;
         }
 
-        // Verificar se há dados em parametrosFiscais.ajustes.cofinsOutrosDebitos (de um processamento anterior)
+        // Verificar detalhamentos M215 para ajustes de base de cálculo tipo redução
+        const registrosM215 = dados.ajustes?.pis?.filter(reg => 
+            reg.registro === 'M215' && reg.indAjusteBc === '1'
+        ) || [];
+
+        if (registrosM215.length > 0) {
+            const totalAjustesReducao = registrosM215.reduce((total, reg) => {
+                return total + (reg.valorAjusteBc || 0);
+            }, 0);
+
+            if (totalAjustesReducao > 0) {
+                console.log(`IMPORTACAO-CONTROLLER: PIS ajuste crédito calculado de M215: ${totalAjustesReducao}`);
+                return totalAjustesReducao;
+            }
+        }
+
+        // Fallback
+        if (dados.parametrosFiscais?.ajustes?.pisOutrosCreditos !== undefined) {
+            return dados.parametrosFiscais.ajustes.pisOutrosCreditos;
+        }
+
+        return 0;
+    }
+
+    /**
+     * Obtém o valor de outros débitos de COFINS a partir do registro M610 (campo 12)
+     * VL_AJUS_ACRES - Ajustes de acréscimo da contribuição
+     */
+    function obterAjusteDebitoCOFINS(dados) {
+        const registrosM610 = dados.debitos?.cofins?.filter(reg => reg.registro === 'M610') || [];
+        if (registrosM610.length > 0 && registrosM610[0].valorAjustesAcrescimo !== undefined) {
+            console.log(`IMPORTACAO-CONTROLLER: COFINS ajuste débito (M610-12): ${registrosM610[0].valorAjustesAcrescimo}`);
+            return registrosM610[0].valorAjustesAcrescimo;
+        }
+
+        // Verificar detalhamentos M615 para ajustes de base de cálculo tipo acréscimo
+        const registrosM615 = dados.ajustes?.cofins?.filter(reg => 
+            reg.registro === 'M615' && reg.indAjusteBc === '0'
+        ) || [];
+
+        if (registrosM615.length > 0) {
+            const totalAjustesAcrescimo = registrosM615.reduce((total, reg) => {
+                return total + (reg.valorAjusteBc || 0);
+            }, 0);
+
+            if (totalAjustesAcrescimo > 0) {
+                console.log(`IMPORTACAO-CONTROLLER: COFINS ajuste débito calculado de M615: ${totalAjustesAcrescimo}`);
+                return totalAjustesAcrescimo;
+            }
+        }
+
+        // Fallback
         if (dados.parametrosFiscais?.ajustes?.cofinsOutrosDebitos !== undefined) {
             return dados.parametrosFiscais.ajustes.cofinsOutrosDebitos;
         }
 
-        // Se não encontrou, retornar 0
         return 0;
     }
 
     /**
-     * Obtém o valor de outros créditos de COFINS a partir do registro M610 (campo 7)
+     * Obtém o valor de outros créditos de COFINS a partir do registro M610 (campo 13)
+     * VL_AJUS_REDUC - Ajustes de redução da contribuição
      */
     function obterAjusteCreditoCOFINS(dados) {
-        // Buscar registro M610 no array de ajustes COFINS
-        const registrosM610 = dados.ajustes?.cofins?.filter(reg => reg.registro === 'M610') || [];
-        if (registrosM610.length > 0 && registrosM610[0].valorTotalAjCreditos !== undefined) {
-            return registrosM610[0].valorTotalAjCreditos;
+        const registrosM610 = dados.debitos?.cofins?.filter(reg => reg.registro === 'M610') || [];
+        if (registrosM610.length > 0 && registrosM610[0].valorAjustesReducao !== undefined) {
+            console.log(`IMPORTACAO-CONTROLLER: COFINS ajuste crédito (M610-13): ${registrosM610[0].valorAjustesReducao}`);
+            return registrosM610[0].valorAjustesReducao;
         }
 
-        // Verificar se há dados em parametrosFiscais.ajustes.cofinsOutrosCreditos (de um processamento anterior)
+        // Verificar detalhamentos M615 para ajustes de base de cálculo tipo redução
+        const registrosM615 = dados.ajustes?.cofins?.filter(reg => 
+            reg.registro === 'M615' && reg.indAjusteBc === '1'
+        ) || [];
+
+        if (registrosM615.length > 0) {
+            const totalAjustesReducao = registrosM615.reduce((total, reg) => {
+                return total + (reg.valorAjusteBc || 0);
+            }, 0);
+
+            if (totalAjustesReducao > 0) {
+                console.log(`IMPORTACAO-CONTROLLER: COFINS ajuste crédito calculado de M615: ${totalAjustesReducao}`);
+                return totalAjustesReducao;
+            }
+        }
+
+        // Fallback
         if (dados.parametrosFiscais?.ajustes?.cofinsOutrosCreditos !== undefined) {
             return dados.parametrosFiscais.ajustes.cofinsOutrosCreditos;
         }
 
-        // Se não encontrou, retornar 0
         return 0;
     }
 
@@ -2003,117 +2100,225 @@ const ImportacaoController = (function() {
     }
     
     /**
-     * Preenche os parâmetros fiscais no formulário
+     * Valida consistência entre registros pai (M210/M610) e filhos (M215/M615)
+     * conforme especificado no documento técnico
+     */
+    function validarConsistenciaAjustesCruzados(dados) {
+        console.log('IMPORTACAO-CONTROLLER: Validando consistência entre ajustes BC e detalhamentos');
+
+        let inconsistenciasEncontradas = [];
+
+        // Validar PIS (M210 vs M215)
+        const registrosM210 = dados.debitos?.pis?.filter(reg => reg.registro === 'M210') || [];
+        const registrosM215 = dados.ajustes?.pis?.filter(reg => reg.registro === 'M215') || [];
+
+        if (registrosM210.length > 0 && registrosM215.length > 0) {
+            const m210 = registrosM210[0];
+
+            // Somar M215 por tipo
+            const totalAcrescimoM215 = registrosM215
+                .filter(reg => reg.indAjusteBc === '0')
+                .reduce((sum, reg) => sum + (reg.valorAjusteBc || 0), 0);
+
+            const totalReducaoM215 = registrosM215
+                .filter(reg => reg.indAjusteBc === '1')
+                .reduce((sum, reg) => sum + (reg.valorAjusteBc || 0), 0);
+
+            // Validar consistência (tolerância de 0.01)
+            if (Math.abs(totalAcrescimoM215 - (m210.valorAjustesAcrescimoBc || 0)) > 0.01) {
+                inconsistenciasEncontradas.push({
+                    tipo: 'pis_ajuste_acrescimo_bc',
+                    m210: m210.valorAjustesAcrescimoBc || 0,
+                    m215: totalAcrescimoM215,
+                    diferenca: Math.abs(totalAcrescimoM215 - (m210.valorAjustesAcrescimoBc || 0))
+                });
+            }
+
+            if (Math.abs(totalReducaoM215 - (m210.valorAjustesReducaoBc || 0)) > 0.01) {
+                inconsistenciasEncontradas.push({
+                    tipo: 'pis_ajuste_reducao_bc',
+                    m210: m210.valorAjustesReducaoBc || 0,
+                    m215: totalReducaoM215,
+                    diferenca: Math.abs(totalReducaoM215 - (m210.valorAjustesReducaoBc || 0))
+                });
+            }
+
+            // Validar fórmula da base ajustada: Campo 7 = Campo 4 + Campo 5 - Campo 6
+            const baseCalculada = (m210.valorBaseCalculoAntes || 0) + 
+                                 (m210.valorAjustesAcrescimoBc || 0) - 
+                                 (m210.valorAjustesReducaoBc || 0);
+
+            if (Math.abs(baseCalculada - (m210.valorBaseCalculoAjustada || 0)) > 0.01) {
+                inconsistenciasEncontradas.push({
+                    tipo: 'pis_base_calculada',
+                    esperado: baseCalculada,
+                    informado: m210.valorBaseCalculoAjustada || 0,
+                    diferenca: Math.abs(baseCalculada - (m210.valorBaseCalculoAjustada || 0))
+                });
+            }
+        }
+
+        // Validar COFINS (M610 vs M615) - lógica similar
+        const registrosM610 = dados.debitos?.cofins?.filter(reg => reg.registro === 'M610') || [];
+        const registrosM615 = dados.ajustes?.cofins?.filter(reg => reg.registro === 'M615') || [];
+
+        if (registrosM610.length > 0 && registrosM615.length > 0) {
+            const m610 = registrosM610[0];
+
+            const totalAcrescimoM615 = registrosM615
+                .filter(reg => reg.indAjusteBc === '0')
+                .reduce((sum, reg) => sum + (reg.valorAjusteBc || 0), 0);
+
+            const totalReducaoM615 = registrosM615
+                .filter(reg => reg.indAjusteBc === '1')
+                .reduce((sum, reg) => sum + (reg.valorAjusteBc || 0), 0);
+
+            // Validações similares para COFINS...
+            if (Math.abs(totalAcrescimoM615 - (m610.valorAjustesAcrescimoBc || 0)) > 0.01) {
+                inconsistenciasEncontradas.push({
+                    tipo: 'cofins_ajuste_acrescimo_bc',
+                    m610: m610.valorAjustesAcrescimoBc || 0,
+                    m615: totalAcrescimoM615,
+                    diferenca: Math.abs(totalAcrescimoM615 - (m610.valorAjustesAcrescimoBc || 0))
+                });
+            }
+
+            const baseCalculadaCofins = (m610.valorBaseCalculoAntes || 0) + 
+                                       (m610.valorAjustesAcrescimoBc || 0) - 
+                                       (m610.valorAjustesReducaoBc || 0);
+
+            if (Math.abs(baseCalculadaCofins - (m610.valorBaseCalculoAjustada || 0)) > 0.01) {
+                inconsistenciasEncontradas.push({
+                    tipo: 'cofins_base_calculada',
+                    esperado: baseCalculadaCofins,
+                    informado: m610.valorBaseCalculoAjustada || 0,
+                    diferenca: Math.abs(baseCalculadaCofins - (m610.valorBaseCalculoAjustada || 0))
+                });
+            }
+        }
+
+        // Log das inconsistências encontradas
+        if (inconsistenciasEncontradas.length > 0) {
+            console.warn('IMPORTACAO-CONTROLLER: Inconsistências detectadas na validação cruzada:', inconsistenciasEncontradas);
+            inconsistenciasEncontradas.forEach(inc => {
+                console.warn(`IMPORTACAO-CONTROLLER: ${inc.tipo} - Diferença: ${inc.diferenca}`);
+            });
+        } else {
+            console.log('IMPORTACAO-CONTROLLER: Validação cruzada passou sem inconsistências');
+        }
+
+        return inconsistenciasEncontradas;
+    }
+    
+    /**
+     * Preenche os parâmetros fiscais no formulário usando extração específica conforme novo layout SPED
+     * Utiliza as funções de extração que seguem hierarquia de prioridade estabelecida
      */
     function preencherParametrosFiscais(parametrosFiscais) {
-        console.log('IMPORTACAO-CONTROLLER: Preenchendo parâmetros fiscais:', parametrosFiscais);
+        console.log('IMPORTACAO-CONTROLLER: Preenchendo parâmetros fiscais com novo layout:', parametrosFiscais);
 
         if (!parametrosFiscais || typeof parametrosFiscais !== 'object') {
             console.warn('IMPORTACAO-CONTROLLER: Parâmetros fiscais inválidos');
             return;
         }
 
-        // PRIORIDADE: Preencher composição tributária detalhada
-        const composicao = {
-            debitos: parametrosFiscais.debitos || {},
-            creditos: parametrosFiscais.creditos || {},
-            ajustes: parametrosFiscais.ajustes || {},
-            fontesDados: { pis: 'sped', cofins: 'sped', icms: 'sped', ipi: 'sped', iss: 'estimado' }
+        // ETAPA 1: Extrair dados diretamente usando as funções específicas
+        const dadosExtraidos = window.dadosImportadosSped?.original || parametrosFiscais;
+
+        // Aplicar validação cruzada antes do preenchimento
+        const inconsistencias = validarConsistenciaAjustesCruzados(dadosExtraidos);
+        if (inconsistencias.length > 0) {
+            adicionarLog(`Detectadas ${inconsistencias.length} inconsistências nos dados tributários`, 'warning');
+        }
+
+        // ETAPA 2: Extrair valores usando hierarquia de prioridade
+        const valoresTributarios = {
+            // Débitos conforme hierarquia VL_CONT_PER > VL_CONT_APUR > Calculado
+            debitos: {
+                pis: obterDebitoPIS(dadosExtraidos),
+                cofins: obterDebitoCOFINS(dadosExtraidos),
+                icms: obterDebitoICMS(dadosExtraidos),
+                ipi: obterDebitoIPI(dadosExtraidos),
+                iss: parametrosFiscais.debitos?.iss || 0
+            },
+
+            // Créditos conforme fontes específicas
+            creditos: {
+                pis: obterCreditoPIS(dadosExtraidos),
+                cofins: obterCreditoCOFINS(dadosExtraidos),
+                icms: obterCreditoICMS(dadosExtraidos),
+                ipi: obterCreditoIPI(dadosExtraidos)
+            },
+
+            // Ajustes conforme novos campos M210/M610
+            ajustes: {
+                pisOutrosDebitos: obterAjusteDebitoPIS(dadosExtraidos),
+                pisOutrosCreditos: obterAjusteCreditoPIS(dadosExtraidos),
+                cofinsOutrosDebitos: obterAjusteDebitoCOFINS(dadosExtraidos),
+                cofinsOutrosCreditos: obterAjusteCreditoCOFINS(dadosExtraidos)
+            },
+
+            // Bases de cálculo ajustadas (novo layout)
+            basesCalculoAjustadas: extrairBasesCalculoAjustadas(dadosExtraidos),
+
+            // Metadados para rastreabilidade
+            fontesDados: {
+                pis: determinarFonteDadosPIS(dadosExtraidos),
+                cofins: determinarFonteDadosCOFINS(dadosExtraidos),
+                icms: 'sped_fiscal',
+                ipi: 'sped_fiscal'
+            }
         };
 
-        // Preencher campos de débitos
-        if (composicao.debitos.pis !== undefined) {
-            preencherCampoComValor('debito-pis', composicao.debitos.pis, 'SPED');
+        // ETAPA 3: Preencher campos de débitos com validação
+        preencherCampoTributario('debito-pis', valoresTributarios.debitos.pis, valoresTributarios.fontesDados.pis);
+        preencherCampoTributario('debito-cofins', valoresTributarios.debitos.cofins, valoresTributarios.fontesDados.cofins);
+        preencherCampoTributario('debito-icms', valoresTributarios.debitos.icms, valoresTributarios.fontesDados.icms);
+        preencherCampoTributario('debito-ipi', valoresTributarios.debitos.ipi, valoresTributarios.fontesDados.ipi);
+        preencherCampoTributario('debito-iss', valoresTributarios.debitos.iss, 'estimado');
+
+        // ETAPA 4: Preencher campos de créditos
+        preencherCampoTributario('credito-pis', valoresTributarios.creditos.pis, valoresTributarios.fontesDados.pis);
+        preencherCampoTributario('credito-cofins', valoresTributarios.creditos.cofins, valoresTributarios.fontesDados.cofins);
+        preencherCampoTributario('credito-icms', valoresTributarios.creditos.icms, valoresTributarios.fontesDados.icms);
+        preencherCampoTributario('credito-ipi', valoresTributarios.creditos.ipi, valoresTributarios.fontesDados.ipi);
+
+        // ETAPA 5: Preencher campos de ajustes (NOVIDADE do layout)
+        preencherCampoTributario('outros-debitos-pis', valoresTributarios.ajustes.pisOutrosDebitos, valoresTributarios.fontesDados.pis);
+        preencherCampoTributario('outros-creditos-pis', valoresTributarios.ajustes.pisOutrosCreditos, valoresTributarios.fontesDados.pis);
+        preencherCampoTributario('outros-debitos-cofins', valoresTributarios.ajustes.cofinsOutrosDebitos, valoresTributarios.fontesDados.cofins);
+        preencherCampoTributario('outros-creditos-cofins', valoresTributarios.ajustes.cofinsOutrosCreditos, valoresTributarios.fontesDados.cofins);
+
+        // ETAPA 6: Preencher bases de cálculo ajustadas (se campos existirem)
+        if (valoresTributarios.basesCalculoAjustadas) {
+            preencherCampoTributario('base-calculo-pis-ajustada', valoresTributarios.basesCalculoAjustadas.pis, valoresTributarios.fontesDados.pis);
+            preencherCampoTributario('base-calculo-cofins-ajustada', valoresTributarios.basesCalculoAjustadas.cofins, valoresTributarios.fontesDados.cofins);
         }
 
-        if (composicao.debitos.cofins !== undefined) {
-            preencherCampoComValor('debito-cofins', composicao.debitos.cofins, 'SPED');
-        }
+        // ETAPA 7: Calcular e preencher totais
+        const totalDebitos = Object.values(valoresTributarios.debitos).reduce((sum, val) => sum + (val || 0), 0);
+        const totalCreditos = Object.values(valoresTributarios.creditos).reduce((sum, val) => sum + (val || 0), 0);
+        const totalAjustesDebitos = Object.values(valoresTributarios.ajustes)
+            .filter((_, index) => index % 2 === 0) // Débitos (índices pares)
+            .reduce((sum, val) => sum + (val || 0), 0);
+        const totalAjustesCreditos = Object.values(valoresTributarios.ajustes)
+            .filter((_, index) => index % 2 === 1) // Créditos (índices ímpares)
+            .reduce((sum, val) => sum + (val || 0), 0);
 
-        if (composicao.debitos.icms !== undefined) {
-            preencherCampoComValor('debito-icms', composicao.debitos.icms, 'SPED');
-        }
+        preencherCampoTributario('total-debitos', totalDebitos, 'calculado');
+        preencherCampoTributario('total-creditos', totalCreditos, 'calculado');
+        preencherCampoTributario('total-ajustes-debitos', totalAjustesDebitos, 'calculado');
+        preencherCampoTributario('total-ajustes-creditos', totalAjustesCreditos, 'calculado');
 
-        if (composicao.debitos.ipi !== undefined) {
-            preencherCampoComValor('debito-ipi', composicao.debitos.ipi, 'SPED');
-        }
+        // ETAPA 8: Preencher configurações adicionais
+        preencherConfiguracoesFiscais(parametrosFiscais, dadosExtraidos);
 
-        if (composicao.debitos.iss !== undefined) {
-            preencherCampoComValor('debito-iss', composicao.debitos.iss, 'SPED');
-        }
+        // ETAPA 9: Log de resumo
+        adicionarLog(`Parâmetros fiscais preenchidos: ${Object.keys(valoresTributarios.debitos).length} tipos de débito, ${Object.keys(valoresTributarios.creditos).length} tipos de crédito`, 'success');
 
-        // Preencher campos de créditos
-        if (composicao.creditos.pis !== undefined) {
-            preencherCampoComValor('credito-pis', composicao.creditos.pis, 'SPED');
-        }
+        console.log('IMPORTACAO-CONTROLLER: Valores tributários extraídos:', valoresTributarios);
 
-        if (composicao.creditos.cofins !== undefined) {
-            preencherCampoComValor('credito-cofins', composicao.creditos.cofins, 'SPED');
-        }
-
-        if (composicao.creditos.icms !== undefined) {
-            preencherCampoComValor('credito-icms', composicao.creditos.icms, 'SPED');
-        }
-
-        if (composicao.creditos.ipi !== undefined) {
-            preencherCampoComValor('credito-ipi', composicao.creditos.ipi, 'SPED');
-        }
-
-        // Preencher campos de ajustes (outros débitos e créditos)
-        if (composicao.ajustes.pisOutrosDebitos !== undefined) {
-            preencherCampoComValor('outros-debitos-pis', composicao.ajustes.pisOutrosDebitos, 'SPED');
-        }
-
-        if (composicao.ajustes.pisOutrosCreditos !== undefined) {
-            preencherCampoComValor('outros-creditos-pis', composicao.ajustes.pisOutrosCreditos, 'SPED');
-        }
-
-        if (composicao.ajustes.cofinsOutrosDebitos !== undefined) {
-            preencherCampoComValor('outros-debitos-cofins', composicao.ajustes.cofinsOutrosDebitos, 'SPED');
-        }
-
-        if (composicao.ajustes.cofinsOutrosCreditos !== undefined) {
-            preencherCampoComValor('outros-creditos-cofins', composicao.ajustes.cofinsOutrosCreditos, 'SPED');
-        }
-
-        // Calcular e preencher totais
-        const totalDebitos = (
-            (composicao.debitos.pis || 0) + 
-            (composicao.debitos.cofins || 0) + 
-            (composicao.debitos.icms || 0) + 
-            (composicao.debitos.ipi || 0) + 
-            (composicao.debitos.iss || 0)
-        );
-
-        const totalCreditos = (
-            (composicao.creditos.pis || 0) + 
-            (composicao.creditos.cofins || 0) + 
-            (composicao.creditos.icms || 0) + 
-            (composicao.creditos.ipi || 0)
-        );
-
-        preencherCampoComValor('total-debitos', totalDebitos, 'SPED');
-        preencherCampoComValor('total-creditos', totalCreditos, 'SPED');
-
-        // Tipo de operação
-        const campoTipoOperacao = document.getElementById('tipo-operacao');
-        if (campoTipoOperacao && parametrosFiscais.tipoOperacao) {
-            campoTipoOperacao.value = parametrosFiscais.tipoOperacao;
-            marcarCampoComoSped(campoTipoOperacao);
-            campoTipoOperacao.dispatchEvent(new Event('change', { bubbles: true }));
-            console.log(`IMPORTACAO-CONTROLLER: Tipo de operação preenchido: ${parametrosFiscais.tipoOperacao}`);
-        }
-
-        // Regime PIS/COFINS
-        const campoPisCofinsRegime = document.getElementById('pis-cofins-regime');
-        if (campoPisCofinsRegime && parametrosFiscais.regimePisCofins) {
-            campoPisCofinsRegime.value = parametrosFiscais.regimePisCofins;
-            marcarCampoComoSped(campoPisCofinsRegime);
-            campoPisCofinsRegime.dispatchEvent(new Event('change', { bubbles: true }));
-            console.log(`IMPORTACAO-CONTROLLER: Regime PIS/COFINS preenchido: ${parametrosFiscais.regimePisCofins}`);
-        }
-
-        // Atualizar cálculos dependentes
+        // ETAPA 10: Atualizar cálculos dependentes
         if (typeof window.calcularCreditosTributarios === 'function') {
             try {
                 window.calcularCreditosTributarios();
@@ -2121,6 +2326,204 @@ const ImportacaoController = (function() {
             } catch (erro) {
                 console.warn('IMPORTACAO-CONTROLLER: Erro ao recalcular créditos tributários:', erro);
             }
+        }
+    }
+    
+    /**
+     * Preenche campo tributário com validação e indicação de fonte
+     */
+    function preencherCampoTributario(campoId, valor, fonte) {
+        const elemento = document.getElementById(campoId);
+        if (!elemento) {
+            console.warn(`IMPORTACAO-CONTROLLER: Campo ${campoId} não encontrado`);
+            return;
+        }
+
+        if (valor === null || valor === undefined || isNaN(valor)) {
+            console.warn(`IMPORTACAO-CONTROLLER: Valor inválido para campo ${campoId}:`, valor);
+            return;
+        }
+
+        try {
+            // Validar e formatar valor
+            const valorValidado = validarValorMonetario(valor);
+            const valorFormatado = formatarMoeda(valorValidado);
+
+            // Definir valor
+            elemento.value = valorFormatado;
+
+            // Preservar valor numérico para cálculos
+            if (elemento.dataset) {
+                elemento.dataset.rawValue = valorValidado.toString();
+            }
+
+            // Marcar fonte dos dados
+            marcarFonteDados(elemento, fonte);
+
+            // Disparar evento para recálculos
+            elemento.dispatchEvent(new Event('input', { bubbles: true }));
+
+            console.log(`IMPORTACAO-CONTROLLER: Campo ${campoId} preenchido: ${valorFormatado} (fonte: ${fonte})`);
+
+        } catch (erro) {
+            console.error(`IMPORTACAO-CONTROLLER: Erro ao preencher campo ${campoId}:`, erro);
+        }
+    }
+
+    /**
+     * Marca visualmente a fonte dos dados no campo
+     */
+    function marcarFonteDados(elemento, fonte) {
+        if (!elemento) return;
+
+        // Remover classes anteriores
+        elemento.classList.remove('sped-data', 'calculated-data', 'estimated-data');
+
+        // Aplicar estilo baseado na fonte
+        switch (fonte) {
+            case 'VL_CONT_PER':
+            case 'VL_CONT_APUR':
+            case 'sped_contribuicoes':
+            case 'sped_fiscal':
+                elemento.classList.add('sped-data');
+                elemento.title = `Dados extraídos do SPED (${fonte})`;
+                elemento.style.borderLeft = '4px solid #28a745';
+                elemento.style.backgroundColor = '#f8fff8';
+                break;
+
+            case 'calculado':
+                elemento.classList.add('calculated-data');
+                elemento.title = 'Valor calculado automaticamente';
+                elemento.style.borderLeft = '4px solid #17a2b8';
+                elemento.style.backgroundColor = '#f0fcff';
+                break;
+
+            case 'estimado':
+                elemento.classList.add('estimated-data');
+                elemento.title = 'Valor estimado';
+                elemento.style.borderLeft = '4px solid #ffc107';
+                elemento.style.backgroundColor = '#fffbf0';
+                break;
+
+            default:
+                elemento.style.borderLeft = '4px solid #6c757d';
+                elemento.style.backgroundColor = '#f8f9fa';
+        }
+    }
+
+    /**
+     * Extrai bases de cálculo ajustadas conforme novo layout
+     */
+    function extrairBasesCalculoAjustadas(dados) {
+        const bases = {};
+
+        // Base PIS ajustada (M210 campo 7)
+        const registrosM210 = dados.debitos?.pis?.filter(reg => reg.registro === 'M210') || [];
+        if (registrosM210.length > 0 && registrosM210[0].valorBaseCalculoAjustada !== undefined) {
+            bases.pis = registrosM210[0].valorBaseCalculoAjustada;
+        }
+
+        // Base COFINS ajustada (M610 campo 7)
+        const registrosM610 = dados.debitos?.cofins?.filter(reg => reg.registro === 'M610') || [];
+        if (registrosM610.length > 0 && registrosM610[0].valorBaseCalculoAjustada !== undefined) {
+            bases.cofins = registrosM610[0].valorBaseCalculoAjustada;
+        }
+
+        return Object.keys(bases).length > 0 ? bases : null;
+    }
+
+    /**
+     * Determina a fonte específica dos dados PIS
+     */
+    function determinarFonteDadosPIS(dados) {
+        const registrosM210 = dados.debitos?.pis?.filter(reg => reg.registro === 'M210') || [];
+        if (registrosM210.length > 0) {
+            const reg = registrosM210[0];
+            if (reg.valorContribPeriodo !== undefined && reg.valorContribPeriodo > 0) {
+                return 'VL_CONT_PER';
+            } else if (reg.valorContribApurada !== undefined && reg.valorContribApurada > 0) {
+                return 'VL_CONT_APUR';
+            } else {
+                return 'calculado';
+            }
+        }
+        return 'sped_contribuicoes';
+    }
+
+    /**
+     * Determina a fonte específica dos dados COFINS
+     */
+    function determinarFonteDadosCOFINS(dados) {
+        const registrosM610 = dados.debitos?.cofins?.filter(reg => reg.registro === 'M610') || [];
+        if (registrosM610.length > 0) {
+            const reg = registrosM610[0];
+            if (reg.valorContribPeriodo !== undefined && reg.valorContribPeriodo > 0) {
+                return 'VL_CONT_PER';
+            } else if (reg.valorContribApurada !== undefined && reg.valorContribApurada > 0) {
+                return 'VL_CONT_APUR';
+            } else {
+                return 'calculado';
+            }
+        }
+        return 'sped_contribuicoes';
+    }
+
+    /**
+     * Preenche configurações fiscais adicionais
+     */
+    function preencherConfiguracoesFiscais(parametrosFiscais, dadosExtraidos) {
+        // Tipo de operação
+        const campoTipoOperacao = document.getElementById('tipo-operacao');
+        if (campoTipoOperacao && parametrosFiscais.tipoOperacao) {
+            campoTipoOperacao.value = parametrosFiscais.tipoOperacao;
+            marcarFonteDados(campoTipoOperacao, 'sped_contribuicoes');
+            campoTipoOperacao.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+
+        // Regime PIS/COFINS baseado no registro 0110
+        const regimePisCofins = dadosExtraidos.regimes?.pis_cofins?.codigoIncidencia;
+        const campoPisCofinsRegime = document.getElementById('pis-cofins-regime');
+        if (campoPisCofinsRegime && regimePisCofins) {
+            // Mapear código para valor do select
+            const regimeMapping = {
+                '1': 'nao-cumulativo',
+                '2': 'cumulativo',
+                '3': 'misto'
+            };
+
+            const regimeValue = regimeMapping[regimePisCofins];
+            if (regimeValue) {
+                campoPisCofinsRegime.value = regimeValue;
+                marcarFonteDados(campoPisCofinsRegime, 'sped_contribuicoes');
+                campoPisCofinsRegime.dispatchEvent(new Event('change', { bubbles: true }));
+
+                adicionarLog(`Regime PIS/COFINS identificado: ${regimeValue} (código ${regimePisCofins})`, 'info');
+            }
+        }
+
+        // Alíquotas efetivas se disponíveis
+        preencherAliquotasEfetivas(dadosExtraidos);
+    }
+
+    /**
+     * Preenche alíquotas efetivas calculadas
+     */
+    function preencherAliquotasEfetivas(dados) {
+        const faturamento = obterFaturamentoAtual();
+        if (faturamento <= 0) return;
+
+        // Calcular alíquota efetiva PIS
+        const debitoPIS = obterDebitoPIS(dados);
+        if (debitoPIS > 0) {
+            const aliquotaEfetivaPIS = (debitoPIS / faturamento) * 100;
+            preencherCampoTributario('aliquota-efetiva-pis', aliquotaEfetivaPIS.toFixed(4), 'calculado');
+        }
+
+        // Calcular alíquota efetiva COFINS
+        const debitoCOFINS = obterDebitoCOFINS(dados);
+        if (debitoCOFINS > 0) {
+            const aliquotaEfetivaCOFINS = (debitoCOFINS / faturamento) * 100;
+            preencherCampoTributario('aliquota-efetiva-cofins', aliquotaEfetivaCOFINS.toFixed(4), 'calculado');
         }
     }
     
