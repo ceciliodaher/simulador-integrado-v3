@@ -1689,21 +1689,22 @@ const ImportacaoController = (function() {
             }
         });
 
-        // Validar e processar alíquotas efetivas
+        // Validar e processar alíquotas efetivas - MODIFICAÇÃO AQUI
         if (aliquotasEfetivas && typeof aliquotasEfetivas === 'object') {
             Object.entries(aliquotasEfetivas).forEach(([imposto, aliquota]) => {
-                // Validar e normalizar alíquota
-                let aliquotaValidada = parseFloat(aliquota);
-
-                // Converter de decimal para percentual se necessário (0.01 -> 1%)
-                if (aliquotaValidada > 0 && aliquotaValidada <= 1) {
-                    aliquotaValidada = aliquotaValidada * 100;
-                }
+                // Alíquotas já devem estar em formato percentual (0-100), mas garantimos a validação
+                let aliquotaValidada = typeof aliquota === 'number' ? aliquota : parseFloat(aliquota);
 
                 // Garantir que é um valor válido entre 0 e 100%
-                aliquotaValidada = Math.max(0, Math.min(100, aliquotaValidada));
-
                 if (!isNaN(aliquotaValidada)) {
+                    // Garantir que está em formato percentual
+                    if (aliquotaValidada > 0 && aliquotaValidada <= 1) {
+                        aliquotaValidada = aliquotaValidada * 100;
+                    }
+
+                    aliquotaValidada = Math.max(0, Math.min(100, aliquotaValidada));
+
+                    // Usar 3 casas decimais para percentuais de alíquotas efetivas
                     preencherCampoComValor(`aliquota-efetiva-${imposto}`, aliquotaValidada, null, 3);
                     console.log(`IMPORTACAO-CONTROLLER: Alíquota efetiva ${imposto} preenchida: ${aliquotaValidada.toFixed(3)}%`);
                 } else {
@@ -1917,6 +1918,7 @@ const ImportacaoController = (function() {
             if (isPercentual) {
                 // Formato percentual com precisão específica
                 valorFormatado = valorValidado.toFixed(decimais);
+                // Garantir que o valor inclui o símbolo de percentual
                 if (!valorFormatado.includes('%')) {
                     valorFormatado = valorFormatado + '%';
                 }
@@ -1943,6 +1945,11 @@ const ImportacaoController = (function() {
             // Marcar campo como preenchido pelo SPED se aplicável
             if (fonte === 'SPED') {
                 marcarCampoComoSped(elemento);
+            }
+
+            // Também armazenar o valor bruto para campos percentuais
+            if (isPercentual && elemento.dataset) {
+                elemento.dataset.percentValue = valorValidado.toString();
             }
 
             // Disparar evento para recalcular campos dependentes

@@ -88,6 +88,33 @@ function extrairValorNumerico(dadoComFonte) {
     return parseValorMonetario(dadoComFonte);
 }
 
+/**
+ * Extrai e normaliza um valor percentual
+ */
+function extrairValorPercentual(valor) {
+    if (typeof valor === 'number') {
+        // Se já for um número, verificar se está em formato decimal e converter para percentual se necessário
+        if (valor > 0 && valor <= 1) {
+            return valor * 100;
+        }
+        return valor;
+    }
+    if (valor && typeof valor === 'object' && valor.valor !== undefined) {
+        return extrairValorPercentual(valor.valor);
+    }
+    
+    // Tentar converter string para número
+    const valorNumerico = parseFloat(valor);
+    if (!isNaN(valorNumerico)) {
+        if (valorNumerico > 0 && valorNumerico <= 1) {
+            return valorNumerico * 100;
+        }
+        return valorNumerico;
+    }
+    
+    return 0;
+}
+
     const SpedExtractor = (function() {
 
         /**
@@ -2736,19 +2763,23 @@ function extrairValorNumerico(dadoComFonte) {
             // PIS Efetivo
             const totalPIS = dadosContribuicoes?.detalhesPIS?.reduce((acc, item) => 
                 acc + item.valorContribuicao, 0) || 0;
+            // Armazenar como percentual (0-100), não como decimal (0-1)
             aliquotas.pisEfetivo = (totalPIS / faturamentoMensal) * 100;
 
             // COFINS Efetivo
             const totalCOFINS = dadosContribuicoes?.detalhesCOFINS?.reduce((acc, item) => 
                 acc + item.valorContribuicao, 0) || 0;
+            // Armazenar como percentual (0-100), não como decimal (0-1)
             aliquotas.cofinsEfetivo = (totalCOFINS / faturamentoMensal) * 100;
 
             // ICMS Efetivo
             const totalICMS = dadosFiscal?.totalizadores?.valorICMS || 0;
+            // Armazenar como percentual (0-100), não como decimal (0-1)
             aliquotas.icmsEfetivo = (totalICMS / faturamentoMensal) * 100;
 
             // IPI Efetivo
             const totalIPI = dadosFiscal?.totalizadores?.valorIPI || 0;
+            // Armazenar como percentual (0-100), não como decimal (0-1)
             aliquotas.ipiEfetivo = (totalIPI / faturamentoMensal) * 100;
         }
 
@@ -2910,21 +2941,65 @@ function extrairValorNumerico(dadoComFonte) {
                 });
                 parametros.composicaoTributaria.fontesDados.ipi_debito = FonteDados.SPED;
             }
+            
+            // MODIFICAÇÃO 1: Alterar a forma como as alíquotas efetivas são calculadas
+            // Substituir o trecho atual pelo seguinte:
 
-            // Calcular alíquotas efetivas com fonte
-            const faturamento = extrairValorNumerico(parametros.faturamentoMensal) || 1; // Evitar divisão por zero
+            // Calcular alíquotas efetivas
+            if (faturamentoMensal > 0) {
+                // Garantir que os débitos e créditos são números válidos
+                Object.keys(composicaoTributaria.debitos).forEach(imposto => {
+                    const debito = validarValorMonetario(composicaoTributaria.debitos[imposto]);
+                    const credito = validarValorMonetario(composicaoTributaria.creditos[imposto] || 0);
 
-            Object.keys(parametros.composicaoTributaria.debitos).forEach(imposto => {
-                const debito = extrairValorNumerico(parametros.composicaoTributaria.debitos[imposto]);
-                if (debito > 0 && faturamento > 0) {
-                    const aliquotaEfetiva = (debito / faturamento) * 100;
-                    parametros.composicaoTributaria.aliquotasEfetivas[imposto] = criarValorComFonte(
-                        aliquotaEfetiva, 
-                        FonteDados.CALCULADO,
-                        { baseCalculo: faturamento, valorDebito: debito }
-                    );
+                    // Calcular imposto líquido e alíquota efetiva
+                    const impostoLiquido = Math.max(0, debito - credito);
+                    // Armazenar alíquota como valor percentual (de 0 a 100, não de 0 a 1)
+                    const aliquotaEfetiva = (impostoLiquido / faturamentoMensal) * 100;
+
+                    // Validar e registrar a alíquota
+                    if (aliquotaEfetiva >= 0 && aliquotaEfetiva <= 100) {
+                        composicaoTributaria.aliquotasEfetivas[imposto] = aliquotaEfetiva;
+                        console.log(`SPED-EXTRACTOR: Alíquota efetiva de ${imposto} calculada: ${aliquotaEfetiva.toFixed(3)}%`);
+                    } else {
+                        // Definir valores padrão seguros em caso de cálculo inválido
+                        composicaoTributaria.aliquotasEfetivas[imposto] = imposto === 'pis' ? 0.65 : 
+                                                                          imposto === 'cofins' ? 3.0 : 
+                                                                          imposto === 'icms' ? 18.0 : 0.0;
+                        console.warn(`SPED-EXTRACTOR: Alíquota efetiva de ${imposto} inválida (${aliquotaEfetiva}), usando padrão`);
+                    }
+                });
+
+                // Calcular alíquota total
+                const totalImpostoLiquido = Object.keys(composicaoTributaria.debitos).reduce((total, imposto) => {
+                    const debito = composicaoTributaria.debitos[imposto];
+                    const credito = composicaoTributaria.creditos[imposto] || 0;
+                    return total + Math.max(0, debito - credito);
+                }, 0);
+
+                const aliquotaTotal = (totalImpostoLiquido / faturamentoMensal) * 100;
+
+                // Validar a alíquota total (deve estar entre 0 e 100)
+                if (aliquotaTotal >= 0 && aliquotaTotal <= 100) {
+                    composicaoTributaria.aliquotasEfetivas.total = aliquotaTotal;
+                } else {
+                    console.warn(`SPED-EXTRACTOR: Alíquota efetiva total fora dos limites: ${aliquotaTotal}`);
+                    composicaoTributaria.aliquotasEfetivas.total = 0.0;
                 }
-            });
+
+                console.log('SPED-EXTRACTOR: Alíquotas efetivas calculadas:', composicaoTributaria.aliquotasEfetivas);
+            } else {
+                console.warn('SPED-EXTRACTOR: Faturamento zero, não foi possível calcular alíquotas efetivas');
+                // Definir alíquotas padrão (agora em formato percentual)
+                composicaoTributaria.aliquotasEfetivas = {
+                    pis: 0.65,
+                    cofins: 3.0,
+                    icms: 18.0,
+                    ipi: 0.0,
+                    iss: 0.0,
+                    total: 21.65
+                };
+            }
 
             // Estimar valores ausentes
             estimarValoresAusentes(parametros, spedFiscal, spedContribuicoes);
