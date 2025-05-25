@@ -273,6 +273,7 @@ const ImportacaoController = (function() {
     
     /**
      * Preenche os campos do simulador com os dados extraídos
+     * @param {Object} dados - Dados na estrutura aninhada
      */
     function preencherCamposSimulador(dados) {
         console.log('IMPORTACAO-CONTROLLER: Preenchendo campos do simulador:', dados);
@@ -283,9 +284,17 @@ const ImportacaoController = (function() {
                 throw new Error('Dados inválidos para preenchimento do simulador');
             }
 
+            // Verificar se dados estão na estrutura aninhada
+            const estruturaTipo = window.DataManager.detectarTipoEstrutura(dados);
+            if (estruturaTipo !== "aninhada") {
+                throw new Error('Dados não estão na estrutura aninhada canônica');
+            }
+
+            // Validar e normalizar os dados antes de preencher
+            const dadosValidados = window.DataManager.validarENormalizar(dados);
+
             // Converter para estrutura plana para facilitar o acesso aos campos
-            // Utilizando explicitamente o DataManager para conversão
-            const dadosPlanos = window.DataManager.converterParaEstruturaPlana(dados);
+            const dadosPlanos = window.DataManager.converterParaEstruturaPlana(dadosValidados);
 
             // Preencher dados da empresa
             if (elements.importEmpresa?.checked !== false) {
@@ -315,14 +324,20 @@ const ImportacaoController = (function() {
 
         } catch (erro) {
             console.error('IMPORTACAO-CONTROLLER: Erro ao preencher campos:', erro);
-            adicionarLog('Erro ao preencher campos do simulador: ' + erro.message);
+            adicionarLog('Erro ao preencher campos do simulador: ' + erro.message, 'error');
         }
     }
     
     /**
      * Preenche os dados da empresa no formulário
+     * @param {Object} dadosPlanos - Dados na estrutura plana
      */
     function preencherDadosEmpresa(dadosPlanos) {
+        // Verificar tipo da estrutura de dados
+        if (window.DataManager.detectarTipoEstrutura(dadosPlanos) === "aninhada") {
+            throw new Error('Dados não estão na estrutura plana esperada');
+        }
+
         // Nome da empresa
         const campoEmpresa = document.getElementById('empresa');
         if (campoEmpresa && dadosPlanos.nomeEmpresa) {
@@ -332,9 +347,9 @@ const ImportacaoController = (function() {
 
         // Faturamento - usar DataManager para validação e formatação
         const campoFaturamento = document.getElementById('faturamento');
-        if (campoFaturamento && dadosPlanos.faturamento) {
+        if (campoFaturamento && dadosPlanos.faturamento !== undefined) {
             // Usar DataManager para extrair e formatar o valor monetário
-            const valorValidado = window.DataManager.extrairValorMonetario(dadosPlanos.faturamento);
+            const valorValidado = window.DataManager.normalizarValor(dadosPlanos.faturamento, 'monetario');
             campoFaturamento.value = window.DataManager.formatarMoeda(valorValidado);
 
             // Preservar valor numérico para cálculos
@@ -362,66 +377,38 @@ const ImportacaoController = (function() {
     
     /**
      * Preenche os parâmetros fiscais no formulário
+     * @param {Object} dadosPlanos - Dados na estrutura plana
      */
     function preencherParametrosFiscais(dadosPlanos) {
+        // Verificar tipo da estrutura de dados
+        if (window.DataManager.detectarTipoEstrutura(dadosPlanos) === "aninhada") {
+            throw new Error('Dados não estão na estrutura plana esperada');
+        }
+
         // Verifica se temos dados de composição tributária SPED
-        const temDadosSPED = dadosPlanos.composicaoTributaria || 
-                             (dadosPlanos.parametrosFiscais && dadosPlanos.parametrosFiscais.composicaoTributaria);
+        const temDadosSPED = dadosPlanos.dadosSpedImportados === true;
 
-        // Se temos dados SPED, priorizá-los
+        // Preencher débitos
+        preencherCampoTributario('debito-pis', dadosPlanos.debitoPis || 0);
+        preencherCampoTributario('debito-cofins', dadosPlanos.debitoCofins || 0);
+        preencherCampoTributario('debito-icms', dadosPlanos.debitoIcms || 0);
+        preencherCampoTributario('debito-ipi', dadosPlanos.debitoIpi || 0);
+        preencherCampoTributario('debito-iss', dadosPlanos.debitoIss || 0);
+
+        // Preencher créditos
+        preencherCampoTributario('credito-pis', dadosPlanos.creditosPIS || dadosPlanos.creditoPis || 0);
+        preencherCampoTributario('credito-cofins', dadosPlanos.creditosCOFINS || dadosPlanos.creditoCofins || 0);
+        preencherCampoTributario('credito-icms', dadosPlanos.creditosICMS || dadosPlanos.creditoIcms || 0);
+        preencherCampoTributario('credito-ipi', dadosPlanos.creditosIPI || dadosPlanos.creditoIpi || 0);
+        preencherCampoTributario('credito-iss', dadosPlanos.creditoIss || 0);
+
+        // Se há dados SPED, adicionar classe para identificar campos
         if (temDadosSPED) {
-            const composicao = dadosPlanos.composicaoTributaria || dadosPlanos.parametrosFiscais.composicaoTributaria;
-
-            // Preencher débitos SPED
-            if (composicao.debitos) {
-                preencherCampoTributario('debito-pis', composicao.debitos.pis || 0);
-                preencherCampoTributario('debito-cofins', composicao.debitos.cofins || 0);
-                preencherCampoTributario('debito-icms', composicao.debitos.icms || 0);
-                preencherCampoTributario('debito-ipi', composicao.debitos.ipi || 0);
-                preencherCampoTributario('debito-iss', composicao.debitos.iss || 0);
-            }
-
-            // Preencher créditos SPED
-            if (composicao.creditos) {
-                preencherCampoTributario('credito-pis', composicao.creditos.pis || 0);
-                preencherCampoTributario('credito-cofins', composicao.creditos.cofins || 0);
-                preencherCampoTributario('credito-icms', composicao.creditos.icms || 0);
-                preencherCampoTributario('credito-ipi', composicao.creditos.ipi || 0);
-                preencherCampoTributario('credito-iss', composicao.creditos.iss || 0);
-            }
-
-            // Adicionar classe para identificar campos com dados SPED
             document.querySelectorAll('.campo-tributario').forEach(campo => {
                 campo.classList.add('sped-data');
             });
-
-            // Adicionar log sobre uso de dados SPED
             adicionarLog('Dados tributários do SPED aplicados ao formulário.', 'success');
-            return;
         }
-
-        // Caso não tenha dados SPED, usar lógica original
-        // Preencher débitos usando campos da estrutura plana
-        const debitosPis = dadosPlanos.debitoPis || 0;
-        const debitosCofins = dadosPlanos.debitoCofins || 0;
-        const debitosIcms = dadosPlanos.debitoIcms || 0;
-        const debitosIpi = dadosPlanos.debitoIpi || 0;
-
-        preencherCampoTributario('debito-pis', debitosPis);
-        preencherCampoTributario('debito-cofins', debitosCofins);
-        preencherCampoTributario('debito-icms', debitosIcms);
-        preencherCampoTributario('debito-ipi', debitosIpi);
-
-        // Preencher créditos usando campos da estrutura plana
-        const creditosPis = dadosPlanos.creditoPis || dadosPlanos.creditosPIS || 0;
-        const creditosCofins = dadosPlanos.creditoCofins || dadosPlanos.creditosCOFINS || 0;
-        const creditosIcms = dadosPlanos.creditoIcms || dadosPlanos.creditosICMS || 0;
-        const creditosIpi = dadosPlanos.creditoIpi || dadosPlanos.creditosIPI || 0;
-
-        preencherCampoTributario('credito-pis', creditosPis);
-        preencherCampoTributario('credito-cofins', creditosCofins);
-        preencherCampoTributario('credito-icms', creditosIcms);
-        preencherCampoTributario('credito-ipi', creditosIpi);
 
         // Regime PIS/COFINS
         const campoPisCofinsRegime = document.getElementById('pis-cofins-regime');
@@ -436,6 +423,8 @@ const ImportacaoController = (function() {
     
     /**
      * Preenche campo tributário com valor validado usando DataManager
+     * @param {string} campoId - ID do campo a ser preenchido
+     * @param {number|string} valor - Valor a ser preenchido
      */
     function preencherCampoTributario(campoId, valor) {
         const elemento = document.getElementById(campoId);
@@ -443,7 +432,7 @@ const ImportacaoController = (function() {
 
         try {
             // Validar e normalizar valor usando DataManager
-            const valorValidado = window.DataManager.extrairValorMonetario(valor);
+            const valorValidado = window.DataManager.normalizarValor(valor, 'monetario');
 
             // Formatar e definir valor
             elemento.value = window.DataManager.formatarMoeda(valorValidado);
@@ -468,11 +457,17 @@ const ImportacaoController = (function() {
     
     /**
      * Preenche dados do ciclo financeiro com validação do DataManager
+     * @param {Object} dadosPlanos - Dados na estrutura plana
      */
     function preencherCicloFinanceiro(dadosPlanos) {
+        // Verificar tipo da estrutura de dados
+        if (window.DataManager.detectarTipoEstrutura(dadosPlanos) === "aninhada") {
+            throw new Error('Dados não estão na estrutura plana esperada');
+        }
+
         // PMR - Prazo Médio de Recebimento
         const campoPmr = document.getElementById('pmr');
-        if (campoPmr && dadosPlanos.pmr) {
+        if (campoPmr && dadosPlanos.pmr !== undefined) {
             const pmrValidado = window.DataManager.normalizarValor(dadosPlanos.pmr, 'numero');
             campoPmr.value = Math.max(1, Math.min(365, pmrValidado));
             campoPmr.dispatchEvent(new Event('input', { bubbles: true }));
@@ -480,7 +475,7 @@ const ImportacaoController = (function() {
 
         // PMP - Prazo Médio de Pagamento
         const campoPmp = document.getElementById('pmp');
-        if (campoPmp && dadosPlanos.pmp) {
+        if (campoPmp && dadosPlanos.pmp !== undefined) {
             const pmpValidado = window.DataManager.normalizarValor(dadosPlanos.pmp, 'numero');
             campoPmp.value = Math.max(1, Math.min(365, pmpValidado));
             campoPmp.dispatchEvent(new Event('input', { bubbles: true }));
@@ -488,7 +483,7 @@ const ImportacaoController = (function() {
 
         // PME - Prazo Médio de Estoque
         const campoPme = document.getElementById('pme');
-        if (campoPme && dadosPlanos.pme) {
+        if (campoPme && dadosPlanos.pme !== undefined) {
             const pmeValidado = window.DataManager.normalizarValor(dadosPlanos.pme, 'numero');
             campoPme.value = Math.max(0, Math.min(365, pmeValidado));
             campoPme.dispatchEvent(new Event('input', { bubbles: true }));
@@ -496,7 +491,7 @@ const ImportacaoController = (function() {
 
         // Percentual de vendas à vista
         const campoPercVista = document.getElementById('perc-vista');
-        if (campoPercVista && dadosPlanos.percVista) {
+        if (campoPercVista && dadosPlanos.percVista !== undefined) {
             const percVistaValidado = window.DataManager.extrairValorPercentual(dadosPlanos.percVista);
             const percVistaFormatado = (percVistaValidado * 100).toFixed(1);
             campoPercVista.value = percVistaFormatado;
@@ -548,6 +543,21 @@ const ImportacaoController = (function() {
             (elements.spedEcf?.files.length > 0) ||
             (elements.spedEcd?.files.length > 0)
         );
+    }
+    
+    /**
+     * Verifica se os dados estão na estrutura esperada
+     * @param {Object} dados - Dados a serem verificados
+     * @param {string} tipoEsperado - Tipo de estrutura esperada ('aninhada' ou 'plana')
+     * @returns {boolean} - true se estiver na estrutura esperada
+     */
+    function verificarEstruturaDados(dados, tipoEsperado) {
+        if (!dados || typeof dados !== 'object') {
+            return false;
+        }
+
+        const tipoDetectado = window.DataManager.detectarTipoEstrutura(dados);
+        return tipoDetectado === tipoEsperado;
     }
     
     /**
