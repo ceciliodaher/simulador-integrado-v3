@@ -308,6 +308,9 @@ const ImportacaoController = (function() {
                             return;
                         }
 
+                        // Verificação de registros específicos de impostos conforme tabela de mapeamento
+                        verificarRegistrosImpostos(dados, tipo);
+
                         // Validar consistência dos dados usando DataManager
                         if (window.DataManager && typeof window.DataManager.validarConsistenciaDados === 'function') {
                             const validacao = window.DataManager.validarConsistenciaDados(dados, tipo);
@@ -358,6 +361,102 @@ const ImportacaoController = (function() {
     }
     
     /**
+     * Verifica se os registros específicos de impostos estão presentes e consistentes
+     * conforme mapeamento da tabela de análise comparativa
+     */
+    function verificarRegistrosImpostos(dados, tipo) {
+        console.log(`IMPORTACAO-CONTROLLER: Verificando registros de impostos para tipo ${tipo}`);
+
+        // Verificação específica por tipo de arquivo
+        if (tipo === 'fiscal') {
+            // Verificar ICMS (E110)
+            const registrosE110 = dados.debitos?.icms?.filter(reg => reg.registro === 'E110') || [];
+            if (registrosE110.length > 0) {
+                console.log(`IMPORTACAO-CONTROLLER: Encontrados ${registrosE110.length} registros E110 para ICMS`);
+                // Verificar se os campos necessários estão presentes
+                registrosE110.forEach((reg, index) => {
+                    if (reg.valorTotalDebitos === undefined || reg.valorTotalCreditos === undefined) {
+                        console.warn(`IMPORTACAO-CONTROLLER: Registro E110 #${index+1} com campos incompletos`);
+                    }
+                });
+            } else {
+                console.warn('IMPORTACAO-CONTROLLER: Nenhum registro E110 (ICMS) encontrado');
+            }
+
+            // Verificar IPI (E200)
+            const registrosE200 = dados.debitos?.ipi?.filter(reg => reg.registro === 'E200') || [];
+            if (registrosE200.length > 0) {
+                console.log(`IMPORTACAO-CONTROLLER: Encontrados ${registrosE200.length} registros E200 para IPI`);
+                // Verificar se os campos necessários estão presentes
+                registrosE200.forEach((reg, index) => {
+                    if (reg.valorTotalDebitos === undefined || reg.valorTotalCreditos === undefined) {
+                        console.warn(`IMPORTACAO-CONTROLLER: Registro E200 #${index+1} com campos incompletos`);
+                    }
+                });
+            } else {
+                console.warn('IMPORTACAO-CONTROLLER: Nenhum registro E200 (IPI) encontrado');
+            }
+        } 
+        else if (tipo === 'contribuicoes') {
+            // Verificar PIS (M200)
+            const registrosM200 = dados.debitos?.pis?.filter(reg => reg.registro === 'M200') || [];
+            if (registrosM200.length > 0) {
+                console.log(`IMPORTACAO-CONTROLLER: Encontrados ${registrosM200.length} registros M200 para PIS`);
+                // Verificar se os campos necessários estão presentes
+                registrosM200.forEach((reg, index) => {
+                    if (reg.valorTotalDebitos === undefined || reg.valorTotalCreditos === undefined) {
+                        console.warn(`IMPORTACAO-CONTROLLER: Registro M200 #${index+1} com campos incompletos`);
+                    }
+                });
+            } else {
+                console.warn('IMPORTACAO-CONTROLLER: Nenhum registro M200 (PIS) encontrado');
+            }
+
+            // Verificar ajustes PIS (M210)
+            const registrosM210 = dados.ajustes?.pis?.filter(reg => reg.registro === 'M210') || [];
+            if (registrosM210.length > 0) {
+                console.log(`IMPORTACAO-CONTROLLER: Encontrados ${registrosM210.length} registros M210 para ajustes PIS`);
+                // Verificar se os campos necessários estão presentes
+                registrosM210.forEach((reg, index) => {
+                    if (reg.valorTotalAjDebitos === undefined || reg.valorTotalAjCreditos === undefined) {
+                        console.warn(`IMPORTACAO-CONTROLLER: Registro M210 #${index+1} com campos incompletos`);
+                    }
+                });
+            } else {
+                console.log('IMPORTACAO-CONTROLLER: Nenhum registro M210 (ajustes PIS) encontrado');
+            }
+
+            // Verificar COFINS (M600)
+            const registrosM600 = dados.debitos?.cofins?.filter(reg => reg.registro === 'M600') || [];
+            if (registrosM600.length > 0) {
+                console.log(`IMPORTACAO-CONTROLLER: Encontrados ${registrosM600.length} registros M600 para COFINS`);
+                // Verificar se os campos necessários estão presentes
+                registrosM600.forEach((reg, index) => {
+                    if (reg.valorTotalDebitos === undefined || reg.valorTotalCreditos === undefined) {
+                        console.warn(`IMPORTACAO-CONTROLLER: Registro M600 #${index+1} com campos incompletos`);
+                    }
+                });
+            } else {
+                console.warn('IMPORTACAO-CONTROLLER: Nenhum registro M600 (COFINS) encontrado');
+            }
+
+            // Verificar ajustes COFINS (M610)
+            const registrosM610 = dados.ajustes?.cofins?.filter(reg => reg.registro === 'M610') || [];
+            if (registrosM610.length > 0) {
+                console.log(`IMPORTACAO-CONTROLLER: Encontrados ${registrosM610.length} registros M610 para ajustes COFINS`);
+                // Verificar se os campos necessários estão presentes
+                registrosM610.forEach((reg, index) => {
+                    if (reg.valorTotalAjDebitos === undefined || reg.valorTotalAjCreditos === undefined) {
+                        console.warn(`IMPORTACAO-CONTROLLER: Registro M610 #${index+1} com campos incompletos`);
+                    }
+                });
+            } else {
+                console.log('IMPORTACAO-CONTROLLER: Nenhum registro M610 (ajustes COFINS) encontrado');
+            }
+        }
+    }
+    
+    /**
      * Adiciona logs detalhados sobre os dados extraídos
      */
     function logDadosExtraidos(dados, tipo) {
@@ -380,56 +479,54 @@ const ImportacaoController = (function() {
         // Logs específicos por tipo
         switch(tipo) {
             case 'fiscal':
-                if (dados.debitos?.icms?.length > 0) {
-                    // Obter valor diretamente do registro E110
-                    const registroE110 = dados.debitos.icms.find(d => d.origem === 'registro_e110' || d.valorTotalDebitos !== undefined);
-                    if (registroE110) {
-                        const valorICMS = registroE110.valorTotalDebitos || 0;
-                        adicionarLog(`ICMS: Valor total débitos R$ ${valorICMS.toFixed(2)}`, 'info');
-
-                        const valorCreditos = registroE110.valorTotalCreditos || 0;
-                        adicionarLog(`ICMS: Valor total créditos R$ ${valorCreditos.toFixed(2)}`, 'info');
-                    }
+                // Log simplificado para ICMS conforme tabela de mapeamento (E110)
+                const registrosE110 = dados.debitos?.icms?.filter(reg => reg.registro === 'E110') || [];
+                if (registrosE110.length > 0) {
+                    const icmsDebitos = registrosE110[0].valorTotalDebitos || 0;
+                    const icmsCreditos = registrosE110[0].valorTotalCreditos || 0;
+                    adicionarLog(`ICMS: Débitos R$ ${icmsDebitos.toFixed(2)}, Créditos R$ ${icmsCreditos.toFixed(2)}`, 'info');
                 }
 
-                if (dados.debitos?.ipi?.length > 0) {
-                    // Obter valor diretamente do registro E200
-                    const registroE200 = dados.debitos.ipi.find(d => d.origem === 'registro_e200' || d.valorTotalDebitos !== undefined);
-                    if (registroE200) {
-                        const valorIPI = registroE200.valorTotalDebitos || 0;
-                        adicionarLog(`IPI: Valor total débitos R$ ${valorIPI.toFixed(2)}`, 'info');
-
-                        const valorCreditos = registroE200.valorTotalCreditos || 0;
-                        adicionarLog(`IPI: Valor total créditos R$ ${valorCreditos.toFixed(2)}`, 'info');
-                    }
+                // Log simplificado para IPI conforme tabela de mapeamento (E200)
+                const registrosE200 = dados.debitos?.ipi?.filter(reg => reg.registro === 'E200') || [];
+                if (registrosE200.length > 0) {
+                    const ipiDebitos = registrosE200[0].valorTotalDebitos || 0;
+                    const ipiCreditos = registrosE200[0].valorTotalCreditos || 0;
+                    adicionarLog(`IPI: Débitos R$ ${ipiDebitos.toFixed(2)}, Créditos R$ ${ipiCreditos.toFixed(2)}`, 'info');
                 }
                 break;
 
             case 'contribuicoes':
-                // PIS
-                if (dados.debitos?.pis?.length > 0) {
-                    // Obter valor diretamente do registro M200
-                    const registroM200 = dados.debitos.pis.find(d => d.origem === 'registro_m200' || d.valorTotalDebitos !== undefined);
-                    if (registroM200) {
-                        const valorPIS = registroM200.valorTotalDebitos || 0;
-                        adicionarLog(`PIS: Valor total débitos R$ ${valorPIS.toFixed(2)}`, 'info');
-
-                        const valorCreditos = registroM200.valorCredito || 0;
-                        adicionarLog(`PIS: Valor total créditos R$ ${valorCreditos.toFixed(2)}`, 'info');
-                    }
+                // Log simplificado para PIS conforme tabela de mapeamento (M200)
+                const registrosM200 = dados.debitos?.pis?.filter(reg => reg.registro === 'M200') || [];
+                if (registrosM200.length > 0) {
+                    const pisDebitos = registrosM200[0].valorTotalDebitos || 0;
+                    const pisCreditos = registrosM200[0].valorTotalCreditos || 0;
+                    adicionarLog(`PIS: Débitos R$ ${pisDebitos.toFixed(2)}, Créditos R$ ${pisCreditos.toFixed(2)}`, 'info');
                 }
 
-                // COFINS
-                if (dados.debitos?.cofins?.length > 0) {
-                    // Obter valor diretamente do registro M600
-                    const registroM600 = dados.debitos.cofins.find(d => d.origem === 'registro_m600' || d.valorTotalDebitos !== undefined);
-                    if (registroM600) {
-                        const valorCOFINS = registroM600.valorTotalDebitos || 0;
-                        adicionarLog(`COFINS: Valor total débitos R$ ${valorCOFINS.toFixed(2)}`, 'info');
+                // Log para ajustes PIS (M210)
+                const registrosM210 = dados.ajustes?.pis?.filter(reg => reg.registro === 'M210') || [];
+                if (registrosM210.length > 0) {
+                    const pisAjDebitos = registrosM210[0].valorTotalAjDebitos || 0;
+                    const pisAjCreditos = registrosM210[0].valorTotalAjCreditos || 0;
+                    adicionarLog(`Ajustes PIS: Outros Débitos R$ ${pisAjDebitos.toFixed(2)}, Outros Créditos R$ ${pisAjCreditos.toFixed(2)}`, 'info');
+                }
 
-                        const valorCreditos = registroM600.valorCredito || 0;
-                        adicionarLog(`COFINS: Valor total créditos R$ ${valorCreditos.toFixed(2)}`, 'info');
-                    }
+                // Log simplificado para COFINS conforme tabela de mapeamento (M600)
+                const registrosM600 = dados.debitos?.cofins?.filter(reg => reg.registro === 'M600') || [];
+                if (registrosM600.length > 0) {
+                    const cofinsDebitos = registrosM600[0].valorTotalDebitos || 0;
+                    const cofinsCreditos = registrosM600[0].valorTotalCreditos || 0;
+                    adicionarLog(`COFINS: Débitos R$ ${cofinsDebitos.toFixed(2)}, Créditos R$ ${cofinsCreditos.toFixed(2)}`, 'info');
+                }
+
+                // Log para ajustes COFINS (M610)
+                const registrosM610 = dados.ajustes?.cofins?.filter(reg => reg.registro === 'M610') || [];
+                if (registrosM610.length > 0) {
+                    const cofinsAjDebitos = registrosM610[0].valorTotalAjDebitos || 0;
+                    const cofinsAjCreditos = registrosM610[0].valorTotalAjCreditos || 0;
+                    adicionarLog(`Ajustes COFINS: Outros Débitos R$ ${cofinsAjDebitos.toFixed(2)}, Outros Créditos R$ ${cofinsAjCreditos.toFixed(2)}`, 'info');
                 }
                 break;
 
@@ -526,6 +623,7 @@ const ImportacaoController = (function() {
             });
 
             // Objetos de arrays categorizados - mesclar por categoria
+            // Garantir que registros específicos de impostos sejam preservados
             const objArrayProps = ['impostos', 'creditos', 'debitos', 'ajustes', 'receitasNaoTributadas', 'totalizacao', 'detalhamento'];
 
             objArrayProps.forEach(prop => {
@@ -534,7 +632,33 @@ const ImportacaoController = (function() {
                         if (!combinado[prop][categoria]) {
                             combinado[prop][categoria] = [];
                         }
-                        if (Array.isArray(valores)) {
+
+                        // Preservar registros específicos de impostos (evitar duplicação)
+                        if (prop === 'debitos' || prop === 'creditos' || prop === 'ajustes') {
+                            // Verificar se são registros de impostos específicos (E110, E200, M200, M210, M600, M610)
+                            if (Array.isArray(valores)) {
+                                valores.forEach(valor => {
+                                    // Verificar registros específicos pelos campos mapeados
+                                    if (valor.registro === 'E110' || valor.registro === 'E200' || 
+                                        valor.registro === 'M200' || valor.registro === 'M210' || 
+                                        valor.registro === 'M600' || valor.registro === 'M610') {
+
+                                        // Verificar se já existe esse registro específico
+                                        const registroJaExiste = combinado[prop][categoria].some(
+                                            item => item.registro === valor.registro
+                                        );
+
+                                        if (!registroJaExiste) {
+                                            combinado[prop][categoria].push(valor);
+                                        }
+                                    } else {
+                                        // Para outros registros, apenas adiciona
+                                        combinado[prop][categoria].push(valor);
+                                    }
+                                });
+                            }
+                        } else if (Array.isArray(valores)) {
+                            // Para outros tipos de dados, apenas concatena
                             combinado[prop][categoria] = combinado[prop][categoria].concat(valores);
                         }
                     });
@@ -892,7 +1016,6 @@ const ImportacaoController = (function() {
 
             // Dados da empresa
             if (dadosExtraidos.empresa) {
-                // CORREÇÃO: Usar método disponível em vez de normalizarObjeto
                 estruturaAdaptada.empresa = {
                     ...estruturaAdaptada.empresa,
                     nome: dadosExtraidos.empresa.nome || '',
@@ -909,7 +1032,6 @@ const ImportacaoController = (function() {
 
             // Ciclo financeiro
             if (dadosExtraidos.cicloFinanceiro) {
-                // CORREÇÃO: Usar método disponível em vez de normalizarObjeto
                 estruturaAdaptada.cicloFinanceiro = {
                     ...estruturaAdaptada.cicloFinanceiro,
                     pmr: window.DataManager.normalizarValor(
@@ -938,31 +1060,55 @@ const ImportacaoController = (function() {
                 };
             }
 
-            // Parâmetros fiscais
-            if (dadosExtraidos.parametrosFiscais) {
-                const creditos = {
-                    ...estruturaAdaptada.parametrosFiscais.creditos,
-                    pis: window.DataManager.normalizarValor(obterValorCredito(dadosExtraidos, 'pis'), 'monetario'),
-                    cofins: window.DataManager.normalizarValor(obterValorCredito(dadosExtraidos, 'cofins'), 'monetario'),
-                    icms: window.DataManager.normalizarValor(obterValorCredito(dadosExtraidos, 'icms'), 'monetario'),
-                    ipi: window.DataManager.normalizarValor(obterValorCredito(dadosExtraidos, 'ipi'), 'monetario'),
-                    cbs: 0,  // Valor padrão, será calculado depois
-                    ibs: 0   // Valor padrão, será calculado depois
-                };
+            // Parâmetros fiscais - SIMPLIFICADO para acessar diretamente os registros mapeados
+            estruturaAdaptada.parametrosFiscais = {
+                ...estruturaAdaptada.parametrosFiscais,
+                sistemaAtual: {
+                    regimeTributario: dadosExtraidos.parametrosFiscais?.sistemaAtual?.regimeTributario || 'presumido',
+                    regimePISCOFINS: dadosExtraidos.parametrosFiscais?.sistemaAtual?.regimePISCOFINS || 'cumulativo'
+                },
+                aliquota: window.DataManager.extrairValorPercentual(dadosExtraidos.parametrosFiscais?.aliquota || 0.265),
+                tipoOperacao: dadosExtraidos.parametrosFiscais?.tipoOperacao || '',
+                regimePisCofins: dadosExtraidos.parametrosFiscais?.regimePisCofins || ''
+            };
 
-                // CORREÇÃO: Usar método disponível em vez de normalizarObjeto
-                estruturaAdaptada.parametrosFiscais = {
-                    ...estruturaAdaptada.parametrosFiscais,
-                    aliquota: window.DataManager.extrairValorPercentual(dadosExtraidos.parametrosFiscais.aliquota || 0.265),
-                    tipoOperacao: dadosExtraidos.parametrosFiscais.tipoOperacao || '',
-                    regimePisCofins: dadosExtraidos.parametrosFiscais.regimePisCofins || '',
-                    creditos: creditos
-                };
+            // Créditos - Extrair diretamente dos registros mapeados
+            estruturaAdaptada.parametrosFiscais.creditos = {
+                pis: window.DataManager.normalizarValor(obterCreditoPIS(dadosExtraidos), 'monetario'),
+                cofins: window.DataManager.normalizarValor(obterCreditoCOFINS(dadosExtraidos), 'monetario'),
+                icms: window.DataManager.normalizarValor(obterCreditoICMS(dadosExtraidos), 'monetario'),
+                ipi: window.DataManager.normalizarValor(obterCreditoIPI(dadosExtraidos), 'monetario'),
+                cbs: 0,  // Valor padrão, será calculado depois
+                ibs: 0   // Valor padrão, será calculado depois
+            };
+
+            // Débitos - Extrair diretamente dos registros mapeados
+            if (!estruturaAdaptada.parametrosFiscais.debitos) {
+                estruturaAdaptada.parametrosFiscais.debitos = {};
             }
+
+            estruturaAdaptada.parametrosFiscais.debitos = {
+                pis: window.DataManager.normalizarValor(obterDebitoPIS(dadosExtraidos), 'monetario'),
+                cofins: window.DataManager.normalizarValor(obterDebitoCOFINS(dadosExtraidos), 'monetario'),
+                icms: window.DataManager.normalizarValor(obterDebitoICMS(dadosExtraidos), 'monetario'),
+                ipi: window.DataManager.normalizarValor(obterDebitoIPI(dadosExtraidos), 'monetario'),
+                iss: window.DataManager.normalizarValor(0, 'monetario')  // Valor padrão
+            };
+
+            // Ajustes (outros créditos e débitos) - Extrair diretamente dos registros mapeados
+            if (!estruturaAdaptada.parametrosFiscais.ajustes) {
+                estruturaAdaptada.parametrosFiscais.ajustes = {};
+            }
+
+            estruturaAdaptada.parametrosFiscais.ajustes = {
+                pisOutrosDebitos: window.DataManager.normalizarValor(obterAjusteDebitoPIS(dadosExtraidos), 'monetario'),
+                pisOutrosCreditos: window.DataManager.normalizarValor(obterAjusteCreditoPIS(dadosExtraidos), 'monetario'),
+                cofinsOutrosDebitos: window.DataManager.normalizarValor(obterAjusteDebitoCOFINS(dadosExtraidos), 'monetario'),
+                cofinsOutrosCreditos: window.DataManager.normalizarValor(obterAjusteCreditoCOFINS(dadosExtraidos), 'monetario')
+            };
 
             // IVA Config
             if (dadosExtraidos.ivaConfig) {
-                // CORREÇÃO: Usar método disponível em vez de normalizarObjeto
                 estruturaAdaptada.ivaConfig = {
                     ...estruturaAdaptada.ivaConfig,
                     cbs: window.DataManager.extrairValorPercentual(dadosExtraidos.ivaConfig.cbs || 0.088),
@@ -985,7 +1131,7 @@ const ImportacaoController = (function() {
                 ...(estruturaAdaptada.metadados || {}),
                 ...(dadosExtraidos.metadados || {}),
                 adaptadoEm: new Date().toISOString(),
-                versaoAdaptador: '2.0'
+                versaoAdaptador: '3.0'  // Versão simplificada
             };
 
             // Aplicar validação final usando método existente no DataManager
@@ -1625,6 +1771,238 @@ const ImportacaoController = (function() {
     }
     
     /**
+     * Funções para obter valores específicos de impostos diretamente dos registros mapeados
+     */
+
+    /**
+     * Obtém o valor de débito de PIS a partir do registro M200 (campo 4)
+     */
+    function obterDebitoPIS(dados) {
+        // Buscar registro M200 no array de débitos PIS
+        const registrosM200 = dados.debitos?.pis?.filter(reg => reg.registro === 'M200') || [];
+        if (registrosM200.length > 0 && registrosM200[0].valorTotalDebitos !== undefined) {
+            return registrosM200[0].valorTotalDebitos;
+        }
+
+        // Verificar se há dados em parametrosFiscais.debitos.pis (de um processamento anterior)
+        if (dados.parametrosFiscais?.debitos?.pis !== undefined) {
+            return dados.parametrosFiscais.debitos.pis;
+        }
+
+        // Se não encontrou, retornar 0
+        return 0;
+    }
+
+    /**
+     * Obtém o valor de crédito de PIS a partir do registro M200 (campo 6)
+     */
+    function obterCreditoPIS(dados) {
+        // Buscar registro M200 no array de débitos PIS
+        const registrosM200 = dados.debitos?.pis?.filter(reg => reg.registro === 'M200') || [];
+        if (registrosM200.length > 0 && registrosM200[0].valorTotalCreditos !== undefined) {
+            return registrosM200[0].valorTotalCreditos;
+        }
+
+        // Verificar se há dados em parametrosFiscais.creditos.pis (de um processamento anterior)
+        if (dados.parametrosFiscais?.creditos?.pis !== undefined) {
+            return dados.parametrosFiscais.creditos.pis;
+        }
+
+        // Se não encontrou, retornar 0
+        return 0;
+    }
+
+    /**
+     * Obtém o valor de outros débitos de PIS a partir do registro M210 (campo 5)
+     */
+    function obterAjusteDebitoPIS(dados) {
+        // Buscar registro M210 no array de ajustes PIS
+        const registrosM210 = dados.ajustes?.pis?.filter(reg => reg.registro === 'M210') || [];
+        if (registrosM210.length > 0 && registrosM210[0].valorTotalAjDebitos !== undefined) {
+            return registrosM210[0].valorTotalAjDebitos;
+        }
+
+        // Verificar se há dados em parametrosFiscais.ajustes.pisOutrosDebitos (de um processamento anterior)
+        if (dados.parametrosFiscais?.ajustes?.pisOutrosDebitos !== undefined) {
+            return dados.parametrosFiscais.ajustes.pisOutrosDebitos;
+        }
+
+        // Se não encontrou, retornar 0
+        return 0;
+    }
+
+    /**
+     * Obtém o valor de outros créditos de PIS a partir do registro M210 (campo 7)
+     */
+    function obterAjusteCreditoPIS(dados) {
+        // Buscar registro M210 no array de ajustes PIS
+        const registrosM210 = dados.ajustes?.pis?.filter(reg => reg.registro === 'M210') || [];
+        if (registrosM210.length > 0 && registrosM210[0].valorTotalAjCreditos !== undefined) {
+            return registrosM210[0].valorTotalAjCreditos;
+        }
+
+        // Verificar se há dados em parametrosFiscais.ajustes.pisOutrosCreditos (de um processamento anterior)
+        if (dados.parametrosFiscais?.ajustes?.pisOutrosCreditos !== undefined) {
+            return dados.parametrosFiscais.ajustes.pisOutrosCreditos;
+        }
+
+        // Se não encontrou, retornar 0
+        return 0;
+    }
+
+    /**
+     * Obtém o valor de débito de COFINS a partir do registro M600 (campo 4)
+     */
+    function obterDebitoCOFINS(dados) {
+        // Buscar registro M600 no array de débitos COFINS
+        const registrosM600 = dados.debitos?.cofins?.filter(reg => reg.registro === 'M600') || [];
+        if (registrosM600.length > 0 && registrosM600[0].valorTotalDebitos !== undefined) {
+            return registrosM600[0].valorTotalDebitos;
+        }
+
+        // Verificar se há dados em parametrosFiscais.debitos.cofins (de um processamento anterior)
+        if (dados.parametrosFiscais?.debitos?.cofins !== undefined) {
+            return dados.parametrosFiscais.debitos.cofins;
+        }
+
+        // Se não encontrou, retornar 0
+        return 0;
+    }
+
+    /**
+     * Obtém o valor de crédito de COFINS a partir do registro M600 (campo 6)
+     */
+    function obterCreditoCOFINS(dados) {
+        // Buscar registro M600 no array de débitos COFINS
+        const registrosM600 = dados.debitos?.cofins?.filter(reg => reg.registro === 'M600') || [];
+        if (registrosM600.length > 0 && registrosM600[0].valorTotalCreditos !== undefined) {
+            return registrosM600[0].valorTotalCreditos;
+        }
+
+        // Verificar se há dados em parametrosFiscais.creditos.cofins (de um processamento anterior)
+        if (dados.parametrosFiscais?.creditos?.cofins !== undefined) {
+            return dados.parametrosFiscais.creditos.cofins;
+        }
+
+        // Se não encontrou, retornar 0
+        return 0;
+    }
+
+    /**
+     * Obtém o valor de outros débitos de COFINS a partir do registro M610 (campo 5)
+     */
+    function obterAjusteDebitoCOFINS(dados) {
+        // Buscar registro M610 no array de ajustes COFINS
+        const registrosM610 = dados.ajustes?.cofins?.filter(reg => reg.registro === 'M610') || [];
+        if (registrosM610.length > 0 && registrosM610[0].valorTotalAjDebitos !== undefined) {
+            return registrosM610[0].valorTotalAjDebitos;
+        }
+
+        // Verificar se há dados em parametrosFiscais.ajustes.cofinsOutrosDebitos (de um processamento anterior)
+        if (dados.parametrosFiscais?.ajustes?.cofinsOutrosDebitos !== undefined) {
+            return dados.parametrosFiscais.ajustes.cofinsOutrosDebitos;
+        }
+
+        // Se não encontrou, retornar 0
+        return 0;
+    }
+
+    /**
+     * Obtém o valor de outros créditos de COFINS a partir do registro M610 (campo 7)
+     */
+    function obterAjusteCreditoCOFINS(dados) {
+        // Buscar registro M610 no array de ajustes COFINS
+        const registrosM610 = dados.ajustes?.cofins?.filter(reg => reg.registro === 'M610') || [];
+        if (registrosM610.length > 0 && registrosM610[0].valorTotalAjCreditos !== undefined) {
+            return registrosM610[0].valorTotalAjCreditos;
+        }
+
+        // Verificar se há dados em parametrosFiscais.ajustes.cofinsOutrosCreditos (de um processamento anterior)
+        if (dados.parametrosFiscais?.ajustes?.cofinsOutrosCreditos !== undefined) {
+            return dados.parametrosFiscais.ajustes.cofinsOutrosCreditos;
+        }
+
+        // Se não encontrou, retornar 0
+        return 0;
+    }
+
+    /**
+     * Obtém o valor de débito de ICMS a partir do registro E110 (campo 2)
+     */
+    function obterDebitoICMS(dados) {
+        // Buscar registro E110 no array de débitos ICMS
+        const registrosE110 = dados.debitos?.icms?.filter(reg => reg.registro === 'E110') || [];
+        if (registrosE110.length > 0 && registrosE110[0].valorTotalDebitos !== undefined) {
+            return registrosE110[0].valorTotalDebitos;
+        }
+
+        // Verificar se há dados em parametrosFiscais.debitos.icms (de um processamento anterior)
+        if (dados.parametrosFiscais?.debitos?.icms !== undefined) {
+            return dados.parametrosFiscais.debitos.icms;
+        }
+
+        // Se não encontrou, retornar 0
+        return 0;
+    }
+
+    /**
+     * Obtém o valor de crédito de ICMS a partir do registro E110 (campo 6)
+     */
+    function obterCreditoICMS(dados) {
+        // Buscar registro E110 no array de débitos ICMS
+        const registrosE110 = dados.debitos?.icms?.filter(reg => reg.registro === 'E110') || [];
+        if (registrosE110.length > 0 && registrosE110[0].valorTotalCreditos !== undefined) {
+            return registrosE110[0].valorTotalCreditos;
+        }
+
+        // Verificar se há dados em parametrosFiscais.creditos.icms (de um processamento anterior)
+        if (dados.parametrosFiscais?.creditos?.icms !== undefined) {
+            return dados.parametrosFiscais.creditos.icms;
+        }
+
+        // Se não encontrou, retornar 0
+        return 0;
+    }
+
+    /**
+     * Obtém o valor de débito de IPI a partir do registro E200 (campo 2)
+     */
+    function obterDebitoIPI(dados) {
+        // Buscar registro E200 no array de débitos IPI
+        const registrosE200 = dados.debitos?.ipi?.filter(reg => reg.registro === 'E200') || [];
+        if (registrosE200.length > 0 && registrosE200[0].valorTotalDebitos !== undefined) {
+            return registrosE200[0].valorTotalDebitos;
+        }
+
+        // Verificar se há dados em parametrosFiscais.debitos.ipi (de um processamento anterior)
+        if (dados.parametrosFiscais?.debitos?.ipi !== undefined) {
+            return dados.parametrosFiscais.debitos.ipi;
+        }
+
+        // Se não encontrou, retornar 0
+        return 0;
+    }
+
+    /**
+     * Obtém o valor de crédito de IPI a partir do registro E200 (campo 3)
+     */
+    function obterCreditoIPI(dados) {
+        // Buscar registro E200 no array de débitos IPI
+        const registrosE200 = dados.debitos?.ipi?.filter(reg => reg.registro === 'E200') || [];
+        if (registrosE200.length > 0 && registrosE200[0].valorTotalCreditos !== undefined) {
+            return registrosE200[0].valorTotalCreditos;
+        }
+
+        // Verificar se há dados em parametrosFiscais.creditos.ipi (de um processamento anterior)
+        if (dados.parametrosFiscais?.creditos?.ipi !== undefined) {
+            return dados.parametrosFiscais.creditos.ipi;
+        }
+
+        // Se não encontrou, retornar 0
+        return 0;
+    }
+    
+    /**
      * Preenche os parâmetros fiscais no formulário
      */
     function preencherParametrosFiscais(parametrosFiscais) {
@@ -1636,11 +2014,86 @@ const ImportacaoController = (function() {
         }
 
         // PRIORIDADE: Preencher composição tributária detalhada
-        if (parametrosFiscais.composicaoTributaria) {
-            preencherComposicaoTributaria(parametrosFiscais.composicaoTributaria);
-        } else {
-            console.warn('IMPORTACAO-CONTROLLER: Composição tributária não disponível');
+        const composicao = {
+            debitos: parametrosFiscais.debitos || {},
+            creditos: parametrosFiscais.creditos || {},
+            ajustes: parametrosFiscais.ajustes || {},
+            fontesDados: { pis: 'sped', cofins: 'sped', icms: 'sped', ipi: 'sped', iss: 'estimado' }
+        };
+
+        // Preencher campos de débitos
+        if (composicao.debitos.pis !== undefined) {
+            preencherCampoComValor('debito-pis', composicao.debitos.pis, 'SPED');
         }
+
+        if (composicao.debitos.cofins !== undefined) {
+            preencherCampoComValor('debito-cofins', composicao.debitos.cofins, 'SPED');
+        }
+
+        if (composicao.debitos.icms !== undefined) {
+            preencherCampoComValor('debito-icms', composicao.debitos.icms, 'SPED');
+        }
+
+        if (composicao.debitos.ipi !== undefined) {
+            preencherCampoComValor('debito-ipi', composicao.debitos.ipi, 'SPED');
+        }
+
+        if (composicao.debitos.iss !== undefined) {
+            preencherCampoComValor('debito-iss', composicao.debitos.iss, 'SPED');
+        }
+
+        // Preencher campos de créditos
+        if (composicao.creditos.pis !== undefined) {
+            preencherCampoComValor('credito-pis', composicao.creditos.pis, 'SPED');
+        }
+
+        if (composicao.creditos.cofins !== undefined) {
+            preencherCampoComValor('credito-cofins', composicao.creditos.cofins, 'SPED');
+        }
+
+        if (composicao.creditos.icms !== undefined) {
+            preencherCampoComValor('credito-icms', composicao.creditos.icms, 'SPED');
+        }
+
+        if (composicao.creditos.ipi !== undefined) {
+            preencherCampoComValor('credito-ipi', composicao.creditos.ipi, 'SPED');
+        }
+
+        // Preencher campos de ajustes (outros débitos e créditos)
+        if (composicao.ajustes.pisOutrosDebitos !== undefined) {
+            preencherCampoComValor('outros-debitos-pis', composicao.ajustes.pisOutrosDebitos, 'SPED');
+        }
+
+        if (composicao.ajustes.pisOutrosCreditos !== undefined) {
+            preencherCampoComValor('outros-creditos-pis', composicao.ajustes.pisOutrosCreditos, 'SPED');
+        }
+
+        if (composicao.ajustes.cofinsOutrosDebitos !== undefined) {
+            preencherCampoComValor('outros-debitos-cofins', composicao.ajustes.cofinsOutrosDebitos, 'SPED');
+        }
+
+        if (composicao.ajustes.cofinsOutrosCreditos !== undefined) {
+            preencherCampoComValor('outros-creditos-cofins', composicao.ajustes.cofinsOutrosCreditos, 'SPED');
+        }
+
+        // Calcular e preencher totais
+        const totalDebitos = (
+            (composicao.debitos.pis || 0) + 
+            (composicao.debitos.cofins || 0) + 
+            (composicao.debitos.icms || 0) + 
+            (composicao.debitos.ipi || 0) + 
+            (composicao.debitos.iss || 0)
+        );
+
+        const totalCreditos = (
+            (composicao.creditos.pis || 0) + 
+            (composicao.creditos.cofins || 0) + 
+            (composicao.creditos.icms || 0) + 
+            (composicao.creditos.ipi || 0)
+        );
+
+        preencherCampoComValor('total-debitos', totalDebitos, 'SPED');
+        preencherCampoComValor('total-creditos', totalCreditos, 'SPED');
 
         // Tipo de operação
         const campoTipoOperacao = document.getElementById('tipo-operacao');
@@ -1648,7 +2101,6 @@ const ImportacaoController = (function() {
             campoTipoOperacao.value = parametrosFiscais.tipoOperacao;
             marcarCampoComoSped(campoTipoOperacao);
             campoTipoOperacao.dispatchEvent(new Event('change', { bubbles: true }));
-
             console.log(`IMPORTACAO-CONTROLLER: Tipo de operação preenchido: ${parametrosFiscais.tipoOperacao}`);
         }
 
@@ -1658,7 +2110,6 @@ const ImportacaoController = (function() {
             campoPisCofinsRegime.value = parametrosFiscais.regimePisCofins;
             marcarCampoComoSped(campoPisCofinsRegime);
             campoPisCofinsRegime.dispatchEvent(new Event('change', { bubbles: true }));
-
             console.log(`IMPORTACAO-CONTROLLER: Regime PIS/COFINS preenchido: ${parametrosFiscais.regimePisCofins}`);
         }
 

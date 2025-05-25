@@ -765,24 +765,24 @@ const SpedParser = (function() {
             case 'empresa':
                 Object.assign(resultado.empresa, dadosRegistro);
                 break;
-                
+
             case 'documento':
                 resultado.documentos.push(dadosRegistro);
                 break;
-                
+
             case 'item':
             case 'item_documento':
                 resultado.itens.push(dadosRegistro);
                 break;
-                
+
             case 'analitico_icms':
                 resultado.itensAnaliticos.push(dadosRegistro);
                 break;
-                
+
             case 'participante':
                 resultado.participantes.push(dadosRegistro);
                 break;
-                
+
             case 'credito':
             case 'credito_detalhe':
                 if (dadosRegistro.categoria) {
@@ -792,7 +792,7 @@ const SpedParser = (function() {
                     resultado.creditos[dadosRegistro.categoria].push(dadosRegistro);
                 }
                 break;
-                
+
             case 'debito':
                 if (dadosRegistro.categoria) {
                     if (!resultado.debitos[dadosRegistro.categoria]) {
@@ -801,13 +801,7 @@ const SpedParser = (function() {
                     resultado.debitos[dadosRegistro.categoria].push(dadosRegistro);
                 }
                 break;
-                
-            case 'regime':
-                if (dadosRegistro.categoria) {
-                    resultado.regimes[dadosRegistro.categoria] = dadosRegistro;
-                }
-                break;
-                
+
             case 'ajuste':
                 if (dadosRegistro.categoria) {
                     if (!resultado.ajustes[dadosRegistro.categoria]) {
@@ -816,7 +810,13 @@ const SpedParser = (function() {
                     resultado.ajustes[dadosRegistro.categoria].push(dadosRegistro);
                 }
                 break;
-                
+
+            case 'regime':
+                if (dadosRegistro.categoria) {
+                    resultado.regimes[dadosRegistro.categoria] = dadosRegistro;
+                }
+                break;
+
             case 'receita_nao_tributada':
                 if (dadosRegistro.categoria) {
                     if (!resultado.receitasNaoTributadas[dadosRegistro.categoria]) {
@@ -825,22 +825,22 @@ const SpedParser = (function() {
                     resultado.receitasNaoTributadas[dadosRegistro.categoria].push(dadosRegistro);
                 }
                 break;
-                
+
             case 'balanco_patrimonial':
             case 'dados_balancos':
                 resultado.balancoPatrimonial.push(dadosRegistro);
                 break;
-                
+
             case 'dre':
             case 'dre_comparativo':
                 resultado.demonstracaoResultado.push(dadosRegistro);
                 break;
-                
+
             case 'inventario_abertura':
             case 'inventario_info':
                 resultado.inventario.push(dadosRegistro);
                 break;
-                
+
             case 'totalizacao':
                 if (dadosRegistro.categoria) {
                     if (!resultado.totalizacao[dadosRegistro.categoria]) {
@@ -849,7 +849,7 @@ const SpedParser = (function() {
                     resultado.totalizacao[dadosRegistro.categoria].push(dadosRegistro);
                 }
                 break;
-                
+
             default:
                 // Para outros tipos, armazenar em detalhamento
                 if (!resultado.detalhamento[dadosRegistro.tipo]) {
@@ -1182,23 +1182,16 @@ const SpedParser = (function() {
         }
     }
 
-    function parseRegistroE110(campos) {
-        if (!validarEstruturaRegistro(campos, 29)) return null;
+   function parseRegistroE110(campos) {
+        if (!validarEstruturaRegistro(campos, 7)) return null;
 
         try {
             return {
                 tipo: 'debito',
                 categoria: 'icms',
-                valorTotalDebitos: parseValorMonetario(validarCampo(campos, 2, '0')), // ✅ Corrigido: índice 2
-                valorAjDebitos: parseValorMonetario(validarCampo(campos, 3, '0')),
-                valorEstornoCreditos: parseValorMonetario(validarCampo(campos, 4, '0')),
-                valorTotalCreditos: parseValorMonetario(validarCampo(campos, 6, '0')), // ✅ Corrigido: índice 6
-                valorAjCreditos: parseValorMonetario(validarCampo(campos, 7, '0')),
-                valorEstornoDebitos: parseValorMonetario(validarCampo(campos, 8, '0')),
-                valorSaldoCredorAnt: parseValorMonetario(validarCampo(campos, 9, '0')),
-                valorSaldoApurado: parseValorMonetario(validarCampo(campos, 10, '0')),
-                valorDebitoEspecial: parseValorMonetario(validarCampo(campos, 11, '0')),
-                valorSaldoAPagar: parseValorMonetario(validarCampo(campos, 12, '0'))
+                valorTotalDebitos: parseValorMonetario(validarCampo(campos, 2, '0')),  // Campo 2: VL_TOT_DEBITOS
+                valorTotalCreditos: parseValorMonetario(validarCampo(campos, 6, '0')), // Campo 6: VL_TOT_CREDITOS
+                registro: 'E110'
             };
         } catch (erro) {
             console.warn('Erro ao processar registro E110:', erro.message);
@@ -1230,14 +1223,20 @@ const SpedParser = (function() {
     }
 
     function parseRegistroE200(campos) {
-        if (!validarEstruturaRegistro(campos, 13)) return null;
-        return {
-            tipo: 'debito',
-            categoria: 'ipi',
-            valorTotalDebitos: parseValorMonetario(validarCampo(campos, 2, '0')),  // CORRIGIDO: campo 2, não 4
-            valorTotalCreditos: parseValorMonetario(validarCampo(campos, 3, '0')),  // CORRIGIDO: campo 3, não 5
-            valorTotalAPagar: parseValorMonetario(validarCampo(campos, 10, '0'))    // CORRIGIDO: campo 10, não 12
-        };
+        if (!validarEstruturaRegistro(campos, 4)) return null;
+
+        try {
+            return {
+                tipo: 'debito',
+                categoria: 'ipi',
+                valorTotalDebitos: parseValorMonetario(validarCampo(campos, 2, '0')),  // Campo 2: VL_TOT_DEBITOS
+                valorTotalCreditos: parseValorMonetario(validarCampo(campos, 3, '0')),  // Campo 3: VL_TOT_CREDITOS
+                registro: 'E200'
+            };
+        } catch (erro) {
+            console.warn('Erro ao processar registro E200:', erro.message);
+            return null;
+        }
     }
 
     function parseRegistroE210(campos) {
@@ -1815,20 +1814,15 @@ const SpedParser = (function() {
     }
 
     function parseRegistroM200(campos) {
-        if (!validarEstruturaRegistro(campos, 14)) return null;
+        if (!validarEstruturaRegistro(campos, 7)) return null;
+
         try {
             return {
                 tipo: 'debito',
                 categoria: 'pis',
-                valorTotalDebitos: parseValorMonetario(validarCampo(campos, 4, '0')), // VL_TOT_DEB_APU_PER (campo 4)
-                valorCredito: parseValorMonetario(validarCampo(campos, 6, '0')), // VL_TOT_CRED_DESC_PER (campo 6)
-                valorContribuicaoApurada: parseValorMonetario(validarCampo(campos, 5, '0')), // VL_TOT_CONT_NC_PER
-                valorContribuicaoDevida: parseValorMonetario(validarCampo(campos, 8, '0')), // VL_TOT_CONT_NC_DEV
-                valorTotalRetencoes: parseValorMonetario(validarCampo(campos, 9, '0')), // VL_RET_NC_PER
-                valorTotalDeducoes: parseValorMonetario(validarCampo(campos, 10, '0')), // VL_OUT_DED_NC_PER
-                valorContribuicaoAPagar: parseValorMonetario(validarCampo(campos, 11, '0')), // VL_CONT_NC_PAG
-                saldoCredorPeriodo: parseValorMonetario(validarCampo(campos, 12, '0')),
-                origem: 'registro_m200'
+                valorTotalDebitos: parseValorMonetario(validarCampo(campos, 4, '0')),  // Campo 4: VL_TOT_DEB_APU_PER
+                valorTotalCreditos: parseValorMonetario(validarCampo(campos, 6, '0')), // Campo 6: VL_TOT_CRED_DESC_PER
+                registro: 'M200'
             };
         } catch (erro) {
             console.warn('Erro ao processar registro M200:', erro.message);
@@ -1849,13 +1843,19 @@ const SpedParser = (function() {
 
     function parseRegistroM210(campos) {
         if (!validarEstruturaRegistro(campos, 8)) return null;
-        return {
-            tipo: 'detalhamento_consolidacao_pis',
-            categoria: 'pis',
-            codCont: validarCampo(campos, 2),
-            valorRec: parseValorMonetario(validarCampo(campos, 3, '0')),
-            valorContrib: parseValorMonetario(validarCampo(campos, 4, '0'))
-        };
+
+        try {
+            return {
+                tipo: 'ajuste',
+                categoria: 'pis',
+                valorTotalAjDebitos: parseValorMonetario(validarCampo(campos, 5, '0')),  // Campo 5: VL_TOT_AJ_DEB_PER
+                valorTotalAjCreditos: parseValorMonetario(validarCampo(campos, 7, '0')), // Campo 7: VL_TOT_AJ_CRED_PER
+                registro: 'M210'
+            };
+        } catch (erro) {
+            console.warn('Erro ao processar registro M210:', erro.message);
+            return null;
+        }
     }
 
     function parseRegistroM220(campos) {
@@ -1968,20 +1968,15 @@ const SpedParser = (function() {
     }
 
     function parseRegistroM600(campos) {
-        if (!validarEstruturaRegistro(campos, 14)) return null;
+        if (!validarEstruturaRegistro(campos, 7)) return null;
+
         try {
             return {
                 tipo: 'debito',
                 categoria: 'cofins',
-                valorTotalDebitos: parseValorMonetario(validarCampo(campos, 4, '0')), // VL_TOT_DEB_APU_PER (campo 4)
-                valorCredito: parseValorMonetario(validarCampo(campos, 6, '0')), // VL_TOT_CRED_DESC_PER (campo 6)
-                valorContribuicaoApurada: parseValorMonetario(validarCampo(campos, 5, '0')), // VL_TOT_CONT_NC_PER
-                valorContribuicaoDevida: parseValorMonetario(validarCampo(campos, 8, '0')), // VL_TOT_CONT_NC_DEV
-                valorTotalRetencoes: parseValorMonetario(validarCampo(campos, 9, '0')), // VL_RET_NC_PER
-                valorTotalDeducoes: parseValorMonetario(validarCampo(campos, 10, '0')), // VL_OUT_DED_NC_PER
-                valorContribuicaoAPagar: parseValorMonetario(validarCampo(campos, 11, '0')), // VL_CONT_NC_PAG
-                saldoCredorPeriodo: parseValorMonetario(validarCampo(campos, 12, '0')),
-                origem: 'registro_m600'
+                valorTotalDebitos: parseValorMonetario(validarCampo(campos, 4, '0')),  // Campo 4: VL_TOT_DEB_APU_PER
+                valorTotalCreditos: parseValorMonetario(validarCampo(campos, 6, '0')), // Campo 6: VL_TOT_CRED_DESC_PER
+                registro: 'M600'
             };
         } catch (erro) {
             console.warn('Erro ao processar registro M600:', erro.message);
@@ -2002,13 +1997,19 @@ const SpedParser = (function() {
 
     function parseRegistroM610(campos) {
         if (!validarEstruturaRegistro(campos, 8)) return null;
-        return {
-            tipo: 'detalhamento_consolidacao_cofins',
-            categoria: 'cofins',
-            codCont: validarCampo(campos, 2),
-            valorRec: parseValorMonetario(validarCampo(campos, 3, '0')),
-            valorContrib: parseValorMonetario(validarCampo(campos, 4, '0'))
-        };
+
+        try {
+            return {
+                tipo: 'ajuste',
+                categoria: 'cofins',
+                valorTotalAjDebitos: parseValorMonetario(validarCampo(campos, 5, '0')),  // Campo 5: VL_TOT_AJ_DEB_PER
+                valorTotalAjCreditos: parseValorMonetario(validarCampo(campos, 7, '0')), // Campo 7: VL_TOT_AJ_CRED_PER
+                registro: 'M610'
+            };
+        } catch (erro) {
+            console.warn('Erro ao processar registro M610:', erro.message);
+            return null;
+        }
     }
 
     function parseRegistroM620(campos) {
