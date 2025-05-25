@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simulador Split Payment - Importação SPED</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        .card { border: 1px solid #ddd; border-radius: 5px; padding: 20px; margin-bottom: 20px; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        .btn { background: #4CAF50; color: white; border: none; padding: 10px 15px; border-radius: 5px; cursor: pointer; }
+        .btn:hover { background: #45a049; }
+        .alert { padding: 15px; margin-bottom: 20px; border: 1px solid transparent; border-radius: 4px; }
+        .alert-success { color: #3c763d; background-color: #dff0d8; border-color: #d6e9c6; }
+        .alert-danger { color: #a94442; background-color: #f2dede; border-color: #ebccd1; }
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+    <h1>Simulador Split Payment - Importação SPED</h1>
+    
+    <div class="card">
+        <h2>Importar Arquivos SPED</h2>
+        <p>Selecione os arquivos SPED para processar e extrair dados para o simulador.</p>
+        
+        <div class="form-group">
+            <label for="inputFiscal">Arquivo SPED Fiscal (EFD ICMS/IPI):</label>
+            <input type="file" id="inputFiscal" accept=".txt">
+        </div>
+        
+        <div class="form-group">
+            <label for="inputContribuicoes">Arquivo SPED Contribuições (EFD PIS/COFINS):</label>
+            <input type="file" id="inputContribuicoes" accept=".txt">
+        </div>
+        
+        <button id="btnProcessar" class="btn">Processar Arquivos</button>
+    </div>
+    
+    <div id="alertSuccess" class="alert alert-success hidden">
+        Arquivos processados com sucesso!
+    </div>
+    
+    <div id="alertError" class="alert alert-danger hidden">
+        Erro ao processar arquivos.
+    </div>
+    
+    <div id="resultados" class="card hidden">
+        <h2>Dados Extraídos</h2>
+        <pre id="dadosExtracaoJson"></pre>
+    </div>
+    
+    <!-- Carregar módulos SPED -->
+    <script src="sped-extractor.js"></script>
+    <script src="sped-processor.js"></script>
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const btnProcessar = document.getElementById('btnProcessar');
+            const inputFiscal = document.getElementById('inputFiscal');
+            const inputContribuicoes = document.getElementById('inputContribuicoes');
+            const alertSuccess = document.getElementById('alertSuccess');
+            const alertError = document.getElementById('alertError');
+            const resultados = document.getElementById('resultados');
+            const dadosExtracaoJson = document.getElementById('dadosExtracaoJson');
+            
+            btnProcessar.addEventListener('click', function() {
+                // Esconder alertas
+                alertSuccess.classList.add('hidden');
+                alertError.classList.add('hidden');
+                resultados.classList.add('hidden');
+                
+                // Verificar se os arquivos foram selecionados
+                if (!inputFiscal.files.length || !inputContribuicoes.files.length) {
+                    alertError.textContent = 'Selecione ambos os arquivos SPED para processar.';
+                    alertError.classList.remove('hidden');
+                    return;
+                }
+                
+                // Processar arquivos
+                SpedProcessor.processarArquivos(inputFiscal, inputContribuicoes, function(resultado) {
+                    if (resultado.sucesso) {
+                        // Exibir dados extraídos
+                        alertSuccess.classList.remove('hidden');
+                        resultados.classList.remove('hidden');
+                        dadosExtracaoJson.textContent = JSON.stringify(resultado.dados, null, 2);
+                        
+                        // Aqui você pode chamar a função do simulador com os dados processados
+                        // Por exemplo: Simulador.iniciarSimulacao(resultado.dados);
+                    } else {
+                        // Exibir mensagem de erro
+                        alertError.textContent = resultado.mensagem || 'Erro ao processar arquivos.';
+                        alertError.classList.remove('hidden');
+                    }
+                });
+            });
+        });
+    </script>
+</body>
+</html>

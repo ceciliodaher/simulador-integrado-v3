@@ -698,6 +698,135 @@ function inicializarEventosPrincipais() {
 
         document.body.appendChild(modal);
     }
+    
+    /**
+     * Verifica se há dados do SPED disponíveis e os prioriza nos cálculos
+     * @returns {Object|null} Dados do SPED se disponíveis
+     */
+    function obterDadosSpedPrioritarios() {
+        // Verificar se há dados marcados como vindos do SPED
+        const camposSpedData = document.querySelectorAll('.sped-data');
+        if (camposSpedData.length === 0) {
+            return null;
+        }
+
+        // Extrair dados do painel de composição tributária detalhada
+        const extrairValorMonetario = (id) => {
+            const elemento = document.getElementById(id);
+            if (!elemento || !elemento.value) return 0;
+
+            // Usar o mesmo método do DataManager para extrair valor
+            if (window.DataManager && window.DataManager.extrairValorMonetario) {
+                return window.DataManager.extrairValorMonetario(elemento.value);
+            }
+
+            // Fallback: extrair valor manualmente
+            return parseFloat(elemento.value.replace(/[^\d,.-]/g, '').replace(',', '.')) || 0;
+        };
+
+        const extrairValorPercentual = (id) => {
+            const elemento = document.getElementById(id);
+            if (!elemento || !elemento.value) return 0;
+            return parseFloat(elemento.value) || 0;
+        };
+
+        return {
+            // Sinalizar que são dados do SPED
+            origemSped: true,
+
+            // Débitos mensais
+            debitos: {
+                pis: extrairValorMonetario('debito-pis'),
+                cofins: extrairValorMonetario('debito-cofins'),
+                icms: extrairValorMonetario('debito-icms'),
+                ipi: extrairValorMonetario('debito-ipi'),
+                iss: extrairValorMonetario('debito-iss')
+            },
+
+            // Créditos mensais
+            creditos: {
+                pis: extrairValorMonetario('credito-pis'),
+                cofins: extrairValorMonetario('credito-cofins'),
+                icms: extrairValorMonetario('credito-icms'),
+                ipi: extrairValorMonetario('credito-ipi'),
+                iss: extrairValorMonetario('credito-iss')
+            },
+
+            // Alíquotas efetivas
+            aliquotasEfetivas: {
+                pis: extrairValorPercentual('aliquota-efetiva-pis'),
+                cofins: extrairValorPercentual('aliquota-efetiva-cofins'),
+                icms: extrairValorPercentual('aliquota-efetiva-icms'),
+                ipi: extrairValorPercentual('aliquota-efetiva-ipi'),
+                iss: extrairValorPercentual('aliquota-efetiva-iss'),
+                total: extrairValorPercentual('aliquota-efetiva-total')
+            },
+
+            // Totais
+            totalDebitos: extrairValorMonetario('total-debitos'),
+            totalCreditos: extrairValorMonetario('total-creditos')
+        };
+    }
+
+    /**
+     * Integra dados do SPED na estrutura canônica do DataManager
+     * @param {Object} dadosFormulario - Dados do formulário em estrutura aninhada
+     * @returns {Object} Dados integrados com priorização do SPED
+     */
+    function integrarDadosSpedNaEstruturaPadrao(dadosFormulario) {
+        const dadosSped = obterDadosSpedPrioritarios();
+
+        if (!dadosSped) {
+            return dadosFormulario; // Retorna dados originais se não há SPED
+        }
+
+        // Criar cópia profunda para não modificar o original
+        const dadosIntegrados = JSON.parse(JSON.stringify(dadosFormulario));
+
+        // Adicionar seção específica para dados do SPED
+        dadosIntegrados.dadosSpedImportados = {
+            composicaoTributaria: {
+                debitos: dadosSped.debitos,
+                creditos: dadosSped.creditos,
+                aliquotasEfetivas: dadosSped.aliquotasEfetivas,
+                totalDebitos: dadosSped.totalDebitos,
+                totalCreditos: dadosSped.totalCreditos
+            },
+            origemDados: 'sped',
+            timestampImportacao: new Date().toISOString()
+        };
+
+        // Atualizar parâmetros fiscais baseados no SPED
+        if (!dadosIntegrados.parametrosFiscais) {
+            dadosIntegrados.parametrosFiscais = {};
+        }
+
+        // Adicionar composicaoTributaria se não existir
+        if (!dadosIntegrados.parametrosFiscais.composicaoTributaria) {
+            dadosIntegrados.parametrosFiscais.composicaoTributaria = {
+                debitos: { ...dadosSped.debitos },
+                creditos: { ...dadosSped.creditos },
+                aliquotasEfetivas: { ...dadosSped.aliquotasEfetivas }
+            };
+        }
+
+        // Sobrescrever também os créditos padrão para garantir consistência
+        if (!dadosIntegrados.parametrosFiscais.creditos) {
+            dadosIntegrados.parametrosFiscais.creditos = {};
+        }
+
+        // Copiar créditos da estrutura SPED para a estrutura padrão
+        dadosIntegrados.parametrosFiscais.creditos.pis = dadosSped.creditos.pis;
+        dadosIntegrados.parametrosFiscais.creditos.cofins = dadosSped.creditos.cofins;
+        dadosIntegrados.parametrosFiscais.creditos.icms = dadosSped.creditos.icms;
+        dadosIntegrados.parametrosFiscais.creditos.ipi = dadosSped.creditos.ipi;
+
+        // Adicionar flag indicando que há dados do SPED
+        dadosIntegrados.parametrosFiscais.temDadosSped = true;
+        dadosIntegrados.parametrosFiscais.aliquotaEfetivaTotal = dadosSped.aliquotasEfetivas.total / 100;
+
+        return dadosIntegrados;
+    }
 
     // Função auxiliar para gerar tabela de composição tributária
     function gerarTabelaComposicao(composicao) {

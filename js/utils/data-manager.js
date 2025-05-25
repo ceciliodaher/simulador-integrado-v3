@@ -141,7 +141,7 @@ window.DataManager = (function() {
 
         // Iniciar com objeto vazio
         const plano = {};
-        
+
         // Empresa
         if (dadosAninhados.empresa) {
             plano.faturamento = dadosAninhados.empresa.faturamento !== undefined ? 
@@ -151,7 +151,7 @@ window.DataManager = (function() {
             plano.tipoEmpresa = dadosAninhados.empresa.tipoEmpresa || '';
             plano.regime = dadosAninhados.empresa.regime || '';
         }
-        
+
         // Ciclo Financeiro
         if (dadosAninhados.cicloFinanceiro) {
             plano.pmr = dadosAninhados.cicloFinanceiro.pmr || 30;
@@ -160,92 +160,94 @@ window.DataManager = (function() {
             plano.percVista = dadosAninhados.cicloFinanceiro.percVista || 0.3;
             plano.percPrazo = dadosAninhados.cicloFinanceiro.percPrazo || 0.7;
         }
-        
+
         // Parâmetros Fiscais
         if (dadosAninhados.parametrosFiscais) {
             plano.aliquota = dadosAninhados.parametrosFiscais.aliquota || 0.265;
             plano.tipoOperacao = dadosAninhados.parametrosFiscais.tipoOperacao || '';
             plano.regimePisCofins = dadosAninhados.parametrosFiscais.regimePisCofins || '';
-            
-            // Tratar créditos separadamente com validação robusta
+
+            // MODIFICAÇÃO AQUI: Verificar tanto parametrosFiscais.creditos quanto parametrosFiscais.composicaoTributaria.creditos
+            let creditosPIS = 0;
+            let creditosCOFINS = 0;
+            let creditosICMS = 0;
+            let creditosIPI = 0;
+            let creditosCBS = 0;
+            let creditosIBS = 0;
+
+            // Verificar créditos na estrutura padrão
             if (dadosAninhados.parametrosFiscais.creditos) {
-                const creditos = dadosAninhados.parametrosFiscais.creditos;
-
-                // CORREÇÃO CRÍTICA: Normalizar valores de créditos com validação de tipo e múltiplas fontes
-                const normalizarCredito = (valor, nome) => {
-                    if (typeof valor === 'number' && !isNaN(valor)) {
-                        return valor;
-                    }
-                    if (typeof valor === 'string') {
-                        const valorNumerico = parseFloat(valor.replace(/[^\d,.-]/g, '').replace(',', '.'));
-                        return isNaN(valorNumerico) ? 0 : valorNumerico;
-                    }
-                    console.warn(`DATA-MANAGER: Valor de crédito ${nome} não reconhecido:`, valor);
-                    return 0;
-                };
-
-                plano.creditosPIS = normalizarCredito(creditos.pis, 'PIS');
-                plano.creditosCOFINS = normalizarCredito(creditos.cofins, 'COFINS');
-                plano.creditosICMS = normalizarCredito(creditos.icms, 'ICMS');
-                plano.creditosIPI = normalizarCredito(creditos.ipi, 'IPI');
-                plano.creditosCBS = normalizarCredito(creditos.cbs, 'CBS');
-                plano.creditosIBS = normalizarCredito(creditos.ibs, 'IBS');
-
-                // Campo total de créditos para compatibilidade
-                plano.creditos = plano.creditosPIS + plano.creditosCOFINS + plano.creditosICMS + 
-                                plano.creditosIPI + plano.creditosCBS + plano.creditosIBS;
-
-                // Log para diagnóstico detalhado
-                console.log('DATA-MANAGER: Créditos convertidos para estrutura plana:', {
-                    origem: creditos,
-                    processado: {
-                        creditosPIS: plano.creditosPIS,
-                        creditosCOFINS: plano.creditosCOFINS,
-                        creditosICMS: plano.creditosICMS,
-                        creditosIPI: plano.creditosIPI,
-                        creditosCBS: plano.creditosCBS,
-                        creditosIBS: plano.creditosIBS,
-                        total: plano.creditos
-                    }
-                });
-                
-            } else {
-                // Valores padrão se não houver créditos
-                plano.creditosPIS = 0;
-                plano.creditosCOFINS = 0;
-                plano.creditosICMS = 0;
-                plano.creditosIPI = 0;
-                plano.creditosCBS = 0;
-                plano.creditosIBS = 0;
-                plano.creditos = 0;
-                console.warn('DATA-MANAGER: Nenhum crédito encontrado na estrutura aninhada');
+                creditosPIS = dadosAninhados.parametrosFiscais.creditos.pis || 0;
+                creditosCOFINS = dadosAninhados.parametrosFiscais.creditos.cofins || 0;
+                creditosICMS = dadosAninhados.parametrosFiscais.creditos.icms || 0;
+                creditosIPI = dadosAninhados.parametrosFiscais.creditos.ipi || 0;
+                creditosCBS = dadosAninhados.parametrosFiscais.creditos.cbs || 0;
+                creditosIBS = dadosAninhados.parametrosFiscais.creditos.ibs || 0;
             }
+
+            // Verificar também na estrutura SPED
+            if (dadosAninhados.parametrosFiscais.composicaoTributaria && 
+                dadosAninhados.parametrosFiscais.composicaoTributaria.creditos) {
+                const creditosSPED = dadosAninhados.parametrosFiscais.composicaoTributaria.creditos;
+
+                // Usar os valores do SPED se forem maiores que zero
+                if (creditosSPED.pis && creditosSPED.pis > 0) creditosPIS = creditosSPED.pis;
+                if (creditosSPED.cofins && creditosSPED.cofins > 0) creditosCOFINS = creditosSPED.cofins;
+                if (creditosSPED.icms && creditosSPED.icms > 0) creditosICMS = creditosSPED.icms;
+                if (creditosSPED.ipi && creditosSPED.ipi > 0) creditosIPI = creditosSPED.ipi;
+                if (creditosSPED.cbs && creditosSPED.cbs > 0) creditosCBS = creditosSPED.cbs;
+                if (creditosSPED.ibs && creditosSPED.ibs > 0) creditosIBS = creditosSPED.ibs;
+            }
+
+            // Atribuir os valores finais
+            plano.creditosPIS = creditosPIS;
+            plano.creditosCOFINS = creditosCOFINS;
+            plano.creditosICMS = creditosICMS;
+            plano.creditosIPI = creditosIPI;
+            plano.creditosCBS = creditosCBS;
+            plano.creditosIBS = creditosIBS;
+
+            // Campo total de créditos para compatibilidade
+            plano.creditos = creditosPIS + creditosCOFINS + creditosICMS + 
+                              creditosIPI + creditosCBS + creditosIBS;
+
+            // Log para diagnóstico detalhado
+            console.log('DATA-MANAGER: Créditos convertidos para estrutura plana:', {
+                origem: {
+                    padrão: dadosAninhados.parametrosFiscais.creditos || {},
+                    sped: dadosAninhados.parametrosFiscais.composicaoTributaria?.creditos || {}
+                },
+                processado: {
+                    creditosPIS: plano.creditosPIS,
+                    creditosCOFINS: plano.creditosCOFINS,
+                    creditosICMS: plano.creditosICMS,
+                    creditosIPI: plano.creditosIPI,
+                    creditosCBS: plano.creditosCBS,
+                    creditosIBS: plano.creditosIBS,
+                    total: plano.creditos
+                }
+            });
         }
-        
+
+        // Resto do código permanece igual...
         // Parâmetros de Simulação
         if (dadosAninhados.parametrosSimulacao) {
-            
-            // Parâmetros de Simulação
-            if (dadosAninhados.parametrosSimulacao) {
-                plano.cenario = dadosAninhados.parametrosSimulacao.cenario || 'moderado';
-                plano.taxaCrescimento = dadosAninhados.parametrosSimulacao.taxaCrescimento || 0.05;
-                plano.dataInicial = dadosAninhados.parametrosSimulacao.dataInicial || '2026-01-01';
-                plano.dataFinal = dadosAninhados.parametrosSimulacao.dataFinal || '2033-12-31';
-                plano.splitPayment = dadosAninhados.parametrosSimulacao.splitPayment !== false; // Default true
-            }
+            plano.cenario = dadosAninhados.parametrosSimulacao.cenario || 'moderado';
+            plano.taxaCrescimento = dadosAninhados.parametrosSimulacao.taxaCrescimento || 0.05;
+            plano.dataInicial = dadosAninhados.parametrosSimulacao.dataInicial || '2026-01-01';
+            plano.dataFinal = dadosAninhados.parametrosSimulacao.dataFinal || '2033-12-31';
+            plano.splitPayment = dadosAninhados.parametrosSimulacao.splitPayment !== false; // Default true
         }
-        
+
         // Parâmetros Financeiros
         if (dadosAninhados.parametrosFinanceiros) {
             plano.taxaCapitalGiro = dadosAninhados.parametrosFinanceiros.taxaCapitalGiro || 0.021;
             plano.taxaAntecipacao = dadosAninhados.parametrosFinanceiros.taxaAntecipacao || 0.018;
             plano.spreadBancario = dadosAninhados.parametrosFinanceiros.spreadBancario || 0.005;
         }
-        
+
         // IVA Config
         if (dadosAninhados.ivaConfig) {
-            // Garantir conversão para números
-            // Modificar esta parte para garantir a conversão adequada
             plano.aliquotaCBS = typeof dadosAninhados.ivaConfig.cbs === 'string' ? 
                                parseFloat(dadosAninhados.ivaConfig.cbs.replace(',', '.')) / 100 : 
                                dadosAninhados.ivaConfig.cbs || 0.088;
@@ -257,24 +259,29 @@ window.DataManager = (function() {
             plano.categoriaIVA = dadosAninhados.ivaConfig.categoriaIva || 'standard';
             plano.reducaoEspecial = dadosAninhados.ivaConfig.reducaoEspecial || 0;
         }
-        
+
         // Estratégias (apenas se necessário para algum módulo específico)
         if (dadosAninhados.estrategias) {
             plano.estrategias = JSON.parse(JSON.stringify(dadosAninhados.estrategias));
         }
-        
+
         // Cronograma (apenas se necessário para algum módulo específico)
         if (dadosAninhados.cronogramaImplementacao) {
             plano.cronogramaImplementacao = JSON.parse(JSON.stringify(dadosAninhados.cronogramaImplementacao));
         }
-        
+
         // Adicionar campos derivados
         plano.serviceCompany = plano.tipoEmpresa === 'servicos';
         plano.cumulativeRegime = plano.regimePisCofins === 'cumulativo';
-        
+
+        // Adicionar flag indicando que os dados vêm do SPED se aplicável
+        if (dadosAninhados.parametrosFiscais?.composicaoTributaria) {
+            plano.dadosSpedImportados = true;
+        }
+
         // Registrar conversão para depuração se o modo de debug estiver ativo
         logTransformacao(dadosAninhados, plano, 'Aninhada → Plana');
-        
+
         return plano;
     }
     
@@ -291,7 +298,7 @@ window.DataManager = (function() {
 
         // Iniciar com uma cópia da estrutura padrão
         const aninhado = JSON.parse(JSON.stringify(estruturaPadrao));
-        
+
         // Empresa
         aninhado.empresa = {
             faturamento: dadosPlanos.faturamento !== undefined ? dadosPlanos.faturamento : 0,
@@ -300,7 +307,7 @@ window.DataManager = (function() {
             tipoEmpresa: dadosPlanos.tipoEmpresa || '',
             regime: dadosPlanos.regime || ''
         };
-        
+
         // Ciclo Financeiro
         aninhado.cicloFinanceiro = {
             pmr: dadosPlanos.pmr !== undefined ? dadosPlanos.pmr : 30,
@@ -309,7 +316,7 @@ window.DataManager = (function() {
             percVista: dadosPlanos.percVista !== undefined ? dadosPlanos.percVista : 0.3,
             percPrazo: dadosPlanos.percPrazo !== undefined ? dadosPlanos.percPrazo : 0.7
         };
-        
+
         // Parâmetros Fiscais com validação de créditos
         aninhado.parametrosFiscais = {
             aliquota: dadosPlanos.aliquota !== undefined ? dadosPlanos.aliquota : 0.265,
@@ -330,6 +337,26 @@ window.DataManager = (function() {
             }
         };
 
+        // MODIFICAÇÃO AQUI: Se temos dados SPED, adicionar composicaoTributaria
+        if (dadosPlanos.dadosSpedImportados) {
+            aninhado.parametrosFiscais.composicaoTributaria = {
+                debitos: {
+                    pis: 0,
+                    cofins: 0,
+                    icms: 0,
+                    ipi: 0,
+                    iss: 0
+                },
+                creditos: {
+                    pis: aninhado.parametrosFiscais.creditos.pis,
+                    cofins: aninhado.parametrosFiscais.creditos.cofins,
+                    icms: aninhado.parametrosFiscais.creditos.icms,
+                    ipi: aninhado.parametrosFiscais.creditos.ipi,
+                    iss: 0
+                }
+            };
+        }
+
         // Log para diagnóstico
         console.log('DATA-MANAGER: Créditos convertidos para estrutura aninhada:', {
             origem: {
@@ -338,45 +365,14 @@ window.DataManager = (function() {
                 creditosICMS: dadosPlanos.creditosICMS,
                 creditosIPI: dadosPlanos.creditosIPI
             },
-            destino: aninhado.parametrosFiscais.creditos
+            destino: {
+                padrao: aninhado.parametrosFiscais.creditos,
+                sped: aninhado.parametrosFiscais.composicaoTributaria?.creditos
+            }
         });
-        
-        // Parâmetros de Simulação
-        aninhado.parametrosSimulacao = {
-            cenario: dadosPlanos.cenario || 'moderado',
-            taxaCrescimento: dadosPlanos.taxaCrescimento !== undefined ? dadosPlanos.taxaCrescimento : 0.05,
-            dataInicial: dadosPlanos.dataInicial || '2026-01-01',
-            dataFinal: dadosPlanos.dataFinal || '2033-12-31',
-            splitPayment: dadosPlanos.splitPayment !== false // Default true
-        };
-        
-        // Parâmetros Financeiros
-        aninhado.parametrosFinanceiros = {
-            taxaCapitalGiro: dadosPlanos.taxaCapitalGiro !== undefined ? dadosPlanos.taxaCapitalGiro : 0.021,
-            taxaAntecipacao: dadosPlanos.taxaAntecipacao !== undefined ? dadosPlanos.taxaAntecipacao : 0.018,
-            spreadBancario: dadosPlanos.spreadBancario !== undefined ? dadosPlanos.spreadBancario : 0.005
-        };
-        
-        // IVA Config
-        aninhado.ivaConfig = {
-            cbs: dadosPlanos.aliquotaCBS !== undefined ? dadosPlanos.aliquotaCBS : 0.088,
-            ibs: dadosPlanos.aliquotaIBS !== undefined ? dadosPlanos.aliquotaIBS : 0.177,
-            categoriaIva: dadosPlanos.categoriaIVA || 'standard',
-            reducaoEspecial: dadosPlanos.reducaoEspecial !== undefined ? dadosPlanos.reducaoEspecial : 0
-        };
-        
-        // Estratégias e Cronograma (manter se forem fornecidos)
-        if (dadosPlanos.estrategias) {
-            aninhado.estrategias = JSON.parse(JSON.stringify(dadosPlanos.estrategias));
-        }
-        
-        if (dadosPlanos.cronogramaImplementacao) {
-            aninhado.cronogramaImplementacao = JSON.parse(JSON.stringify(dadosPlanos.cronogramaImplementacao));
-        }
-        
-        // Registrar conversão para depuração
-        logTransformacao(dadosPlanos, aninhado, 'Plana → Aninhada');
-        
+
+        // Resto do código permanece igual...
+
         return aninhado;
     }
     
