@@ -1,11 +1,11 @@
-
-/** @fileoverview Gerenciador centralizado de estruturas de dados do simulador
-* Responsável pela validação, conversão e normalização das estruturas de dados
-* 
-* @module data-manager
-* @author Expertzy Inteligência Tributária
-* @version 1.0.0
-*/
+/**
+ * @fileoverview Gerenciador centralizado de estruturas de dados do simulador
+ * Responsável pela validação, conversão e normalização das estruturas de dados
+ * 
+ * @module data-manager
+ * @author Expertzy Inteligência Tributária
+ * @version 1.0.0
+ */
 
 window.DataManager = (function() {
     /**
@@ -150,7 +150,6 @@ window.DataManager = (function() {
             plano.setor = dadosAninhados.empresa.setor || '';
             plano.tipoEmpresa = dadosAninhados.empresa.tipoEmpresa || '';
             plano.regime = dadosAninhados.empresa.regime || '';
-            plano.nomeEmpresa = dadosAninhados.empresa.nome || ''; // Added line
         }
 
         // Ciclo Financeiro

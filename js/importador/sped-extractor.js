@@ -152,15 +152,15 @@ const SpedExtractor = (function() {
                         registro: tipoRegistro,
                         codVersao: colunas[1],
                         codFinalidade: colunas[2],
-                        dataInicial: colunas[3],
-                        dataFinal: colunas[4],
-                        nome: colunas[9],        // Posição correta para SPED Contribuições
+                        dataInicial: colunas[5],
+                        dataFinal: colunas[6],
+                        nome: colunas[7],        // Posição correta para SPED Contribuições
                         cnpj: colunas[8],        // Posição correta para SPED Contribuições
-                        uf: colunas[10],         // Ajustado para SPED Contribuições
-                        ie: colunas[11],         // Ajustado para SPED Contribuições
-                        codMun: colunas[12],     // Ajustado para SPED Contribuições
+                        uf: colunas[9],         // Ajustado para SPED Contribuições
+                        ie: colunas[10],         // Ajustado para SPED Contribuições
+                        codMun: colunas[11],     // Ajustado para SPED Contribuições
                         im: colunas[13],         // Ajustado para SPED Contribuições
-                        suframa: colunas[14]     // Ajustado para SPED Contribuições
+                        indTipoAtiv: colunas[13]     // Tipo de atividade
                     };
                 } else {
                     // SPED Fiscal (comportamento original)
@@ -172,20 +172,19 @@ const SpedExtractor = (function() {
                         dataFinal: colunas[4],
                         nome: colunas[5],        // Posição para SPED Fiscal
                         cnpj: colunas[6],        // Posição para SPED Fiscal
-                        uf: colunas[7],
-                        ie: colunas[8],
-                        codMun: colunas[9],
-                        im: colunas[10],
-                        suframa: colunas[11]
+                        uf: colunas[8],
+                        ie: colunas[9],
+                        codMun: colunas[10],
+                        im: colunas[11],
+                        suframa: colunas[12]
                     };
                 }    
                 
             case '0110': // Regime de apuração PIS/COFINS
                 return {
                     registro: tipoRegistro,
-                    codIncidencia: colunas[1],  // 1=Cumulativo, 2=Não-cumulativo, 3=Ambos
-                    indMetodo: colunas[2],      // Método de apropriação
-                    indTipoAtiv: colunas[3],    // Tipo de atividade
+                    codIncidencia: colunas[2],  // 1=Cumulativo, 2=Não-cumulativo, 3=Ambos
+                    indMetodo: colunas[3],      // Método de apropriação                    
                     indNatPj: colunas[4]        // Natureza da PJ
                 };
                 
@@ -224,11 +223,11 @@ const SpedExtractor = (function() {
             case 'E110': // Apuração do ICMS
                 return {
                     registro: tipoRegistro,
-                    valorTotalDebitos: parseValorMonetario(colunas[1]),      // Total de débitos
-                    valorTotalCreditos: parseValorMonetario(colunas[5]),     // Total de créditos
-                    valorAjustesDebitos: parseValorMonetario(colunas[2]),    // Ajustes de débitos
-                    valorAjustesCreditos: parseValorMonetario(colunas[6]),   // Ajustes de créditos
-                    valorICMSRecolher: parseValorMonetario(colunas[12])      // ICMS a recolher
+                    valorTotalDebitos: parseValorMonetario(colunas[2]),      // Total de débitos
+                    valorTotalCreditos: parseValorMonetario(colunas[6]),     // Total de créditos
+                    valorAjustesDebitos: parseValorMonetario(colunas[3]),    // Ajustes de débitos
+                    valorAjustesCreditos: parseValorMonetario(colunas[7]),   // Ajustes de créditos
+                    valorICMSRecolher: parseValorMonetario(colunas[13])      // ICMS a recolher
                 };
                 
             case 'E200': // Período de apuração do IPI
@@ -239,13 +238,13 @@ const SpedExtractor = (function() {
                     dataFinal: colunas[3]                          // Data final
                 };
 
-            case 'E210': // Apuração do IPI
+            case 'E520': // Apuração do IPI
                 return {
                     registro: tipoRegistro,
-                    valorTotalDebitos: parseValorMonetario(colunas[1]),    // Total de débitos
-                    valorTotalCreditos: parseValorMonetario(colunas[2]),   // Total de créditos
-                    valorSaldoApu: parseValorMonetario(colunas[3]),        // Saldo da apuração
-                    valorDebitoEspecial: parseValorMonetario(colunas[4])   // Débito especial
+                    valorTotalDebitos: parseValorMonetario(colunas[3]),    // Total de débitos
+                    valorTotalCreditos: parseValorMonetario(colunas[4]),   // Total de créditos
+                    valorSaldoApu: parseValorMonetario(colunas[8]),        // Saldo da apuração
+                    valorDebitoEspecial: parseValorMonetario(colunas[5])   // Débito especial
                 };
                 
             case 'M100': // Crédito de PIS/PASEP
@@ -262,10 +261,10 @@ const SpedExtractor = (function() {
             case 'M105': // Detalhamento dos créditos PIS
                 return {
                     registro: tipoRegistro,
-                    natBcCred: colunas[1],                           // Código da base de cálculo do crédito
-                    cstPis: colunas[2],                              // CST do PIS
-                    valorBcCredito: parseValorMonetario(colunas[3]), // Valor da base de cálculo
-                    valorBcPis: parseValorMonetario(colunas[4]),     // Valor da base de cálculo do PIS
+                    natBcCred: colunas[2],                           // Código da base de cálculo do crédito
+                    cstPis: colunas[3],                              // CST do PIS
+                    valorBcCredito: parseValorMonetario(colunas[7]), // Valor da base de cálculo
+                    valorBcPis: parseValorMonetario(colunas[6]),     // Valor da base de cálculo do PIS
                     aliqPis: parseValorMonetario(colunas[5]),        // Alíquota do PIS (%)
                     valorCredito: parseValorMonetario(colunas[6])    // Valor do crédito
                 };
