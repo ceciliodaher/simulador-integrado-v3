@@ -168,6 +168,7 @@ window.DataManager = (function() {
             plano.tipoOperacao = dadosAninhados.parametrosFiscais.tipoOperacao || '';
             plano.regimePisCofins = dadosAninhados.parametrosFiscais.regimePisCofins || '';
 
+            // Modificar na função converterParaEstruturaPlana (aproximadamente linha ~92)
             // MODIFICAÇÃO AQUI: Verificar tanto parametrosFiscais.creditos quanto parametrosFiscais.composicaoTributaria.creditos
             let creditosPIS = 0;
             let creditosCOFINS = 0;
@@ -228,7 +229,6 @@ window.DataManager = (function() {
                     total: plano.creditos
                 }
             });
-        }
 
         // Resto do código permanece igual...
         // Parâmetros de Simulação
@@ -284,6 +284,7 @@ window.DataManager = (function() {
         logTransformacao(dadosAninhados, plano, 'Aninhada → Plana');
 
         return plano;
+    }
     }
     
     /**

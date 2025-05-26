@@ -88,6 +88,28 @@ document.addEventListener('DOMContentLoaded', function() {
         window.CurrencyFormatter.inicializar();
     }
     
+    // Adicionar variável global para controle de processamento SPED
+    window.processandoSPED = false;
+
+    /**
+     * Configura tratamento de eventos de importação SPED
+     * Garante que apenas ImportacaoController possa definir o regime durante importação
+     */
+    function configurarGerenciamentoSPED() {
+        // Ouvir evento de importação concluída
+        document.addEventListener('spedImportacaoConcluida', function(evento) {
+            console.log('MAIN: Importação SPED concluída, atualizando interface');
+
+            // Realizar qualquer atualização adicional necessária após importação
+            // MAS SEM modificar os valores de regime já definidos pelo ImportacaoController
+        });
+
+        console.log('MAIN: Gerenciamento SPED configurado');
+    }
+
+    // Chamar durante inicialização
+    configurarGerenciamentoSPED();
+    
     console.log('Inicialização completa com arquitetura de dados padronizada');
 });
 
@@ -144,6 +166,70 @@ function atualizarCamposComDadosPadrao(dadosPadrao) {
     ajustarCamposOperacao();
     calcularCreditosTributarios();
 }
+
+/**
+ * Atualiza a interface tributária em resposta aos dados SPED
+ * Esta é a única função que deve ser chamada pelo ImportacaoController
+ * @param {string} regime - Regime tributário ('simples', 'presumido', 'real')
+ * @param {string} pisCofinsRegime - Regime PIS/COFINS ('cumulativo', 'nao-cumulativo')
+ */
+function atualizarInterfaceTributaria(regime, pisCofinsRegime) {
+    console.log(`MAIN: Atualizando interface tributária para regime ${regime} e PIS/COFINS ${pisCofinsRegime}`);
+    
+    // Atualizar campos visuais sem disparar eventos
+    const camposSimples = document.getElementById('campos-simples');
+    const camposLucro = document.getElementById('campos-lucro');
+
+    // Ocultar todos os campos específicos primeiro
+    if (camposSimples) camposSimples.style.display = 'none';
+    if (camposLucro) camposLucro.style.display = 'none';
+
+    // Mostrar campos baseado no regime selecionado
+    switch(regime) {
+        case 'simples':
+            if (camposSimples) camposSimples.style.display = 'block';
+            break;
+        case 'presumido':
+        case 'real':
+            if (camposLucro) camposLucro.style.display = 'block';
+            break;
+    }
+
+    // Atualizar campos específicos por tipo de operação
+    const tipoEmpresa = document.getElementById('tipo-empresa')?.value;
+    const camposICMS = document.getElementById('campos-icms');
+    const camposIPI = document.getElementById('campos-ipi');
+    const camposISS = document.getElementById('campos-iss');
+
+    // Ocultar todos os campos primeiro
+    if (camposICMS) camposICMS.style.display = 'none';
+    if (camposIPI) camposIPI.style.display = 'none';
+    if (camposISS) camposISS.style.display = 'none';
+
+    // Mostrar campos baseado no tipo de empresa
+    switch(tipoEmpresa) {
+        case 'comercio':
+            if (camposICMS) camposICMS.style.display = 'block';
+            break;
+        case 'industria':
+            if (camposICMS) camposICMS.style.display = 'block';
+            if (camposIPI) camposIPI.style.display = 'block';
+            break;
+        case 'servicos':
+            if (camposISS) camposISS.style.display = 'block';
+            break;
+    }
+
+    // Recalcular créditos após mudança de regime
+    if (typeof window.calcularCreditosTributarios === 'function') {
+        setTimeout(() => {
+            window.calcularCreditosTributarios();
+        }, 100);
+    }
+}
+
+// Expor função para o escopo global
+window.atualizarInterfaceTributaria = atualizarInterfaceTributaria;
 
 /**
  * Inicializa eventos específicos da página principal
@@ -876,42 +962,24 @@ function inicializarEventosPrincipais() {
         }).format(valor);
     }
 
-    // Função para ajustar campos tributários
+    /**
+     * Ajusta campos tributários com base no regime selecionado
+     * Esta função só é executada para interações manuais do usuário, não durante importação SPED
+     */
     function ajustarCamposTributarios() {
+        // Verificar se estamos em processo de importação SPED
+        if (window.processandoSPED) {
+            console.log('MAIN: Ajuste de campos tributários ignorado durante processamento SPED');
+            return;
+        }
+
         const regime = document.getElementById('regime')?.value;
-        const camposSimples = document.getElementById('campos-simples');
-        const camposLucro = document.getElementById('campos-lucro');
 
-        // Ocultar todos os campos específicos primeiro
-        if (camposSimples) camposSimples.style.display = 'none';
-        if (camposLucro) camposLucro.style.display = 'none';
-
-        // Mostrar campos baseado no regime selecionado
-        switch(regime) {
-            case 'simples':
-                if (camposSimples) camposSimples.style.display = 'block';
-                break;
-            case 'presumido':
-            case 'real':
-                if (camposLucro) camposLucro.style.display = 'block';
-                // Configurar regime PIS/COFINS padrão
-                const regimePisCofins = document.getElementById('pis-cofins-regime');
-                if (regimePisCofins && !regimePisCofins.value) {
-                    regimePisCofins.value = regime === 'real' ? 'nao-cumulativo' : 'cumulativo';
-                    ajustarAliquotasPisCofins();
-                }
-                break;
-        }
-
-        // Ajustar campos específicos por tipo de operação
-        ajustarCamposOperacao();
-
-        // Recalcular créditos após mudança de regime
-        if (typeof window.calcularCreditosTributarios === 'function') {
-            setTimeout(() => {
-                window.calcularCreditosTributarios();
-            }, 100);
-        }
+        // Atualizar interface usando a função central
+        window.atualizarInterfaceTributaria(
+            regime,
+            document.getElementById('pis-cofins-regime')?.value
+        );
 
         console.log('MAIN: Campos tributários ajustados para regime:', regime);
     }
