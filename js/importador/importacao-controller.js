@@ -813,21 +813,55 @@ const ImportacaoController = (function() {
         console.log('creditoIPI em dadosPlanos:', dadosPlanos.creditosIPI);
 
         // Preencher campos com os valores corretos, com sequenciamento controlado
-        // Primeiro os débitos
-        preencherCampoTributario('debito-pis', debitoPIS);
-        preencherCampoTributario('debito-cofins', debitoCOFINS);
-        preencherCampoTributario('debito-icms', debitoICMS);
-        preencherCampoTributario('debito-ipi', debitoIPI);
-        preencherCampoTributario('debito-iss', debitoISS);
+        // Preencher campos de forma sequencial com delays para garantir propagação de eventos
+        const preencherSequencial = async () => {
+            // Primeiro os débitos
+            preencherCampoTributario('debito-pis', debitoPIS);
+            await new Promise(resolve => setTimeout(resolve, 50));
 
-        // Pequena pausa para garantir processamento dos eventos de débitos
-        setTimeout(() => {
+            preencherCampoTributario('debito-cofins', debitoCOFINS);
+            await new Promise(resolve => setTimeout(resolve, 50));
+
+            preencherCampoTributario('debito-icms', debitoICMS);
+            await new Promise(resolve => setTimeout(resolve, 50));
+
+            preencherCampoTributario('debito-ipi', debitoIPI);
+            await new Promise(resolve => setTimeout(resolve, 50));
+
+            preencherCampoTributario('debito-iss', debitoISS);
+            await new Promise(resolve => setTimeout(resolve, 100));
+
             // Depois os créditos
             preencherCampoTributario('credito-pis', creditoPIS);
+            await new Promise(resolve => setTimeout(resolve, 50));
+
             preencherCampoTributario('credito-cofins', creditoCOFINS);
+            await new Promise(resolve => setTimeout(resolve, 50));
+
             preencherCampoTributario('credito-icms', creditoICMS);
+            await new Promise(resolve => setTimeout(resolve, 50));
+
             preencherCampoTributario('credito-ipi', creditoIPI);
+            await new Promise(resolve => setTimeout(resolve, 50));
+
             preencherCampoTributario('credito-iss', creditoISS);
+            await new Promise(resolve => setTimeout(resolve, 100));
+
+            // Forçar recálculo dos totais e alíquotas
+            const faturamento = obterFaturamentoMensal();
+            if (faturamento > 0) {
+                console.log('IMPORTACAO-CONTROLLER: Forçando recálculo final dos créditos tributários');
+                if (typeof window.calcularCreditosTributarios === 'function') {
+                    window.calcularCreditosTributarios();
+                }
+            }
+
+            console.log('IMPORTACAO-CONTROLLER: Preenchimento sequencial concluído');
+        };
+
+        // Executar preenchimento sequencial
+        preencherSequencial().catch(erro => {
+            console.error('IMPORTACAO-CONTROLLER: Erro no preenchimento sequencial:', erro);
 
             // Após preenchimento dos campos, atualizar totais e alíquotas
             setTimeout(() => {
@@ -1005,84 +1039,125 @@ const ImportacaoController = (function() {
     // Substituir a função preencherCampoTributario
     function preencherCampoTributario(campoId, valor) {
         const elemento = document.getElementById(campoId);
-        if (!elemento) return;
+        if (!elemento) {
+            console.warn(`IMPORTACAO-CONTROLLER: Campo ${campoId} não encontrado`);
+            return;
+        }
 
-        console.log(`=== IMPORTACAO-CONTROLLER: PREENCHENDO CAMPO ${campoId} ===`);
-        console.log(`Valor original recebido: ${valor}`);
+        console.log(`IMPORTACAO-CONTROLLER: Preenchendo ${campoId} com valor: ${valor}`);
 
         try {
-            // Garantir que o valor seja tratado como número
-            let valorNumerico = valor;
-            if (typeof valor === 'string') {
-                valorNumerico = parseFloat(valor.replace(/[^\d,.-]/g, '').replace(',', '.'));
+            // Garantir que o valor seja numérico
+            let valorNumerico = 0;
+            if (typeof valor === 'number') {
+                valorNumerico = valor;
+            } else if (typeof valor === 'string') {
+                valorNumerico = parseFloat(valor.replace(/[^\d,.-]/g, '').replace(',', '.')) || 0;
             }
 
-            // Verificar se o valor é um número válido antes de prosseguir
-            if (isNaN(valorNumerico)) {
-                console.error(`IMPORTACAO-CONTROLLER: Valor inválido para ${campoId}: ${valor}`);
-                valorNumerico = 0;
+            // Validar se DataManager está disponível
+            if (window.DataManager && typeof window.DataManager.normalizarValor === 'function') {
+                valorNumerico = window.DataManager.normalizarValor(valorNumerico, 'monetario');
             }
 
-            // Validar e normalizar valor usando DataManager
-            const valorValidado = window.DataManager.normalizarValor(valorNumerico, 'monetario');
+            console.log(`IMPORTACAO-CONTROLLER: Valor normalizado para ${campoId}: ${valorNumerico}`);
 
-            console.log(`Valor após normalização: ${valorValidado}`);
+            // Formatar valor como moeda
+            let valorFormatado;
+            if (window.DataManager && typeof window.DataManager.formatarMoeda === 'function') {
+                valorFormatado = window.DataManager.formatarMoeda(valorNumerico);
+            } else {
+                // Fallback para formatação manual
+                valorFormatado = new Intl.NumberFormat('pt-BR', {
+                    style: 'currency',
+                    currency: 'BRL',
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2
+                }).format(valorNumerico);
+            }
 
-            // Formatar e definir valor
-            elemento.value = window.DataManager.formatarMoeda(valorValidado);
+            // Definir valor no campo
+            elemento.value = valorFormatado;
 
-            // Preservar valor numérico para cálculos - CRÍTICO para correta recuperação posterior
+            // Armazenar valor numérico para cálculos futuros - CRÍTICO
             if (elemento.dataset) {
-                elemento.dataset.rawValue = valorValidado.toString();
+                elemento.dataset.rawValue = valorNumerico.toString();
             }
 
-            // Remover readonly para permitir edição
+            // Tornar campo visível e editável
             elemento.readOnly = false;
+            elemento.style.display = '';
 
-            // Destacar visualmente que o campo veio do SPED
+            // Destacar que veio do SPED
             elemento.classList.add('sped-data-value');
 
-            // Garantir que o valor seja visível na interface
-            if (elemento.parentElement && elemento.parentElement.style) {
-                elemento.parentElement.style.display = 'flex';
+            // Garantir que o container seja visível
+            if (elemento.closest('.form-group')) {
+                elemento.closest('.form-group').style.display = '';
             }
 
-            // Disparar eventos para recálculos - Sequência crucial para correta atualização
+            // Disparar eventos de forma sequencial para garantir propagação
             elemento.dispatchEvent(new Event('change', { bubbles: true }));
 
-            // Adicionar um pequeno atraso para garantir que o DOM tenha sido atualizado
+            // Pequeno delay para garantir que o change seja processado antes do input
             setTimeout(() => {
                 elemento.dispatchEvent(new Event('input', { bubbles: true }));
 
-                // Força recálculo das alíquotas efetivas se estamos preenchendo um campo de débito ou crédito
+                // Se for um campo de débito ou crédito, forçar recálculo dos totais
                 if (campoId.startsWith('debito-') || campoId.startsWith('credito-')) {
-                    const faturamento = obterFaturamentoMensal();
-                    if (faturamento > 0) {
-                        // Obter todos os valores necessários para recalcular alíquotas
-                        const debitoPIS = obterValorCampoRobusto('debito-pis');
-                        const debitoCOFINS = obterValorCampoRobusto('debito-cofins');
-                        const debitoICMS = obterValorCampoRobusto('debito-icms');
-                        const debitoIPI = obterValorCampoRobusto('debito-ipi');
-
-                        // Recalcular alíquotas efetivas
-                        setTimeout(() => {
-                            calcularAliquotasEfetivas(faturamento, debitoPIS, debitoCOFINS, debitoICMS, debitoIPI);
-                        }, 50);
-                    }
+                    setTimeout(() => {
+                        const faturamento = obterFaturamentoMensal();
+                        if (faturamento > 0 && typeof window.calcularCreditosTributarios === 'function') {
+                            console.log(`IMPORTACAO-CONTROLLER: Recalculando créditos após preencher ${campoId}`);
+                            window.calcularCreditosTributarios();
+                        }
+                    }, 50);
                 }
             }, 10);
 
-            // Log adicional para depuração
-            console.log(`Campo ${campoId} preenchido com valor: ${valorValidado} (${elemento.value})`);
+            console.log(`IMPORTACAO-CONTROLLER: Campo ${campoId} preenchido com sucesso: "${valorFormatado}" (${valorNumerico})`);
 
         } catch (erro) {
             console.error(`IMPORTACAO-CONTROLLER: Erro ao preencher campo ${campoId}:`, erro);
+
             // Em caso de erro, definir valor zero
-            elemento.value = window.DataManager.formatarMoeda(0);
+            elemento.value = 'R$ 0,00';
             if (elemento.dataset) {
                 elemento.dataset.rawValue = '0';
             }
         }
+    }
+    
+    /**
+     * Obtém o valor do faturamento mensal do formulário
+     * @returns {number} - Valor do faturamento
+     */
+    function obterFaturamentoMensal() {
+        const campoFaturamento = document.getElementById('faturamento');
+        if (!campoFaturamento) {
+            console.warn('IMPORTACAO-CONTROLLER: Campo faturamento não encontrado');
+            return 0;
+        }
+
+        // Verificar dataset.rawValue primeiro
+        if (campoFaturamento.dataset && campoFaturamento.dataset.rawValue) {
+            const valor = parseFloat(campoFaturamento.dataset.rawValue);
+            return isNaN(valor) ? 0 : valor;
+        }
+
+        // Extrair do valor formatado
+        const valorTexto = campoFaturamento.value;
+        if (!valorTexto) return 0;
+
+        // Usar DataManager se disponível
+        if (window.DataManager && typeof window.DataManager.extrairValorMonetario === 'function') {
+            return window.DataManager.extrairValorMonetario(valorTexto);
+        }
+
+        // Fallback manual
+        const valorLimpo = valorTexto.replace(/[^\d,.-]/g, '').replace(',', '.');
+        const valor = parseFloat(valorLimpo);
+        return isNaN(valor) ? 0 : valor;
     }
     
     /**

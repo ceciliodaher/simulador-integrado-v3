@@ -289,94 +289,107 @@ function calcularISS(faturamento) {
  * Substituir completamente a função calcularTotaisEAliquotasEfetivas no arquivo creditos-tributarios.js (aproximadamente linha 295)
  */
 function calcularTotaisEAliquotasEfetivas(faturamento) {
-    const impostos = ['pis', 'cofins', 'icms', 'ipi', 'iss'];
-    
-    let totalDebitos = 0;
-    let totalCreditos = 0;
-    
-    // ADICIONADO: Log explícito para depuração
     console.log(`CREDITOS-TRIBUTARIOS: Iniciando cálculo de totais com faturamento: ${faturamento}`);
     
-    // Array para armazenar os valores para verificação
-    const valoresDebitos = {};
-    const valoresCreditos = {};
-    
-    // Calcular totais e alíquotas efetivas por imposto
+    if (!faturamento || faturamento <= 0) {
+        console.warn('CREDITOS-TRIBUTARIOS: Faturamento inválido ou zero');
+        return;
+    }
+
+    const impostos = ['pis', 'cofins', 'icms', 'ipi', 'iss'];
+    let totalDebitos = 0;
+    let totalCreditos = 0;
+
+    // Objeto para armazenar valores para debug
+    const valoresProcessados = {
+        debitos: {},
+        creditos: {},
+        aliquotasEfetivas: {}
+    };
+
+    // Processar cada imposto individualmente
     impostos.forEach(imposto => {
-        // Usar a função robusta para obter valores confiáveis
+        // Obter valores de débito e crédito
         const debito = obterValorCampoRobusto(`debito-${imposto}`);
         const credito = obterValorCampoRobusto(`credito-${imposto}`);
-        
-        // Armazenar para verificação
-        valoresDebitos[imposto] = debito;
-        valoresCreditos[imposto] = credito;
-        
-        // MODIFICADO: Log detalhado para cada imposto
-        console.log(`CREDITOS-TRIBUTARIOS: ${imposto.toUpperCase()} - Débito: ${debito}, Crédito: ${credito}`);
-        
+
+        // Armazenar para debug
+        valoresProcessados.debitos[imposto] = debito;
+        valoresProcessados.creditos[imposto] = credito;
+
+        // Somar aos totais
         totalDebitos += debito;
         totalCreditos += credito;
-        
-        // Calcular alíquota efetiva (débito líquido / faturamento)
+
+        // Calcular débito líquido e alíquota efetiva
         const debitoLiquido = Math.max(0, debito - credito);
-        const aliquotaEfetiva = faturamento > 0 ? (debitoLiquido / faturamento) * 100 : 0;
-        
-        // MODIFICADO: Preencher o campo de alíquota efetiva com valor e acionamento de eventos
+        const aliquotaEfetiva = (debitoLiquido / faturamento) * 100;
+
+        // Armazenar para debug
+        valoresProcessados.aliquotasEfetivas[imposto] = aliquotaEfetiva;
+
+        // Atualizar campo de alíquota efetiva
         const campoAliquota = document.getElementById(`aliquota-efetiva-${imposto}`);
         if (campoAliquota) {
-            // Formatar com 3 casas decimais
-            campoAliquota.value = aliquotaEfetiva.toFixed(3);
+            const valorFormatado = aliquotaEfetiva.toFixed(3);
+            campoAliquota.value = valorFormatado;
             
-            // ADICIONADO: Armazenar valor bruto para cálculos futuros
+            // Armazenar valor numérico
             if (campoAliquota.dataset) {
                 campoAliquota.dataset.rawValue = aliquotaEfetiva.toString();
             }
-            
-            // ADICIONADO: Disparar eventos para garantir atualização da interface
+
+            // Disparar eventos para garantir atualização da interface
             campoAliquota.dispatchEvent(new Event('change', { bubbles: true }));
-            setTimeout(() => {
-                campoAliquota.dispatchEvent(new Event('input', { bubbles: true }));
-            }, 0);
+            campoAliquota.dispatchEvent(new Event('input', { bubbles: true }));
             
-            // Log para depuração
-            console.log(`CREDITOS-TRIBUTARIOS: Alíquota efetiva ${imposto.toUpperCase()}: ${aliquotaEfetiva.toFixed(3)}%`);
+            console.log(`CREDITOS-TRIBUTARIOS: Alíquota efetiva ${imposto}: ${valorFormatado}% (débito: ${debito}, crédito: ${credito}, líquido: ${debitoLiquido})`);
         }
     });
-    
+
     // Log consolidado para verificação
-    console.log('CREDITOS-TRIBUTARIOS: Valores consolidados:', {
-        debitos: valoresDebitos,
-        creditos: valoresCreditos,
-        totalDebitos,
-        totalCreditos
-    });
-    
-    // Preencher totais com método que garante atualização da interface
-    preencherCampoComEvento('total-debitos', formatarComoMoeda(totalDebitos));
-    preencherCampoComEvento('total-creditos', formatarComoMoeda(totalCreditos));
-    
-    // Calcular alíquota efetiva total
+    console.log('CREDITOS-TRIBUTARIOS: Valores processados:', valoresProcessados);
+
+    // Atualizar campos de totais
+    const campoTotalDebitos = document.getElementById('total-debitos');
+    if (campoTotalDebitos) {
+        const valorFormatadoDebitos = formatarComoMoeda(totalDebitos);
+        campoTotalDebitos.value = valorFormatadoDebitos;
+        if (campoTotalDebitos.dataset) {
+            campoTotalDebitos.dataset.rawValue = totalDebitos.toString();
+        }
+        campoTotalDebitos.dispatchEvent(new Event('change', { bubbles: true }));
+        console.log(`CREDITOS-TRIBUTARIOS: Total débitos: ${valorFormatadoDebitos} (${totalDebitos})`);
+    }
+
+    const campoTotalCreditos = document.getElementById('total-creditos');
+    if (campoTotalCreditos) {
+        const valorFormatadoCreditos = formatarComoMoeda(totalCreditos);
+        campoTotalCreditos.value = valorFormatadoCreditos;
+        if (campoTotalCreditos.dataset) {
+            campoTotalCreditos.dataset.rawValue = totalCreditos.toString();
+        }
+        campoTotalCreditos.dispatchEvent(new Event('change', { bubbles: true }));
+        console.log(`CREDITOS-TRIBUTARIOS: Total créditos: ${valorFormatadoCreditos} (${totalCreditos})`);
+    }
+
+    // Calcular e atualizar alíquota efetiva total
     const debitoLiquidoTotal = Math.max(0, totalDebitos - totalCreditos);
-    const aliquotaEfetivaTotal = faturamento > 0 ? (debitoLiquidoTotal / faturamento) * 100 : 0;
-    
-    // MODIFICADO: Preencher alíquota efetiva total com disparo de eventos
+    const aliquotaEfetivaTotal = (debitoLiquidoTotal / faturamento) * 100;
+
     const campoAliquotaTotal = document.getElementById('aliquota-efetiva-total');
     if (campoAliquotaTotal) {
-        campoAliquotaTotal.value = aliquotaEfetivaTotal.toFixed(3);
-        
-        // ADICIONADO: Armazenar valor bruto para cálculos futuros
+        const valorFormatadoTotal = aliquotaEfetivaTotal.toFixed(3);
+        campoAliquotaTotal.value = valorFormatadoTotal;
         if (campoAliquotaTotal.dataset) {
             campoAliquotaTotal.dataset.rawValue = aliquotaEfetivaTotal.toString();
         }
-        
-        // ADICIONADO: Disparar eventos para garantir atualização da interface
         campoAliquotaTotal.dispatchEvent(new Event('change', { bubbles: true }));
-        setTimeout(() => {
-            campoAliquotaTotal.dispatchEvent(new Event('input', { bubbles: true }));
-        }, 0);
+        campoAliquotaTotal.dispatchEvent(new Event('input', { bubbles: true }));
+        console.log(`CREDITOS-TRIBUTARIOS: Alíquota efetiva total: ${valorFormatadoTotal}% (débito líquido total: ${debitoLiquidoTotal})`);
     }
-    
-    console.log(`CREDITOS-TRIBUTARIOS: Totais calculados - Débitos: ${totalDebitos.toFixed(2)}, Créditos: ${totalCreditos.toFixed(2)}, Alíquota Efetiva: ${aliquotaEfetivaTotal.toFixed(3)}%`);
+
+    console.log(`CREDITOS-TRIBUTARIOS: Cálculo de totais concluído - Débitos: ${totalDebitos}, Créditos: ${totalCreditos}, Alíquota Total: ${aliquotaEfetivaTotal.toFixed(3)}%`);
 }
 
 /**
@@ -434,28 +447,46 @@ function extrairValorMonetario(valor) {
 // Substituir a função obterValorCampoRobusto
 function obterValorCampoRobusto(campoId) {
     const elemento = document.getElementById(campoId);
-    if (!elemento) return 0;
-    
-    // Primeiro verificar se há um dataset.rawValue, que é mais confiável
-    if (elemento.dataset && elemento.dataset.rawValue !== undefined) {
+    if (!elemento) {
+        console.warn(`CREDITOS-TRIBUTARIOS: Elemento ${campoId} não encontrado`);
+        return 0;
+    }
+
+    // PRIORIDADE 1: Verificar dataset.rawValue (mais confiável)
+    if (elemento.dataset && elemento.dataset.rawValue !== undefined && elemento.dataset.rawValue !== '') {
         const valor = parseFloat(elemento.dataset.rawValue);
         const resultado = isNaN(valor) ? 0 : valor;
-        console.log(`CREDITOS-TRIBUTARIOS: Valor extraído de ${campoId} via dataset.rawValue: ${resultado}`);
+        console.log(`CREDITOS-TRIBUTARIOS: Valor obtido de ${campoId} via dataset.rawValue: ${resultado}`);
         return resultado;
     }
-    
-    // Se não tiver dataset.rawValue, extrair do valor exibido
+
+    // PRIORIDADE 2: Extrair do valor exibido
     const valorTexto = elemento.value;
-    if (!valorTexto) return 0;
+    if (!valorTexto || valorTexto.trim() === '') {
+        console.log(`CREDITOS-TRIBUTARIOS: Campo ${campoId} vazio, retornando 0`);
+        return 0;
+    }
+
+    // Limpar formatação monetária de forma mais robusta
+    let valorLimpo = valorTexto;
     
-    // Limpar formatação monetária
-    const valorLimpo = valorTexto.replace(/[^\d,.-]/g, '').replace(',', '.');
+    // Remover símbolos de moeda e espaços
+    valorLimpo = valorLimpo.replace(/[R$\s]/g, '');
+    
+    // Tratar formatação brasileira (ponto como separador de milhares, vírgula como decimal)
+    if (valorLimpo.includes(',') && valorLimpo.includes('.')) {
+        // Formato: 1.234.567,89 -> remover pontos e trocar vírgula por ponto
+        valorLimpo = valorLimpo.replace(/\./g, '').replace(',', '.');
+    } else if (valorLimpo.includes(',') && !valorLimpo.includes('.')) {
+        // Formato: 1234,89 -> trocar vírgula por ponto
+        valorLimpo = valorLimpo.replace(',', '.');
+    }
+    // Se só tem ponto, assumir que é decimal americano
+    
     const valor = parseFloat(valorLimpo);
     const resultado = isNaN(valor) ? 0 : valor;
     
-    // Registrar o valor obtido para depuração
-    console.log(`CREDITOS-TRIBUTARIOS: Valor extraído de ${campoId} via valor exibido: ${resultado} (original: ${valorTexto})`);
-    
+    console.log(`CREDITOS-TRIBUTARIOS: Valor extraído de ${campoId}: ${resultado} (original: "${valorTexto}", limpo: "${valorLimpo}")`);
     return resultado;
 }
 
@@ -464,16 +495,42 @@ function obterValorCampoRobusto(campoId) {
  */
 function preencherCampoValor(campoId, valor, formatarMoeda = true) {
     const elemento = document.getElementById(campoId);
-    if (!elemento) return;
-    
+    if (!elemento) {
+        console.warn(`CREDITOS-TRIBUTARIOS: Campo ${campoId} não encontrado`);
+        return;
+    }
+
+    console.log(`CREDITOS-TRIBUTARIOS: Preenchendo ${campoId} com valor ${valor}, formatarMoeda: ${formatarMoeda}`);
+
+    // Validar valor numérico
+    let valorNumerico = typeof valor === 'number' ? valor : parseFloat(valor) || 0;
+
     let valorFormatado;
     if (formatarMoeda) {
-        valorFormatado = formatarComoMoeda(valor);
+        valorFormatado = formatarComoMoeda(valorNumerico);
     } else {
-        valorFormatado = valor.toFixed(3);
+        valorFormatado = valorNumerico.toFixed(3);
     }
-    
+
+    // Definir valor formatado
     elemento.value = valorFormatado;
+
+    // Armazenar valor numérico para cálculos futuros
+    if (elemento.dataset) {
+        elemento.dataset.rawValue = valorNumerico.toString();
+    }
+
+    // Garantir que o campo seja visível e editável
+    elemento.style.display = '';
+    if (elemento.closest('.form-group')) {
+        elemento.closest('.form-group').style.display = '';
+    }
+
+    // Disparar eventos para notificar outros sistemas
+    elemento.dispatchEvent(new Event('change', { bubbles: true }));
+    elemento.dispatchEvent(new Event('input', { bubbles: true }));
+
+    console.log(`CREDITOS-TRIBUTARIOS: Campo ${campoId} preenchido: "${valorFormatado}" (valor numérico: ${valorNumerico})`);
 }
 
 /**
@@ -589,14 +646,16 @@ function toggleCamposIncentivoICMS() {
  */
 function inicializarCreditosTributarios() {
     console.log('CREDITOS-TRIBUTARIOS: Inicializando módulo...');
-    
-    // Verificar se os campos de IPI existem e têm valores válidos
+
+    // Adicionar listeners globais
+    adicionarListenersGlobais();
+
+    // Verificar e corrigir campos de IPI se necessário
     const verificarCamposIPI = () => {
         const campoDebitoIPI = document.getElementById('debito-ipi');
         const campoCreditoIPI = document.getElementById('credito-ipi');
         
         if (campoDebitoIPI && campoCreditoIPI) {
-            // Obter valores atuais
             const valorDebitoIPI = obterValorCampoRobusto('debito-ipi');
             const valorCreditoIPI = obterValorCampoRobusto('credito-ipi');
             
@@ -604,67 +663,107 @@ function inicializarCreditosTributarios() {
                 debitoIPI: valorDebitoIPI,
                 creditoIPI: valorCreditoIPI
             });
-            
-            // Se há dados SPED importados, verificar na estrutura global
+
+            // Verificar dados SPED importados
             if (window.dadosImportadosSped) {
                 console.log('CREDITOS-TRIBUTARIOS: Verificando dados SPED para IPI');
                 
                 // Verificar estrutura aninhada
-                if (window.dadosImportadosSped.parametrosFiscais && 
-                    window.dadosImportadosSped.parametrosFiscais.debitos) {
-                    
+                if (window.dadosImportadosSped.parametrosFiscais?.debitos?.ipi && 
+                    valorDebitoIPI === 0) {
                     const debitoIPISped = window.dadosImportadosSped.parametrosFiscais.debitos.ipi;
-                    if (debitoIPISped && debitoIPISped > 0 && valorDebitoIPI === 0) {
-                        console.log(`CREDITOS-TRIBUTARIOS: Corrigindo débito IPI com valor SPED: ${debitoIPISped}`);
-                        preencherCampoValor('debito-ipi', debitoIPISped);
-                    }
+                    console.log(`CREDITOS-TRIBUTARIOS: Corrigindo débito IPI com valor SPED: ${debitoIPISped}`);
+                    preencherCampoValor('debito-ipi', debitoIPISped);
                 }
-                
-                if (window.dadosImportadosSped.parametrosFiscais && 
-                    window.dadosImportadosSped.parametrosFiscais.creditos) {
-                    
+
+                if (window.dadosImportadosSped.parametrosFiscais?.creditos?.ipi && 
+                    valorCreditoIPI === 0) {
                     const creditoIPISped = window.dadosImportadosSped.parametrosFiscais.creditos.ipi;
-                    if (creditoIPISped && creditoIPISped > 0 && valorCreditoIPI === 0) {
-                        console.log(`CREDITOS-TRIBUTARIOS: Corrigindo crédito IPI com valor SPED: ${creditoIPISped}`);
-                        preencherCampoValor('credito-ipi', creditoIPISped);
-                    }
+                    console.log(`CREDITOS-TRIBUTARIOS: Corrigindo crédito IPI com valor SPED: ${creditoIPISped}`);
+                    preencherCampoValor('credito-ipi', creditoIPISped);
                 }
-                
-                // Verificar estrutura plana
-                if (window.dadosImportadosSped.debitoIPI && 
-                    window.dadosImportadosSped.debitoIPI > 0 && valorDebitoIPI === 0) {
-                    console.log(`CREDITOS-TRIBUTARIOS: Corrigindo débito IPI com valor plano: ${window.dadosImportadosSped.debitoIPI}`);
-                    preencherCampoValor('debito-ipi', window.dadosImportadosSped.debitoIPI);
+
+                // Verificar composição tributária
+                if (window.dadosImportadosSped.parametrosFiscais?.composicaoTributaria?.debitos?.ipi && 
+                    valorDebitoIPI === 0) {
+                    const debitoIPISped = window.dadosImportadosSped.parametrosFiscais.composicaoTributaria.debitos.ipi;
+                    console.log(`CREDITOS-TRIBUTARIOS: Corrigindo débito IPI via composição: ${debitoIPISped}`);
+                    preencherCampoValor('debito-ipi', debitoIPISped);
                 }
-                
-                if (window.dadosImportadosSped.creditosIPI && 
-                    window.dadosImportadosSped.creditosIPI > 0 && valorCreditoIPI === 0) {
-                    console.log(`CREDITOS-TRIBUTARIOS: Corrigindo crédito IPI com valor plano: ${window.dadosImportadosSped.creditosIPI}`);
-                    preencherCampoValor('credito-ipi', window.dadosImportadosSped.creditosIPI);
+
+                if (window.dadosImportadosSped.parametrosFiscais?.composicaoTributaria?.creditos?.ipi && 
+                    valorCreditoIPI === 0) {
+                    const creditoIPISped = window.dadosImportadosSped.parametrosFiscais.composicaoTributaria.creditos.ipi;
+                    console.log(`CREDITOS-TRIBUTARIOS: Corrigindo crédito IPI via composição: ${creditoIPISped}`);
+                    preencherCampoValor('credito-ipi', creditoIPISped);
                 }
             }
-            
-            // Recalcular alíquotas e totais após possíveis correções
+
+            // Recalcular após possíveis correções
             const faturamento = obterFaturamentoMensal();
             if (faturamento > 0) {
                 setTimeout(() => {
                     calcularTotaisEAliquotasEfetivas(faturamento);
-                }, 100);
+                }, 200);
             }
         }
     };
-    
-    // Verificar após um pequeno atraso para garantir que outros scripts tenham sido carregados
+
+    // Verificar após um pequeno atraso
     setTimeout(verificarCamposIPI, 500);
-    
-    // Registrar ouvinte para eventos de importação SPED concluída
-    document.addEventListener('spedImportacaoConcluida', function(e) {
-        console.log('CREDITOS-TRIBUTARIOS: Evento de importação SPED detectado, verificando campos...');
-        setTimeout(verificarCamposIPI, 300);
-    });
-    
+
     console.log('CREDITOS-TRIBUTARIOS: Módulo inicializado');
 }
+
+/**
+ * Adiciona listeners globais para garantir recálculos automáticos
+ */
+function adicionarListenersGlobais() {
+    // Listener para mudanças nos campos de débito e crédito
+    const impostos = ['pis', 'cofins', 'icms', 'ipi', 'iss'];
+    
+    impostos.forEach(imposto => {
+        // Débitos
+        const campoDebito = document.getElementById(`debito-${imposto}`);
+        if (campoDebito) {
+            campoDebito.addEventListener('change', function() {
+                setTimeout(() => {
+                    const faturamento = obterFaturamentoMensal();
+                    if (faturamento > 0) {
+                        calcularTotaisEAliquotasEfetivas(faturamento);
+                    }
+                }, 100);
+            });
+        }
+
+        // Créditos
+        const campoCredito = document.getElementById(`credito-${imposto}`);
+        if (campoCredito) {
+            campoCredito.addEventListener('change', function() {
+                setTimeout(() => {
+                    const faturamento = obterFaturamentoMensal();
+                    if (faturamento > 0) {
+                        calcularTotaisEAliquotasEfetivas(faturamento);
+                    }
+                }, 100);
+            });
+        }
+    });
+
+    console.log('CREDITOS-TRIBUTARIOS: Listeners globais adicionados');
+}
+
+// Listener para importação SPED concluída
+document.addEventListener('spedImportacaoConcluida', function(e) {
+    console.log('CREDITOS-TRIBUTARIOS: Evento spedImportacaoConcluida detectado');
+    setTimeout(() => {
+        const faturamento = obterFaturamentoMensal();
+        if (faturamento > 0) {
+            console.log('CREDITOS-TRIBUTARIOS: Recalculando após importação SPED');
+            calcularTotaisEAliquotasEfetivas(faturamento);
+        }
+    }, 500);
+});
 
 // Disponibilizar funções globalmente
 if (typeof window !== 'undefined') {
