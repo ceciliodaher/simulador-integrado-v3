@@ -764,83 +764,36 @@ const ImportacaoController = (function() {
      * @param {Object} dadosPlanos - Dados na estrutura plana
      */
     // Substituir a função preencherParametrosFiscais:
+    // SUBSTITUIR preencherParametrosFiscais - Preservar valores SPED
     function preencherParametrosFiscais(dadosPlanos) {
-        console.log('=== IMPORTACAO-CONTROLLER: PARÂMETROS FISCAIS ===');
+        console.log('IMPORTACAO-CONTROLLER: Preenchendo com valores SPED preservados');
 
-        // Verificar tipo da estrutura de dados
-        if (window.DataManager.detectarTipoEstrutura(dadosPlanos) === "aninhada") {
-            throw new Error('Dados não estão na estrutura plana esperada');
+        // Verificar se são dados SPED
+        if (!dadosPlanos.dadosSpedImportados) {
+            return; // Não preencher se não for SPED
         }
 
-        console.log('Estrutura de dados confirmada como plana');
+        // Preencher diretamente sem recálculos
+        const impostos = ['pis', 'cofins', 'icms', 'ipi', 'iss'];
 
-        // Verificar se dados SPED estão disponíveis
-        if (dadosPlanos.dadosSpedImportados === true) {
-            console.log('Dados SPED encontrados na estrutura plana');
-        } else {
-            console.log('Flag dadosSpedImportados não encontrada na estrutura plana');
-        }
+        impostos.forEach(imposto => {
+            const debito = dadosPlanos[`debito${imposto.toUpperCase()}`] || 0;
+            const credito = dadosPlanos[`creditos${imposto.toUpperCase()}`] || 0;
 
-        // Verificar créditos na estrutura plana
-        console.log('creditosPIS:', dadosPlanos.creditosPIS);
-        console.log('creditosCOFINS:', dadosPlanos.creditosCOFINS);
-        console.log('creditosICMS:', dadosPlanos.creditosICMS);
-        console.log('creditosIPI:', dadosPlanos.creditosIPI);
-
-        // MODIFICAÇÃO: Verificar também débitos na estrutura plana
-        console.log('debitoPIS:', dadosPlanos.debitoPIS);
-        console.log('debitoCOFINS:', dadosPlanos.debitoCOFINS);
-        console.log('debitoICMS:', dadosPlanos.debitoICMS);
-        console.log('debitoIPI:', dadosPlanos.debitoIPI);
-
-        // CORREÇÃO: Extrair valores de débitos e créditos diretamente dos dadosPlanos
-        // Evitando usar valores literais fixos que podem causar inconsistências
-        const debitoPIS = dadosPlanos.debitoPIS || 0;
-        const debitoCOFINS = dadosPlanos.debitoCOFINS || 0;
-        const debitoICMS = dadosPlanos.debitoICMS || 0;
-        const debitoIPI = dadosPlanos.debitoIPI || 0;
-        const debitoISS = dadosPlanos.debitoISS || 0;
-
-        const creditoPIS = dadosPlanos.creditosPIS || 0;
-        const creditoCOFINS = dadosPlanos.creditosCOFINS || 0;
-        const creditoICMS = dadosPlanos.creditosICMS || 0;
-        const creditoIPI = dadosPlanos.creditosIPI || 0;
-        const creditoISS = dadosPlanos.creditosISS || 0;
-
-        // MODIFICAÇÃO: Log adicional para depuração de valores do IPI
-        console.log('=== IMPORTACAO-CONTROLLER: VERIFICAÇÃO ADICIONAL DE IPI ===');
-        console.log('debitoIPI em dadosPlanos:', dadosPlanos.debitoIPI);
-        console.log('creditoIPI em dadosPlanos:', dadosPlanos.creditosIPI);
-
-        // Preencher campos com os valores corretos
-        preencherCampoTributario('debito-pis', debitoPIS);
-        preencherCampoTributario('credito-pis', creditoPIS);
-
-        preencherCampoTributario('debito-cofins', debitoCOFINS);
-        preencherCampoTributario('credito-cofins', creditoCOFINS);
-
-        preencherCampoTributario('debito-icms', debitoICMS);
-        preencherCampoTributario('credito-icms', creditoICMS);
-
-        preencherCampoTributario('debito-ipi', debitoIPI);
-        preencherCampoTributario('credito-ipi', creditoIPI);
-
-        preencherCampoTributario('debito-iss', debitoISS);
-        preencherCampoTributario('credito-iss', creditoISS);
-
-        // Calcular alíquotas efetivas
-        calcularAliquotasEfetivas(dadosPlanos.faturamento, debitoPIS, debitoCOFINS, debitoICMS, debitoIPI);
-
-        // === REGIME PIS/COFINS ===
-        const campoPisCofinsRegime = document.getElementById('pis-cofins-regime');
-        if (campoPisCofinsRegime && dadosPlanos.regimePisCofins) {
-            const regimeFormatado = dadosPlanos.regimePisCofins.replace(' ', '-');
-            if (['cumulativo', 'nao-cumulativo'].includes(regimeFormatado)) {
-                campoPisCofinsRegime.value = regimeFormatado;
-                campoPisCofinsRegime.dispatchEvent(new Event('change', { bubbles: true }));
-                adicionarLog(`Regime PIS/COFINS definido como: ${regimeFormatado.toUpperCase()}`, 'info');
+            if (debito > 0) {
+                preencherCampoTributario(`debito-${imposto}`, debito);
+                // NOVO: Flag para indicar origem SPED
+                document.getElementById(`debito-${imposto}`).dataset.origemSped = 'true';
             }
-        }
+
+            if (credito > 0) {
+                preencherCampoTributario(`credito-${imposto}`, credito);
+                document.getElementById(`credito-${imposto}`).dataset.origemSped = 'true';
+            }
+        });
+
+        // Calcular apenas alíquotas efetivas, não os valores
+        calcularAliquotasEfetivas(dadosPlanos.faturamento, dadosPlanos);
     }
         
     /**

@@ -38,6 +38,13 @@ window.DataManager = (function() {
                 ipi: 0,               
                 cbs: 0,               
                 ibs: 0                
+            },
+            debitos: {                // Valores monetários (R$)
+                pis: 0,
+                cofins: 0,
+                icms: 0,
+                ipi: 0,
+                iss: 0
             }
         },
         parametrosSimulacao: {
@@ -429,6 +436,18 @@ window.DataManager = (function() {
                      (dadosPlanos.credito_ipi !== undefined ? dadosPlanos.credito_ipi : 0),
                 cbs: dadosPlanos.creditosCBS !== undefined ? dadosPlanos.creditosCBS : 0,
                 ibs: dadosPlanos.creditosIBS !== undefined ? dadosPlanos.creditosIBS : 0
+            },
+            // MODIFICAÇÃO: Adicionar estrutura de débitos
+            debitos: {
+                pis: dadosPlanos.debitoPIS !== undefined ? dadosPlanos.debitoPIS : 
+                     (dadosPlanos.debito_pis !== undefined ? dadosPlanos.debito_pis : 0),
+                cofins: dadosPlanos.debitoCOFINS !== undefined ? dadosPlanos.debitoCOFINS : 
+                        (dadosPlanos.debito_cofins !== undefined ? dadosPlanos.debito_cofins : 0),
+                icms: dadosPlanos.debitoICMS !== undefined ? dadosPlanos.debitoICMS : 
+                      (dadosPlanos.debito_icms !== undefined ? dadosPlanos.debito_icms : 0),
+                ipi: dadosPlanos.debitoIPI !== undefined ? dadosPlanos.debitoIPI : 
+                     (dadosPlanos.debito_ipi !== undefined ? dadosPlanos.debito_ipi : 0),
+                iss: dadosPlanos.debitoISS !== undefined ? dadosPlanos.debitoISS : 0
             }
         };
 
@@ -436,11 +455,11 @@ window.DataManager = (function() {
         if (dadosPlanos.dadosSpedImportados) {
             aninhado.parametrosFiscais.composicaoTributaria = {
                 debitos: {
-                    pis: 0,
-                    cofins: 0,
-                    icms: 0,
-                    ipi: 0,
-                    iss: 0
+                    pis: aninhado.parametrosFiscais.debitos.pis,
+                    cofins: aninhado.parametrosFiscais.debitos.cofins,
+                    icms: aninhado.parametrosFiscais.debitos.icms,
+                    ipi: aninhado.parametrosFiscais.debitos.ipi,
+                    iss: aninhado.parametrosFiscais.debitos.iss
                 },
                 creditos: {
                     pis: aninhado.parametrosFiscais.creditos.pis,
@@ -453,16 +472,21 @@ window.DataManager = (function() {
         }
 
         // Log para diagnóstico
-        console.log('DATA-MANAGER: Créditos convertidos para estrutura aninhada:', {
+        console.log('DATA-MANAGER: Créditos e débitos convertidos para estrutura aninhada:', {
             origem: {
                 creditosPIS: dadosPlanos.creditosPIS,
                 creditosCOFINS: dadosPlanos.creditosCOFINS,
                 creditosICMS: dadosPlanos.creditosICMS,
-                creditosIPI: dadosPlanos.creditosIPI
+                creditosIPI: dadosPlanos.creditosIPI,
+                debitoPIS: dadosPlanos.debitoPIS,
+                debitoCOFINS: dadosPlanos.debitoCOFINS,
+                debitoICMS: dadosPlanos.debitoICMS,
+                debitoIPI: dadosPlanos.debitoIPI
             },
             destino: {
-                padrao: aninhado.parametrosFiscais.creditos,
-                sped: aninhado.parametrosFiscais.composicaoTributaria?.creditos
+                creditos: aninhado.parametrosFiscais.creditos,
+                debitos: aninhado.parametrosFiscais.debitos,
+                composicao: aninhado.parametrosFiscais.composicaoTributaria
             }
         });
 
@@ -766,8 +790,8 @@ window.DataManager = (function() {
         }
         
         return resultado;
-    }
-    
+    }  
+        
     /**
      * Obtém dados do DOM e retorna na estrutura aninhada padronizada
      * @returns {Object} - Dados na estrutura aninhada
@@ -963,6 +987,21 @@ window.DataManager = (function() {
         
         // Validar e normalizar os dados obtidos
         return validarENormalizar(dados);
+    }
+    
+    // ADICIONAR função para preservar dados SPED
+    function preservarDadosSped(dados) {
+        if (!dados.dadosSpedImportados) return dados;
+
+        // Criar estrutura preservada
+        const dadosPreservados = JSON.parse(JSON.stringify(dados));
+
+        // Adicionar metadados de preservação
+        dadosPreservados.metadados = dadosPreservados.metadados || {};
+        dadosPreservados.metadados.preservacaoAtiva = true;
+        dadosPreservados.metadados.timestampPreservacao = new Date().toISOString();
+
+        return dadosPreservados;
     }
     
     /**
@@ -1357,7 +1396,8 @@ window.DataManager = (function() {
         normalizarValor,
         extrairValorPercentual,
         logTransformacao,
-        inspecionarEstruturaDebitoCredito
+        inspecionarEstruturaDebitoCredito,
+        preservarDadosSped
     };
 })();
 
