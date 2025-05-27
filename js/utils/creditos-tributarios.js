@@ -444,50 +444,25 @@ function extrairValorMonetario(valor) {
  * Versão mais robusta para obter valor numérico de um campo
  * Esta nova função resolve problemas de inconsistência na obtenção de valores
  */
-// Substituir a função obterValorCampoRobusto
 function obterValorCampoRobusto(campoId) {
-    const elemento = document.getElementById(campoId);
-    if (!elemento) {
-        console.warn(`CREDITOS-TRIBUTARIOS: Elemento ${campoId} não encontrado`);
-        return 0;
-    }
-
-    // PRIORIDADE 1: Verificar dataset.rawValue (mais confiável)
-    if (elemento.dataset && elemento.dataset.rawValue !== undefined && elemento.dataset.rawValue !== '') {
-        const valor = parseFloat(elemento.dataset.rawValue);
-        const resultado = isNaN(valor) ? 0 : valor;
-        console.log(`CREDITOS-TRIBUTARIOS: Valor obtido de ${campoId} via dataset.rawValue: ${resultado}`);
-        return resultado;
-    }
-
-    // PRIORIDADE 2: Extrair do valor exibido
-    const valorTexto = elemento.value;
-    if (!valorTexto || valorTexto.trim() === '') {
-        console.log(`CREDITOS-TRIBUTARIOS: Campo ${campoId} vazio, retornando 0`);
-        return 0;
-    }
-
-    // Limpar formatação monetária de forma mais robusta
-    let valorLimpo = valorTexto;
-    
-    // Remover símbolos de moeda e espaços
-    valorLimpo = valorLimpo.replace(/[R$\s]/g, '');
-    
-    // Tratar formatação brasileira (ponto como separador de milhares, vírgula como decimal)
-    if (valorLimpo.includes(',') && valorLimpo.includes('.')) {
-        // Formato: 1.234.567,89 -> remover pontos e trocar vírgula por ponto
-        valorLimpo = valorLimpo.replace(/\./g, '').replace(',', '.');
-    } else if (valorLimpo.includes(',') && !valorLimpo.includes('.')) {
-        // Formato: 1234,89 -> trocar vírgula por ponto
-        valorLimpo = valorLimpo.replace(',', '.');
-    }
-    // Se só tem ponto, assumir que é decimal americano
-    
-    const valor = parseFloat(valorLimpo);
-    const resultado = isNaN(valor) ? 0 : valor;
-    
-    console.log(`CREDITOS-TRIBUTARIOS: Valor extraído de ${campoId}: ${resultado} (original: "${valorTexto}", limpo: "${valorLimpo}")`);
-    return resultado;
+  const elemento = document.getElementById(campoId);
+  if (!elemento) return 0;
+  
+  // MODIFICAÇÃO: Primeiro verificar se há um dataset.rawValue
+  if (elemento.dataset && elemento.dataset.rawValue !== undefined) {
+    const valor = parseFloat(elemento.dataset.rawValue);
+    return isNaN(valor) ? 0 : valor;
+  }
+  
+  // Se não tiver dataset.rawValue, extrair do valor exibido
+  const valorTexto = elemento.value;
+  if (!valorTexto) return 0;
+  
+  // Limpar formatação monetária
+  const valorLimpo = valorTexto.replace(/[^\d,.-]/g, '').replace(',', '.');
+  const valor = parseFloat(valorLimpo);
+  
+  return isNaN(valor) ? 0 : valor;
 }
 
 /**

@@ -4,22 +4,25 @@
  * Especializado para o simulador Split Payment
  */
 
-const SpedExtractor = (function() {
-    // Modificar na linha ~10 (início do arquivo, após a declaração da constante)
+// Definição imediata para garantir disponibilidade global
+window.SpedExtractor = (function() {
+    console.log('SPED-EXTRACTOR: Inicializando módulo...');
+    
+    // Registros importantes por tipo de arquivo
     const REGISTROS_IMPORTANTES = {
       FISCAL: [
         '0000', '0100', '0150',
         'C100', 'C190',
-        'E110', 'E520'  // CORRIGIDO: E520 em vez de E200
+        'E110', 'E520'
       ],
       CONTRIBUICOES: [
         '0000', '0110',
         'M100', 'M105',
-        'M200', 'M210', 'M215',  // M200 já estava listado
-        'M220', 'M230',          // NOVO: ajustes PIS
+        'M200', 'M210', 'M215',
+        'M220', 'M230',
         'M500', 'M505',
-        'M600', 'M610', 'M615',  // M600 já estava listado
-        'M620', 'M630'           // NOVO: ajustes COFINS
+        'M600', 'M610', 'M615',
+        'M620', 'M630'
       ]
     };
     
@@ -202,7 +205,7 @@ const SpedExtractor = (function() {
      */
     function mapearRegistro(tipoRegistro, colunas, tipoArquivo) {
           switch(tipoRegistro) {
-            case '0000': // Registro de abertura - CORRIGIDO CONFORME LAYOUTS
+            case '0000': // Registro de abertura
               if (tipoArquivo === 'CONTRIBUICOES') {
                 return {
                   registro: tipoRegistro,
@@ -240,7 +243,7 @@ const SpedExtractor = (function() {
               }
               break;
 
-            case '0110': // Regime de apuração - VALIDADO
+            case '0110': // Regime de apuração
               return {
                 registro: tipoRegistro,
                 codIncidencia: colunas[1],         // Campo 02 - CODINCTRIB
@@ -249,29 +252,29 @@ const SpedExtractor = (function() {
                 indRegCum: colunas[4]              // Campo 05 - INDREGCUM
               };
                 
-            case 'C100': // Nota fiscal - CORRIGIDO
+            case 'C100': // Nota fiscal
               return {
                 registro: tipoRegistro,
-                indOper: colunas[1],               // Campo 02 - CORRETO
-                indEmit: colunas[2],               // Campo 03 - CORRETO
-                codPart: colunas[3],               // Campo 04 - CORRETO
-                codMod: colunas[4],                // Campo 05 - CORRETO
-                codSit: colunas[5],                // Campo 06 - CORRETO
-                serie: colunas[6],                 // Campo 07 - CORRETO
-                numDoc: colunas[7],                // Campo 08 - CORRETO
-                chvNfe: colunas[8],                // Campo 09 - CORRETO
-                dataDoc: colunas[9],               // Campo 10 - CORRETO
-                dataEntSai: colunas[10],           // Campo 11 - CORRETO
-                valorTotal: parseValorMonetario(colunas[11]), // Campo 12 - CORRETO
-                indPgto: colunas[12],              // Campo 13 - NOVO
-                bcIcms: parseValorMonetario(colunas[13]),     // Campo 14 - CORRETO
-                valorIcms: parseValorMonetario(colunas[14]),  // Campo 15 - CORRETO
-                bcIcmsSt: parseValorMonetario(colunas[15]),   // Campo 16 - NOVO
-                valorIcmsSt: parseValorMonetario(colunas[16]), // Campo 17 - NOVO
-                valorProd: parseValorMonetario(colunas[17]),   // Campo 18 - NOVO
-                valorIpi: parseValorMonetario(colunas[18]),    // Campo 19 - CORRETO
-                valorPis: parseValorMonetario(colunas[19]),    // Campo 20 - NOVO
-                valorCofins: parseValorMonetario(colunas[20])  // Campo 21 - NOVO
+                indOper: colunas[1],               // Campo 02
+                indEmit: colunas[2],               // Campo 03
+                codPart: colunas[3],               // Campo 04
+                codMod: colunas[4],                // Campo 05
+                codSit: colunas[5],                // Campo 06
+                serie: colunas[6],                 // Campo 07
+                numDoc: colunas[7],                // Campo 08
+                chvNfe: colunas[8],                // Campo 09
+                dataDoc: colunas[9],               // Campo 10
+                dataEntSai: colunas[10],           // Campo 11
+                valorTotal: parseValorMonetario(colunas[11]), // Campo 12
+                indPgto: colunas[12],              // Campo 13
+                bcIcms: parseValorMonetario(colunas[13]),     // Campo 14
+                valorIcms: parseValorMonetario(colunas[14]),  // Campo 15
+                bcIcmsSt: parseValorMonetario(colunas[15]),   // Campo 16
+                valorIcmsSt: parseValorMonetario(colunas[16]), // Campo 17
+                valorProd: parseValorMonetario(colunas[17]),   // Campo 18
+                valorIpi: parseValorMonetario(colunas[18]),    // Campo 19
+                valorPis: parseValorMonetario(colunas[19]),    // Campo 20
+                valorCofins: parseValorMonetario(colunas[20])  // Campo 21
               };
 
             case 'C190': // Analítico do registro C100 (ICMS)
@@ -287,7 +290,6 @@ const SpedExtractor = (function() {
                     valorIcmsSt: parseValorMonetario(colunas[8])    // Valor do ICMS ST
                 };
             
-            // Substituir o mapeamento do E110 (aproximadamente linha ~190)
             case 'E110': // Apuração ICMS
               return {
                 registro: tipoRegistro,
@@ -307,7 +309,6 @@ const SpedExtractor = (function() {
                 debEsp: parseValorMonetario(colunas[14])            // Campo 15 - CRÍTICO: Valores EXTRA-APURAÇÃO
               };
                 
-            // Substituir o mapeamento do E520 (aproximadamente linha ~210)
             case 'E520': // Apuração IPI
               return {
                 registro: tipoRegistro,
@@ -320,21 +321,21 @@ const SpedExtractor = (function() {
                 vlSdIpi: parseValorMonetario(colunas[7])            // Campo 08 - Saldo devedor a recolher
               };
                 
-            case 'M100': // Crédito PIS - VALIDADO
+            case 'M100': // Crédito PIS
               return {
                 registro: tipoRegistro,
-                codCredito: colunas[1],            // Campo 02 - CORRETO
-                indCredOrig: colunas[2],           // Campo 03 - CORRETO
-                vlBcPis: parseValorMonetario(colunas[3]),     // Campo 04 - CORRETO
-                aliqPis: parseValorMonetario(colunas[4]),     // Campo 05 - CORRETO
-                quantBcPis: parseValorMonetario(colunas[5]),  // Campo 06 - NOVO
-                aliqPisQuant: parseValorMonetario(colunas[6]), // Campo 07 - NOVO
-                vlCredito: parseValorMonetario(colunas[7]),    // Campo 08 - CORRETO
-                vlAjustes: parseValorMonetario(colunas[8]),    // Campo 09 - NOVO
-                vlAjustesAnt: parseValorMonetario(colunas[9]), // Campo 10 - NOVO
-                vlDifer: parseValorMonetario(colunas[10]),     // Campo 11 - NOVO
-                vlDiferAnt: parseValorMonetario(colunas[11]),  // Campo 12 - NOVO
-                vlCredDispEfd: parseValorMonetario(colunas[12]) // Campo 13 - CORRETO
+                codCredito: colunas[1],            // Campo 02
+                indCredOrig: colunas[2],           // Campo 03
+                vlBcPis: parseValorMonetario(colunas[3]),     // Campo 04
+                aliqPis: parseValorMonetario(colunas[4]),     // Campo 05
+                quantBcPis: parseValorMonetario(colunas[5]),  // Campo 06
+                aliqPisQuant: parseValorMonetario(colunas[6]), // Campo 07
+                vlCredito: parseValorMonetario(colunas[7]),    // Campo 08
+                vlAjustes: parseValorMonetario(colunas[8]),    // Campo 09
+                vlAjustesAnt: parseValorMonetario(colunas[9]), // Campo 10
+                vlDifer: parseValorMonetario(colunas[10]),     // Campo 11
+                vlDiferAnt: parseValorMonetario(colunas[11]),  // Campo 12
+                vlCredDispEfd: parseValorMonetario(colunas[12]) // Campo 13
               };
 
             case 'M105': // Detalhamento dos créditos PIS
@@ -348,8 +349,7 @@ const SpedExtractor = (function() {
                     valorCredito: parseValorMonetario(colunas[6])    // Valor do crédito
                 };
                   
-            // Modificar na função mapearRegistro, caso M200 (aproximadamente linha ~250)
-            case 'M200': // RESUMO PIS - CRÍTICO AUSENTE
+            case 'M200': // RESUMO PIS
               return {
                 registro: tipoRegistro,
                 vlTotContNcPer: parseValorMonetario(colunas[1]),    // Campo 02
@@ -366,8 +366,7 @@ const SpedExtractor = (function() {
                 vlTotContRec: parseValorMonetario(colunas[12])      // Campo 13 - TOTAL PIS a recolher
               };
 
-            // Modificar na função mapearRegistro, caso M600 (aproximadamente linha ~270)
-            case 'M600': // RESUMO COFINS - CRÍTICO AUSENTE
+            case 'M600': // RESUMO COFINS
               return {
                 registro: tipoRegistro,
                 vlTotContNcPer: parseValorMonetario(colunas[1]),    // Campo 02
@@ -384,7 +383,7 @@ const SpedExtractor = (function() {
                 vlTotContRec: parseValorMonetario(colunas[12])      // Campo 13 - TOTAL COFINS a recolher
               };
 
-            // ========== AJUSTES EXTRA-APURAÇÃO - NOVOS ==========
+            // Ajustes extra-apuração
             case 'M220': // Ajustes base de cálculo PIS
               return {
                 registro: tipoRegistro,
@@ -423,24 +422,24 @@ const SpedExtractor = (function() {
                 vlAjus: parseValorMonetario(colunas[3])    // Campo 04
               };
                 
-             case 'M210': // Débitos PIS - VALIDADO
+             case 'M210': // Débitos PIS
               return {
                 registro: tipoRegistro,
-                codCont: colunas[1],               // Campo 02 - CORRETO
-                vlRecBrt: parseValorMonetario(colunas[2]),          // Campo 03 - CORRETO
-                vlBcCont: parseValorMonetario(colunas[3]),          // Campo 04 - CORRETO
-                vlAjusAcrescBc: parseValorMonetario(colunas[4]),    // Campo 05 - NOVO
-                vlAjusReducBc: parseValorMonetario(colunas[5]),     // Campo 06 - NOVO
-                vlBcContAjus: parseValorMonetario(colunas[6]),      // Campo 07 - CORRETO
-                aliqPis: parseValorMonetario(colunas[7]),           // Campo 08 - CORRETO
-                quantBcCont: parseValorMonetario(colunas[8]),       // Campo 09 - NOVO
-                aliqPisQuant: parseValorMonetario(colunas[9]),      // Campo 10 - NOVO
-                vlContApur: parseValorMonetario(colunas[10]),       // Campo 11 - CORRETO
-                vlAjusAcresc: parseValorMonetario(colunas[11]),     // Campo 12 - CORRETO
-                vlAjusReduc: parseValorMonetario(colunas[12]),      // Campo 13 - CORRETO
-                vlContDifer: parseValorMonetario(colunas[13]),      // Campo 14 - NOVO
-                vlContDiferAnt: parseValorMonetario(colunas[14]),   // Campo 15 - NOVO
-                vlContPer: parseValorMonetario(colunas[15])         // Campo 16 - CORRETO
+                codCont: colunas[1],               // Campo 02
+                vlRecBrt: parseValorMonetario(colunas[2]),          // Campo 03
+                vlBcCont: parseValorMonetario(colunas[3]),          // Campo 04
+                vlAjusAcrescBc: parseValorMonetario(colunas[4]),    // Campo 05
+                vlAjusReducBc: parseValorMonetario(colunas[5]),     // Campo 06
+                vlBcContAjus: parseValorMonetario(colunas[6]),      // Campo 07
+                aliqPis: parseValorMonetario(colunas[7]),           // Campo 08
+                quantBcCont: parseValorMonetario(colunas[8]),       // Campo 09
+                aliqPisQuant: parseValorMonetario(colunas[9]),      // Campo 10
+                vlContApur: parseValorMonetario(colunas[10]),       // Campo 11
+                vlAjusAcresc: parseValorMonetario(colunas[11]),     // Campo 12
+                vlAjusReduc: parseValorMonetario(colunas[12]),      // Campo 13
+                vlContDifer: parseValorMonetario(colunas[13]),      // Campo 14
+                vlContDiferAnt: parseValorMonetario(colunas[14]),   // Campo 15
+                vlContPer: parseValorMonetario(colunas[15])         // Campo 16
               };
                 
             case 'M215': // Ajustes da base de cálculo PIS
@@ -453,21 +452,21 @@ const SpedExtractor = (function() {
                     descrAj: colunas[5]                            // Descrição do ajuste
                 };
                 
-            case 'M500': // Crédito COFINS - VALIDADO
+            case 'M500': // Crédito COFINS
               return {
                 registro: tipoRegistro,
-                codCredito: colunas[1],            // Campo 02 - CORRETO
-                indCredOrig: colunas[2],           // Campo 03 - CORRETO
-                vlBcCofins: parseValorMonetario(colunas[3]),      // Campo 04 - CORRETO
-                aliqCofins: parseValorMonetario(colunas[4]),      // Campo 05 - CORRETO
-                quantBcCofins: parseValorMonetario(colunas[5]),   // Campo 06 - NOVO
-                aliqCofinsQuant: parseValorMonetario(colunas[6]), // Campo 07 - NOVO
-                vlCredito: parseValorMonetario(colunas[7]),       // Campo 08 - CORRETO
-                vlAjustes: parseValorMonetario(colunas[8]),       // Campo 09 - NOVO
-                vlAjustesAnt: parseValorMonetario(colunas[9]),    // Campo 10 - NOVO
-                vlDifer: parseValorMonetario(colunas[10]),        // Campo 11 - NOVO
-                vlDiferAnt: parseValorMonetario(colunas[11]),     // Campo 12 - NOVO
-                vlCredDispEfd: parseValorMonetario(colunas[12])   // Campo 13 - CORRETO
+                codCredito: colunas[1],            // Campo 02
+                indCredOrig: colunas[2],           // Campo 03
+                vlBcCofins: parseValorMonetario(colunas[3]),      // Campo 04
+                aliqCofins: parseValorMonetario(colunas[4]),      // Campo 05
+                quantBcCofins: parseValorMonetario(colunas[5]),   // Campo 06
+                aliqCofinsQuant: parseValorMonetario(colunas[6]), // Campo 07
+                vlCredito: parseValorMonetario(colunas[7]),       // Campo 08
+                vlAjustes: parseValorMonetario(colunas[8]),       // Campo 09
+                vlAjustesAnt: parseValorMonetario(colunas[9]),    // Campo 10
+                vlDifer: parseValorMonetario(colunas[10]),        // Campo 11
+                vlDiferAnt: parseValorMonetario(colunas[11]),     // Campo 12
+                vlCredDispEfd: parseValorMonetario(colunas[12])   // Campo 13
               };
 
             case 'M505': // Detalhamento dos créditos COFINS
@@ -481,24 +480,24 @@ const SpedExtractor = (function() {
                     valorCredito: parseValorMonetario(colunas[6])     // Valor do crédito
                 };
                 
-            case 'M610': // Débitos COFINS - VALIDADO
+            case 'M610': // Débitos COFINS
               return {
                 registro: tipoRegistro,
-                codCont: colunas[1],               // Campo 02 - CORRETO
-                vlRecBrt: parseValorMonetario(colunas[2]),          // Campo 03 - CORRETO
-                vlBcCont: parseValorMonetario(colunas[3]),          // Campo 04 - CORRETO
-                vlAjusAcrescBc: parseValorMonetario(colunas[4]),    // Campo 05 - NOVO
-                vlAjusReducBc: parseValorMonetario(colunas[5]),     // Campo 06 - NOVO
-                vlBcContAjus: parseValorMonetario(colunas[6]),      // Campo 07 - CORRETO
-                aliqCofins: parseValorMonetario(colunas[7]),        // Campo 08 - CORRETO
-                quantBcCont: parseValorMonetario(colunas[8]),       // Campo 09 - NOVO
-                aliqCofinsQuant: parseValorMonetario(colunas[9]),   // Campo 10 - NOVO
-                vlContApur: parseValorMonetario(colunas[10]),       // Campo 11 - CORRETO
-                vlAjusAcresc: parseValorMonetario(colunas[11]),     // Campo 12 - CORRETO
-                vlAjusReduc: parseValorMonetario(colunas[12]),      // Campo 13 - CORRETO
-                vlContDifer: parseValorMonetario(colunas[13]),      // Campo 14 - NOVO
-                vlContDiferAnt: parseValorMonetario(colunas[14]),   // Campo 15 - NOVO
-                vlContPer: parseValorMonetario(colunas[15])         // Campo 16 - CORRETO
+                codCont: colunas[1],               // Campo 02
+                vlRecBrt: parseValorMonetario(colunas[2]),          // Campo 03
+                vlBcCont: parseValorMonetario(colunas[3]),          // Campo 04
+                vlAjusAcrescBc: parseValorMonetario(colunas[4]),    // Campo 05
+                vlAjusReducBc: parseValorMonetario(colunas[5]),     // Campo 06
+                vlBcContAjus: parseValorMonetario(colunas[6]),      // Campo 07
+                aliqCofins: parseValorMonetario(colunas[7]),        // Campo 08
+                quantBcCont: parseValorMonetario(colunas[8]),       // Campo 09
+                aliqCofinsQuant: parseValorMonetario(colunas[9]),   // Campo 10
+                vlContApur: parseValorMonetario(colunas[10]),       // Campo 11
+                vlAjusAcresc: parseValorMonetario(colunas[11]),     // Campo 12
+                vlAjusReduc: parseValorMonetario(colunas[12]),      // Campo 13
+                vlContDifer: parseValorMonetario(colunas[13]),      // Campo 14
+                vlContDiferAnt: parseValorMonetario(colunas[14]),   // Campo 15
+                vlContPer: parseValorMonetario(colunas[15])         // Campo 16
               };
                 
             case 'M615': // Ajustes da base de cálculo COFINS
@@ -578,31 +577,47 @@ const SpedExtractor = (function() {
             };
         }
 
-        // Modificar na função extrairDadosParaSimulador (aproximadamente linha ~390)
         // No bloco que trata os registros CONTRIBUICOES
         if (tipoArquivo === 'CONTRIBUICOES') {
-            // MODIFICAÇÃO: Extrair corretamente os créditos de PIS/COFINS
-            if (registros['M200'] && registros['M200'].length > 0) {
-                dadosCanonicos.parametrosFiscais.composicaoTributaria.debitos.pis = 
-                    registros['M200'][0].vlTotContRec || 0;
-                dadosCanonicos.parametrosFiscais.composicaoTributaria.creditos.pis = 
-                    registros['M200'][0].vlTotCredDesc || 0;
+          // Extrair diretamente os valores totais de PIS dos registros M200
+          if (registros['M200'] && registros['M200'].length > 0) {
+            // O campo vlTotContRec contém o valor total do PIS a recolher
+            dadosCanonicos.parametrosFiscais.composicaoTributaria.debitos.pis = 
+              registros['M200'][0].vlTotContRec || 0;
 
-                // Também atribuir ao campo creditos padrão
-                dadosCanonicos.parametrosFiscais.creditos.pis = 
-                    registros['M200'][0].vlTotCredDesc || 0;
-            }
+            // O campo vlTotCredDesc contém o valor total dos créditos descontados
+            dadosCanonicos.parametrosFiscais.composicaoTributaria.creditos.pis = 
+              registros['M200'][0].vlTotCredDesc || 0;
 
-            if (registros['M600'] && registros['M600'].length > 0) {
-                dadosCanonicos.parametrosFiscais.composicaoTributaria.debitos.cofins = 
-                    registros['M600'][0].vlTotContRec || 0;
-                dadosCanonicos.parametrosFiscais.composicaoTributaria.creditos.cofins = 
-                    registros['M600'][0].vlTotCredDesc || 0;
+            // Também atribuir ao campo creditos padrão
+            dadosCanonicos.parametrosFiscais.creditos.pis = 
+              registros['M200'][0].vlTotCredDesc || 0;
 
-                // Também atribuir ao campo creditos padrão
-                dadosCanonicos.parametrosFiscais.creditos.cofins = 
-                    registros['M600'][0].vlTotCredDesc || 0;
-            }
+            console.log('SPED-EXTRACTOR: Valores de PIS extraídos do M200:', {
+              debito: dadosCanonicos.parametrosFiscais.composicaoTributaria.debitos.pis,
+              credito: dadosCanonicos.parametrosFiscais.composicaoTributaria.creditos.pis
+            });
+          }
+
+          // Extrair diretamente os valores totais de COFINS dos registros M600
+          if (registros['M600'] && registros['M600'].length > 0) {
+            // O campo vlTotContRec contém o valor total da COFINS a recolher
+            dadosCanonicos.parametrosFiscais.composicaoTributaria.debitos.cofins = 
+              registros['M600'][0].vlTotContRec || 0;
+
+            // O campo vlTotCredDesc contém o valor total dos créditos descontados
+            dadosCanonicos.parametrosFiscais.composicaoTributaria.creditos.cofins = 
+              registros['M600'][0].vlTotCredDesc || 0;
+
+            // Também atribuir ao campo creditos padrão
+            dadosCanonicos.parametrosFiscais.creditos.cofins = 
+              registros['M600'][0].vlTotCredDesc || 0;
+
+            console.log('SPED-EXTRACTOR: Valores de COFINS extraídos do M600:', {
+              debito: dadosCanonicos.parametrosFiscais.composicaoTributaria.debitos.cofins,
+              credito: dadosCanonicos.parametrosFiscais.composicaoTributaria.creditos.cofins
+            });
+          }
         }
 
         // FALLBACK: SPED Fiscal (C100)
@@ -628,58 +643,46 @@ const SpedExtractor = (function() {
 
         // No bloco que trata os registros FISCAL
         if (tipoArquivo === 'FISCAL') {
-            // Extrair corretamente os créditos de ICMS/IPI
-            if (registros['E110'] && registros['E110'].length > 0) {
-                dadosCanonicos.parametrosFiscais.composicaoTributaria.debitos.icms = 
-                    registros['E110'][0].vlTotDebitos || 0;
-                dadosCanonicos.parametrosFiscais.composicaoTributaria.creditos.icms = 
-                    registros['E110'][0].vlTotCreditos || 0;
+          // Extrair corretamente os créditos de ICMS/IPI
+          if (registros['E110'] && registros['E110'].length > 0) {
+            // Calcular o total de débitos de ICMS corretamente
+            const totalDebitosICMS = 
+              registros['E110'][0].vlTotDebitos + 
+              registros['E110'][0].vlAjDebitos + 
+              registros['E110'][0].vlTotAjDebitos + 
+              registros['E110'][0].vlEstornosCreditos || 0;
 
-                // Também atribuir ao campo creditos padrão
-                dadosCanonicos.parametrosFiscais.creditos.icms = 
-                    registros['E110'][0].vlTotCreditos || 0;
-            }
+            // Calcular o total de créditos de ICMS corretamente
+            const totalCreditosICMS = 
+              registros['E110'][0].vlTotCreditos + 
+              registros['E110'][0].vlAjCreditos + 
+              registros['E110'][0].vlTotAjCreditos + 
+              registros['E110'][0].vlEstornosDebitos || 0;
 
-            if (registros['E520'] && registros['E520'].length > 0) {
-                dadosCanonicos.parametrosFiscais.composicaoTributaria.debitos.ipi = 
-                    registros['E520'][0].vlDebIpi || 0;
-                dadosCanonicos.parametrosFiscais.composicaoTributaria.creditos.ipi = 
-                    registros['E520'][0].vlCredIpi || 0;
+            dadosCanonicos.parametrosFiscais.composicaoTributaria.debitos.icms = totalDebitosICMS;
+            dadosCanonicos.parametrosFiscais.composicaoTributaria.creditos.icms = totalCreditosICMS;
 
-                // Também atribuir ao campo creditos padrão
-                dadosCanonicos.parametrosFiscais.creditos.ipi = 
-                    registros['E520'][0].vlCredIpi || 0;
-            }
-        } else if (tipoArquivo === 'CONTRIBUICOES') {
-            // Inicializar composicaoTributaria se não existir
-            if (!dadosCanonicos.parametrosFiscais.composicaoTributaria) {
-                dadosCanonicos.parametrosFiscais.composicaoTributaria = {
-                    debitos: { pis: 0, cofins: 0, icms: 0, ipi: 0, iss: 0 },
-                    creditos: { pis: 0, cofins: 0, icms: 0, ipi: 0, iss: 0 }
-                };
-            }
+            // Também atribuir ao campo creditos padrão
+            dadosCanonicos.parametrosFiscais.creditos.icms = totalCreditosICMS;
+          }
 
-            // Calcular débitos PIS/COFINS
-            if (registros['M210'] && registros['M210'].length > 0) {
-                dadosCanonicos.parametrosFiscais.composicaoTributaria.debitos.pis = 
-                    registros['M210'].reduce((total, reg) => total + (reg.valorContribPeriodo || 0), 0);
-            }
+          if (registros['E520'] && registros['E520'].length > 0) {
+            // Calcular o total de débitos de IPI corretamente
+            const totalDebitosIPI = 
+              registros['E520'][0].vlDebIpi + 
+              registros['E520'][0].vlOdIpi || 0;
 
-            if (registros['M610'] && registros['M610'].length > 0) {
-                dadosCanonicos.parametrosFiscais.composicaoTributaria.debitos.cofins = 
-                    registros['M610'].reduce((total, reg) => total + (reg.valorContribPeriodo || 0), 0);
-            }
+            // Calcular o total de créditos de IPI corretamente
+            const totalCreditosIPI = 
+              registros['E520'][0].vlCredIpi + 
+              registros['E520'][0].vlOcIpi || 0;
 
-            // Calcular créditos PIS/COFINS
-            if (registros['M100'] && registros['M100'].length > 0) {
-                dadosCanonicos.parametrosFiscais.composicaoTributaria.creditos.pis = 
-                    registros['M100'].reduce((total, reg) => total + (reg.valorCredDisp || 0), 0);
-            }
+            dadosCanonicos.parametrosFiscais.composicaoTributaria.debitos.ipi = totalDebitosIPI;
+            dadosCanonicos.parametrosFiscais.composicaoTributaria.creditos.ipi = totalCreditosIPI;
 
-            if (registros['M500'] && registros['M500'].length > 0) {
-                dadosCanonicos.parametrosFiscais.composicaoTributaria.creditos.cofins = 
-                    registros['M500'].reduce((total, reg) => total + (reg.valorCredDisp || 0), 0);
-            }
+            // Também atribuir ao campo creditos padrão
+            dadosCanonicos.parametrosFiscais.creditos.ipi = totalCreditosIPI;
+          }
         }
 
         // Ciclo Financeiro - valores padrão
@@ -740,6 +743,14 @@ const SpedExtractor = (function() {
             console.error('SPED-EXTRACTOR: Erro ao obter estrutura canônica para integração:', erro);
             dadosIntegrados = criarEstruturaCanonica();
         }
+        
+        // Inicializar composicaoTributaria se não existir, para ambos os tipos de arquivo
+        if (dadosIntegrados.parametrosFiscais && !dadosIntegrados.parametrosFiscais.composicaoTributaria) {
+            dadosIntegrados.parametrosFiscais.composicaoTributaria = {
+                debitos: { pis: 0, cofins: 0, icms: 0, ipi: 0, iss: 0 },
+                creditos: { pis: 0, cofins: 0, icms: 0, ipi: 0, iss: 0 }
+            };
+        }
 
         // PRIORIDADE 1: SPED Contribuições se estiver disponível
         let faturamento = 0;
@@ -764,7 +775,7 @@ const SpedExtractor = (function() {
         dadosIntegrados.empresa.faturamento = faturamento;
         dadosIntegrados.empresa.uf = dadosContribuicoes?.empresa?.uf || dadosFiscal?.empresa?.uf || '';
 
-        // NOVO: Verificar e definir regime tributário baseado nos registros SPED
+        // Verificar e definir regime tributário baseado nos registros SPED
         if (dadosContribuicoes && dadosContribuicoes.registros && 
             dadosContribuicoes.registros['0110'] && dadosContribuicoes.registros['0110'].length > 0) {
             
@@ -794,6 +805,57 @@ const SpedExtractor = (function() {
 
         // Parâmetros Fiscais
         dadosIntegrados.parametrosFiscais.regimePisCofins = dadosContribuicoes?.parametrosFiscais?.regimePisCofins || 'cumulativo';
+        
+        // ICMS
+        if (dadosFiscal && dadosFiscal.parametrosFiscais) {
+          if (dadosFiscal.parametrosFiscais.composicaoTributaria?.debitos?.icms !== undefined) {
+            dadosIntegrados.parametrosFiscais.composicaoTributaria.debitos.icms = 
+              dadosFiscal.parametrosFiscais.composicaoTributaria.debitos.icms;
+          }
+
+          if (dadosFiscal.parametrosFiscais.composicaoTributaria?.creditos?.icms !== undefined) {
+            dadosIntegrados.parametrosFiscais.composicaoTributaria.creditos.icms = 
+              dadosFiscal.parametrosFiscais.composicaoTributaria.creditos.icms;
+
+            dadosIntegrados.parametrosFiscais.creditos.icms = 
+              dadosFiscal.parametrosFiscais.composicaoTributaria.creditos.icms;
+          }
+
+          // IPI
+          if (dadosFiscal.parametrosFiscais.composicaoTributaria?.debitos?.ipi !== undefined) {
+            dadosIntegrados.parametrosFiscais.composicaoTributaria.debitos.ipi = 
+              dadosFiscal.parametrosFiscais.composicaoTributaria.debitos.ipi;
+          }
+
+          if (dadosFiscal.parametrosFiscais.composicaoTributaria?.creditos?.ipi !== undefined) {
+            dadosIntegrados.parametrosFiscais.composicaoTributaria.creditos.ipi = 
+              dadosFiscal.parametrosFiscais.composicaoTributaria.creditos.ipi;
+
+            dadosIntegrados.parametrosFiscais.creditos.ipi = 
+              dadosFiscal.parametrosFiscais.composicaoTributaria.creditos.ipi;
+          }
+        }
+
+        // Garantir que valores não sejam undefined
+        if (dadosIntegrados.parametrosFiscais.composicaoTributaria) {
+          // ICMS
+          if (dadosIntegrados.parametrosFiscais.composicaoTributaria.debitos.icms === undefined) {
+            dadosIntegrados.parametrosFiscais.composicaoTributaria.debitos.icms = 0;
+          }
+          if (dadosIntegrados.parametrosFiscais.composicaoTributaria.creditos.icms === undefined) {
+            dadosIntegrados.parametrosFiscais.composicaoTributaria.creditos.icms = 0;
+            dadosIntegrados.parametrosFiscais.creditos.icms = 0;
+          }
+
+          // IPI
+          if (dadosIntegrados.parametrosFiscais.composicaoTributaria.debitos.ipi === undefined) {
+            dadosIntegrados.parametrosFiscais.composicaoTributaria.debitos.ipi = 0;
+          }
+          if (dadosIntegrados.parametrosFiscais.composicaoTributaria.creditos.ipi === undefined) {
+            dadosIntegrados.parametrosFiscais.composicaoTributaria.creditos.ipi = 0;
+            dadosIntegrados.parametrosFiscais.creditos.ipi = 0;
+          }
+        }
 
         // Composição Tributária
         dadosIntegrados.parametrosFiscais.composicaoTributaria = {
@@ -814,7 +876,6 @@ const SpedExtractor = (function() {
         };
 
         // Preencher campos creditos no formato canônico
-        // Ajuste na função integrarDados
         dadosIntegrados.parametrosFiscais.creditos = {
             pis: dadosContribuicoes?.parametrosFiscais?.creditos?.pis || 
                  dadosContribuicoes?.parametrosFiscais?.composicaoTributaria?.creditos?.pis || 0,
@@ -841,23 +902,6 @@ const SpedExtractor = (function() {
             }
         } catch (erro) {
             console.error('SPED-EXTRACTOR: Erro ao validar dados integrados:', erro);
-            
-            // Log detalhado dos créditos integrados
-            console.log('=== SPED-EXTRACTOR: CRÉDITOS INTEGRADOS ===');
-            console.log('Créditos PIS (integrados):', dadosIntegrados.parametrosFiscais.creditos.pis);
-            console.log('Créditos COFINS (integrados):', dadosIntegrados.parametrosFiscais.creditos.cofins);
-            console.log('Créditos ICMS (integrados):', dadosIntegrados.parametrosFiscais.creditos.icms);
-            console.log('Créditos IPI (integrados):', dadosIntegrados.parametrosFiscais.creditos.ipi);
-
-            if (dadosIntegrados.parametrosFiscais.composicaoTributaria) {
-                console.log('ComposicaoTributaria.creditos PIS:', dadosIntegrados.parametrosFiscais.composicaoTributaria.creditos.pis);
-                console.log('ComposicaoTributaria.creditos COFINS:', dadosIntegrados.parametrosFiscais.composicaoTributaria.creditos.cofins);
-                console.log('ComposicaoTributaria.creditos ICMS:', dadosIntegrados.parametrosFiscais.composicaoTributaria.creditos.icms);
-                console.log('ComposicaoTributaria.creditos IPI:', dadosIntegrados.parametrosFiscais.composicaoTributaria.creditos.ipi);
-            } else {
-                console.log('Estrutura composicaoTributaria não encontrada nos dados integrados');
-            }
-            
             return dadosIntegrados;
         }
     }
@@ -881,8 +925,6 @@ const SpedExtractor = (function() {
     };
 })();
 
-// Expor o módulo globalmente
-if (typeof window !== 'undefined') {
-    window.SpedExtractor = SpedExtractor;
-    console.log('SPED-EXTRACTOR: Módulo simplificado carregado com sucesso!');
-}
+// Log imediato para diagnóstico
+console.log('SPED-EXTRACTOR: Módulo simplificado carregado com sucesso!');
+console.log('SPED-EXTRACTOR: Versão', window.SpedExtractor.versao);
