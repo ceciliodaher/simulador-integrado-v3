@@ -458,6 +458,52 @@ function inicializarEventosPrincipais() {
         });
     }
     
+    // Event listener para mudança de setor - REATIVAR FUNCIONALIDADE
+    const campoSetor = document.getElementById('setor');
+    if (campoSetor) {
+        campoSetor.addEventListener('change', function() {
+            const setorCodigo = this.value;
+
+            if (!setorCodigo) {
+                // Limpar campos se nenhum setor selecionado
+                document.getElementById('aliquota-cbs').value = '';
+                document.getElementById('aliquota-ibs').value = '';
+                document.getElementById('reducao').value = '';
+                document.getElementById('aliquota').value = '';
+                document.getElementById('categoria-iva').value = 'standard';
+                return;
+            }
+
+            // Obter dados do setor do repositório
+            if (typeof SetoresRepository !== 'undefined') {
+                const dadosSetor = SetoresRepository.obterSetor(setorCodigo);
+
+                if (dadosSetor) {
+                    // Preencher campos com os dados pré-definidos do repositório
+                    document.getElementById('aliquota-cbs').value = (dadosSetor['aliquota-cbs'] * 100).toFixed(1);
+                    document.getElementById('aliquota-ibs').value = (dadosSetor['aliquota-ibs'] * 100).toFixed(1);
+                    document.getElementById('reducao').value = (dadosSetor.reducaoEspecial * 100).toFixed(1);
+
+                    // Usar a alíquota efetiva já definida no repositório (NÃO calcular)
+                    document.getElementById('aliquota').value = (dadosSetor.aliquotaEfetiva * 100).toFixed(1);
+
+                    // Definir categoria tributária
+                    document.getElementById('categoria-iva').value = dadosSetor.categoriaIva || 'standard';
+
+                    console.log(`Setor ${dadosSetor.nome} selecionado - campos preenchidos automaticamente`);
+                } else {
+                    console.warn(`Dados do setor ${setorCodigo} não encontrados`);
+                }
+            } else {
+                console.error('SetoresRepository não disponível');
+            }
+        });
+
+        console.log('Event listener para mudança de setor configurado');
+    } else {
+        console.error('Campo setor não encontrado no DOM');
+    }
+    
     // Evento para atualização da memória de cálculo
     const btnAtualizarMemoria = document.getElementById('btn-atualizar-memoria');
     if (btnAtualizarMemoria) {
