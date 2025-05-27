@@ -163,6 +163,27 @@ const ImportacaoController = (function() {
             elements.spedFiscal, 
             elements.spedContribuicoes, 
             function(resultado) {
+                // INSERIR AQUI - INÍCIO DO BLOCO DE LOGS
+                console.log('=== IMPORTACAO-CONTROLLER: DADOS RECEBIDOS DO SPED PROCESSOR ===');
+
+                // Verificar estrutura de créditos nos dados recebidos
+                if (resultado.dados && resultado.dados.parametrosFiscais) {
+                    if (resultado.dados.parametrosFiscais.creditos) {
+                        console.log('Créditos diretos:', JSON.stringify(resultado.dados.parametrosFiscais.creditos, null, 2));
+                    } else {
+                        console.log('Estrutura parametrosFiscais.creditos não encontrada');
+                    }
+
+                    if (resultado.dados.parametrosFiscais.composicaoTributaria && 
+                        resultado.dados.parametrosFiscais.composicaoTributaria.creditos) {
+                        console.log('ComposicaoTributaria.creditos:', 
+                            JSON.stringify(resultado.dados.parametrosFiscais.composicaoTributaria.creditos, null, 2));
+                    } else {
+                        console.log('Estrutura composicaoTributaria.creditos não encontrada');
+                    }
+                } else {
+                    console.log('Estrutura parametrosFiscais não encontrada nos dados recebidos');
+                }
                 if (resultado.sucesso) {
                     // Validar e normalizar dados importados usando DataManager
                     try {
@@ -256,6 +277,9 @@ const ImportacaoController = (function() {
      * Processa os arquivos SPED usando SpedProcessor
      */
     function processarArquivosSped() {
+        // INSERIR AQUI - INÍCIO DO BLOCO DE LOGS
+        console.log('=== IMPORTACAO-CONTROLLER: INICIANDO PROCESSAMENTO DE ARQUIVOS SPED ===');
+        // FIM DO BLOCO DE LOGS
         // Verificar dependências necessárias
         const dependenciasDisponiveis = verificarDependencias();
 
@@ -278,6 +302,24 @@ const ImportacaoController = (function() {
             elements.spedFiscal, 
             elements.spedContribuicoes, 
             function(resultado) {
+                // INSERIR AQUI - INÍCIO DO BLOCO DE LOGS
+                console.log('=== IMPORTACAO-CONTROLLER: RESULTADO DO PROCESSAMENTO SPED ===');
+                console.log('Resultado sucesso:', resultado.sucesso);
+                if (resultado.dados) {
+                    console.log('Dados retornados - estrutura:', window.DataManager.detectarTipoEstrutura(resultado.dados));
+
+                    // Verificar créditos nos dados retornados
+                    if (resultado.dados.parametrosFiscais) {
+                        if (resultado.dados.parametrosFiscais.creditos) {
+                            console.log('Créditos:', JSON.stringify(resultado.dados.parametrosFiscais.creditos, null, 2));
+                        }
+                        if (resultado.dados.parametrosFiscais.composicaoTributaria && 
+                            resultado.dados.parametrosFiscais.composicaoTributaria.creditos) {
+                            console.log('ComposicaoTributaria.creditos:', 
+                                JSON.stringify(resultado.dados.parametrosFiscais.composicaoTributaria.creditos, null, 2));
+                        }
+                    }
+                }
                 if (resultado.sucesso) {
                     // Validar e normalizar dados importados - com verificação robusta
                     try {
@@ -390,6 +432,44 @@ const ImportacaoController = (function() {
                 preencherCicloFinanceiro(dadosPlanos);
                 adicionarLog('Dados do ciclo financeiro preenchidos.');
             }
+            
+            // Modificar a parte final da função preencherCamposSimulador em importacao-controller.js
+            // (aproximadamente linha 374, após o preenchimento do ciclo financeiro)
+
+            // Navegar para a aba de simulação
+            setTimeout(() => {
+                const abaPrincipal = document.querySelector('.tab-button[data-tab="simulacao"]');
+                if (abaPrincipal) {
+                    abaPrincipal.click();
+                }
+
+                // ADICIONADO: Disparar evento mais específico para notificar módulos sobre a conclusão da importação
+                // com detalhes sobre os valores importados
+                const eventoImportacao = new CustomEvent('spedImportacaoConcluida', { 
+                    detail: { 
+                        dadosImportados: dadosImportados,
+                        origemDados: 'sped',
+                        timestamp: new Date().toISOString(),
+                        valores: {
+                            debitoIPI: dadosImportados.parametrosFiscais?.debitos?.ipi || 0,
+                            creditoIPI: dadosImportados.parametrosFiscais?.creditos?.ipi || 0,
+                            debitoPIS: dadosImportados.parametrosFiscais?.debitos?.pis || 0,
+                            creditoPIS: dadosImportados.parametrosFiscais?.creditos?.pis || 0,
+                            debitoCOFINS: dadosImportados.parametrosFiscais?.debitos?.cofins || 0,
+                            creditoCOFINS: dadosImportados.parametrosFiscais?.creditos?.cofins || 0,
+                            debitoICMS: dadosImportados.parametrosFiscais?.debitos?.icms || 0,
+                            creditoICMS: dadosImportados.parametrosFiscais?.creditos?.icms || 0
+                        }
+                    },
+                    bubbles: true
+                });
+                document.dispatchEvent(eventoImportacao);
+
+                // Recalcular créditos tributários explicitamente após navegação
+                if (typeof window.calcularCreditosTributarios === 'function') {
+                    setTimeout(window.calcularCreditosTributarios, 300);
+                }
+            }, 500);
 
             // Navegar para a aba de simulação
             setTimeout(() => {
@@ -557,12 +637,12 @@ const ImportacaoController = (function() {
             const registro0110 = registrosSped['0110'][0];
             const codIncidencia = registro0110.codIncidencia;
 
-            if (codIncidencia === '1') {
+            if (codIncidencia === '2') {
                 novoRegime.value = 'presumido';
                 novoPisCofinsRegime.value = 'cumulativo';
                 adicionarLog(`Regime tributário definido via SPED 0110: LUCRO PRESUMIDO (Cumulativo)`, 'success');
                 regimeDefinido = true;
-            } else if (codIncidencia === '2') {
+            } else if (codIncidencia === '1') {
                 novoRegime.value = 'real';
                 novoPisCofinsRegime.value = 'nao-cumulativo';
                 adicionarLog(`Regime tributário definido via SPED 0110: LUCRO REAL (Não Cumulativo)`, 'success');
@@ -683,122 +763,100 @@ const ImportacaoController = (function() {
      * Preenche os parâmetros fiscais no formulário
      * @param {Object} dadosPlanos - Dados na estrutura plana
      */
-    // Substituir a função preencherParametrosFiscais (aproximadamente linha ~570)
+    // Substituir a função preencherParametrosFiscais
     function preencherParametrosFiscais(dadosPlanos) {
+        console.log('=== IMPORTACAO-CONTROLLER: PARÂMETROS FISCAIS ===');
+
         // Verificar tipo da estrutura de dados
         if (window.DataManager.detectarTipoEstrutura(dadosPlanos) === "aninhada") {
             throw new Error('Dados não estão na estrutura plana esperada');
         }
 
-        // Verifica se temos dados de composição tributária SPED
-        const temDadosSPED = dadosPlanos.dadosSpedImportados === true;
+        console.log('Estrutura de dados confirmada como plana');
 
-        // Acessar registros SPED se disponíveis (via dadosImportadosSped global)
-        const registrosSped = window.dadosImportadosSped?.registros || {};
-
-        // === DÉBITOS E CRÉDITOS PIS E COFINS ===
-        let debitoPis = 0;
-        let debitoCofins = 0;
-        let creditoPis = 0;
-        let creditoCofins = 0;
-
-        // PRIORIDADE 1: Usar registros consolidados M200/M600
-        if (registrosSped['M200'] && registrosSped['M200'].length > 0) {
-            debitoPis = registrosSped['M200'][0].vlTotContRec || 0;
-            creditoPis = registrosSped['M200'][0].vlTotCredDesc || 0;
-
-            // Log para validação
-            adicionarLog(`PIS - Valor a recolher: ${window.DataManager.formatarMoeda(debitoPis)} | Créditos: ${window.DataManager.formatarMoeda(creditoPis)}`, 'info');
+        // Verificar se dados SPED estão disponíveis
+        if (dadosPlanos.dadosSpedImportados === true) {
+            console.log('Dados SPED encontrados na estrutura plana');
+        } else {
+            console.log('Flag dadosSpedImportados não encontrada na estrutura plana');
         }
 
-        if (registrosSped['M600'] && registrosSped['M600'].length > 0) {
-            debitoCofins = registrosSped['M600'][0].vlTotContRec || 0;
-            creditoCofins = registrosSped['M600'][0].vlTotCredDesc || 0;
+        // Verificar créditos e débitos na estrutura plana
+        console.log('=== IMPORTACAO-CONTROLLER: VERIFICAÇÃO DE CRÉDITOS E DÉBITOS ===');
+        console.log('creditosPIS:', dadosPlanos.creditosPIS);
+        console.log('creditosCOFINS:', dadosPlanos.creditosCOFINS);
+        console.log('creditosICMS:', dadosPlanos.creditosICMS);
+        console.log('creditosIPI:', dadosPlanos.creditosIPI);
+        console.log('debitoPIS:', dadosPlanos.debitoPIS);
+        console.log('debitoCOFINS:', dadosPlanos.debitoCOFINS);
+        console.log('debitoICMS:', dadosPlanos.debitoICMS);
+        console.log('debitoIPI:', dadosPlanos.debitoIPI);
+        console.log('debitoISS:', dadosPlanos.debitoISS);
 
-            // Log para validação
-            adicionarLog(`COFINS - Valor a recolher: ${window.DataManager.formatarMoeda(debitoCofins)} | Créditos: ${window.DataManager.formatarMoeda(creditoCofins)}`, 'info');
-        }
+        // Extrair valores de débitos e créditos diretamente dos dadosPlanos
+        // Importante: Usar || 0 para garantir que valores undefined sejam tratados como 0
+        const debitoPIS = dadosPlanos.debitoPIS || 0;
+        const debitoCOFINS = dadosPlanos.debitoCOFINS || 0;
+        const debitoICMS = dadosPlanos.debitoICMS || 0;
+        const debitoIPI = dadosPlanos.debitoIPI || 0;
+        const debitoISS = dadosPlanos.debitoISS || 0;
 
-        // === DÉBITOS E CRÉDITOS ICMS (INCLUINDO EXTRA-APURAÇÃO) ===
-        let debitoIcms = 0;
-        let creditoIcms = 0;
-        let extraApuracaoIcms = 0;
+        const creditoPIS = dadosPlanos.creditosPIS || 0;
+        const creditoCOFINS = dadosPlanos.creditosCOFINS || 0;
+        const creditoICMS = dadosPlanos.creditosICMS || 0;
+        const creditoIPI = dadosPlanos.creditosIPI || 0;
+        const creditoISS = dadosPlanos.creditosISS || 0;
 
-        // Apuração ICMS (E110)
-        if (registrosSped['E110'] && registrosSped['E110'].length > 0) {
-            const regE110 = registrosSped['E110'][0];
+        // Log adicional para depuração de valores do IPI
+        console.log('=== IMPORTACAO-CONTROLLER: VERIFICAÇÃO ADICIONAL DE IPI ===');
+        console.log('debitoIPI em dadosPlanos:', dadosPlanos.debitoIPI);
+        console.log('creditoIPI em dadosPlanos:', dadosPlanos.creditosIPI);
 
-            // Débitos ICMS (soma de débitos normais, ajustes e estornos de crédito)
-            debitoIcms = (regE110.vlTotDebitos || 0) + 
-                         (regE110.vlTotAjDebitos || 0) +
-                         (regE110.vlEstornosCreditos || 0);
+        // Preencher campos com os valores corretos, com sequenciamento controlado
+        // Primeiro os débitos
+        preencherCampoTributario('debito-pis', debitoPIS);
+        preencherCampoTributario('debito-cofins', debitoCOFINS);
+        preencherCampoTributario('debito-icms', debitoICMS);
+        preencherCampoTributario('debito-ipi', debitoIPI);
+        preencherCampoTributario('debito-iss', debitoISS);
 
-            // Créditos ICMS (soma de créditos normais, ajustes e estornos de débito)
-            creditoIcms = (regE110.vlTotCreditos || 0) + 
-                          (regE110.vlTotAjCreditos || 0) +
-                          (regE110.vlEstornosDebitos || 0);
+        // Pequena pausa para garantir processamento dos eventos de débitos
+        setTimeout(() => {
+            // Depois os créditos
+            preencherCampoTributario('credito-pis', creditoPIS);
+            preencherCampoTributario('credito-cofins', creditoCOFINS);
+            preencherCampoTributario('credito-icms', creditoICMS);
+            preencherCampoTributario('credito-ipi', creditoIPI);
+            preencherCampoTributario('credito-iss', creditoISS);
 
-            // EXTRA-APURAÇÃO ICMS
-            extraApuracaoIcms = regE110.debEsp || 0;
+            // Após preenchimento dos campos, atualizar totais e alíquotas
+            setTimeout(() => {
+                // Garantir que os totais sejam atualizados
+                const totalDebitos = debitoPIS + debitoCOFINS + debitoICMS + debitoIPI + debitoISS;
+                const totalCreditos = creditoPIS + creditoCOFINS + creditoICMS + creditoIPI + creditoISS;
 
-            // Log para validação
-            adicionarLog(`ICMS - Débitos: ${window.DataManager.formatarMoeda(debitoIcms)} | Créditos: ${window.DataManager.formatarMoeda(creditoIcms)} | Extra-apuração: ${window.DataManager.formatarMoeda(extraApuracaoIcms)}`, 'info');
-        }
+                preencherCampoTributario('total-debitos', totalDebitos);
+                preencherCampoTributario('total-creditos', totalCreditos);
 
-        // === DÉBITOS E CRÉDITOS IPI (INCLUINDO OUTROS DÉBITOS/CRÉDITOS) ===
-        let debitoIpi = 0;
-        let creditoIpi = 0;
+                // Calcular alíquotas efetivas explicitamente
+                calcularAliquotasEfetivas(dadosPlanos.faturamento, debitoPIS, debitoCOFINS, debitoICMS, debitoIPI);
 
-        // Apuração IPI (E520)
-        if (registrosSped['E520'] && registrosSped['E520'].length > 0) {
-            const regE520 = registrosSped['E520'][0];
+                console.log('=== IMPORTACAO-CONTROLLER: TOTAIS CALCULADOS ===');
+                console.log('Total de débitos:', totalDebitos);
+                console.log('Total de créditos:', totalCreditos);
 
-            // Débitos IPI (débitos operacionais + outros débitos)
-            debitoIpi = (regE520.vlDebIpi || 0) + 
-                        (regE520.vlOdIpi || 0);  // Inclui estornos de crédito
-
-            // Créditos IPI (créditos operacionais + outros créditos)
-            creditoIpi = (regE520.vlCredIpi || 0) + 
-                         (regE520.vlOcIpi || 0);  // Inclui estornos de débito
-
-            // Log para validação
-            adicionarLog(`IPI - Débitos (incl. Outros): ${window.DataManager.formatarMoeda(debitoIpi)} | Créditos (incl. Outros): ${window.DataManager.formatarMoeda(creditoIpi)}`, 'info');
-        }
-
-        // === PREENCHER CAMPOS PIS ===
-        preencherCampoTributario('debito-pis', debitoPis);
-        preencherCampoTributario('credito-pis', creditoPis);
-
-        // === PREENCHER CAMPOS COFINS ===
-        preencherCampoTributario('debito-cofins', debitoCofins);
-        preencherCampoTributario('credito-cofins', creditoCofins);
-
-        // === PREENCHER CAMPOS ICMS/IPI ===
-        preencherCampoTributario('debito-icms', debitoIcms);
-        preencherCampoTributario('credito-icms', creditoIcms);
-
-        // Se houver extra-apuração, adicionar ao campo de ajustes
-        if (extraApuracaoIcms > 0) {
-            preencherCampoTributario('ajuste-debito-icms', extraApuracaoIcms);
-            adicionarLog(`Valor extra-apuração ICMS adicionado ao campo de ajustes: ${window.DataManager.formatarMoeda(extraApuracaoIcms)}`, 'warning');
-        }
-
-        preencherCampoTributario('debito-ipi', debitoIpi);
-        preencherCampoTributario('credito-ipi', creditoIpi);
-
-        // Calcular alíquotas efetivas
-        calcularAliquotasEfetivas(dadosPlanos.faturamento, debitoPis, debitoCofins, debitoIcms, debitoIpi);
-
-        // === REGIME PIS/COFINS ===
-        const campoPisCofinsRegime = document.getElementById('pis-cofins-regime');
-        if (campoPisCofinsRegime && dadosPlanos.regimePisCofins) {
-            const regimeFormatado = dadosPlanos.regimePisCofins.replace(' ', '-');
-            if (['cumulativo', 'nao-cumulativo'].includes(regimeFormatado)) {
-                campoPisCofinsRegime.value = regimeFormatado;
-                campoPisCofinsRegime.dispatchEvent(new Event('change', { bubbles: true }));
-                adicionarLog(`Regime PIS/COFINS definido como: ${regimeFormatado.toUpperCase()}`, 'info');
-            }
-        }
+                // === REGIME PIS/COFINS ===
+                const campoPisCofinsRegime = document.getElementById('pis-cofins-regime');
+                if (campoPisCofinsRegime && dadosPlanos.regimePisCofins) {
+                    const regimeFormatado = dadosPlanos.regimePisCofins.replace(' ', '-');
+                    if (['cumulativo', 'nao-cumulativo'].includes(regimeFormatado)) {
+                        campoPisCofinsRegime.value = regimeFormatado;
+                        campoPisCofinsRegime.dispatchEvent(new Event('change', { bubbles: true }));
+                        adicionarLog(`Regime PIS/COFINS definido como: ${regimeFormatado.toUpperCase()}`, 'info');
+                    }
+                }
+            }, 100);
+        }, 100);
     }
         
     /**
@@ -862,25 +920,81 @@ const ImportacaoController = (function() {
     }
 
     // Adicionar nova função para calcular alíquotas efetivas
+    // Modificar a função calcularAliquotasEfetivas
+    // Substituir a função calcularAliquotasEfetivas
     function calcularAliquotasEfetivas(faturamento, debitoPis, debitoCofins, debitoIcms, debitoIpi) {
         if (!faturamento || faturamento <= 0) return;
 
+        // Função para definir alíquota efetiva de forma mais robusta
         const setAliquotaEfetiva = (id, valor) => {
             const campo = document.getElementById(id);
             if (campo) {
+                // Calcular alíquota em percentual
                 const aliquotaPercentual = (valor / faturamento) * 100;
-                campo.value = aliquotaPercentual.toFixed(2);
+
+                // Formatar com 3 casas decimais
+                campo.value = aliquotaPercentual.toFixed(3);
+
+                // Salvar o valor numérico para possíveis cálculos futuros - CRÍTICO
+                if (campo.dataset) {
+                    campo.dataset.rawValue = aliquotaPercentual.toString();
+                }
+
+                // Log para depuração
+                console.log(`Alíquota efetiva para ${id}: ${aliquotaPercentual.toFixed(3)}% (Valor: ${valor}, Faturamento: ${faturamento})`);
+
+                // Disparar eventos para garantir que outras partes do sistema sejam notificadas
+                campo.dispatchEvent(new Event('change', { bubbles: true }));
+                setTimeout(() => {
+                    campo.dispatchEvent(new Event('input', { bubbles: true }));
+                }, 0);
             }
         };
 
-        setAliquotaEfetiva('aliquota-efetiva-pis', debitoPis);
-        setAliquotaEfetiva('aliquota-efetiva-cofins', debitoCofins);
-        setAliquotaEfetiva('aliquota-efetiva-icms', debitoIcms);
-        setAliquotaEfetiva('aliquota-efetiva-ipi', debitoIpi);
+        // Obter créditos de forma mais robusta, usando dataset.rawValue se disponível
+        const obterCreditoRobusto = (id) => {
+            const campo = document.getElementById(id);
+            if (!campo) return 0;
 
-        // Alíquota efetiva total
-        const total = debitoPis + debitoCofins + debitoIcms + debitoIpi;
-        setAliquotaEfetiva('aliquota-efetiva-total', total);
+            // Usar dataset.rawValue se disponível
+            if (campo.dataset && campo.dataset.rawValue !== undefined) {
+                const valor = parseFloat(campo.dataset.rawValue);
+                return isNaN(valor) ? 0 : valor;
+            }
+
+            // Caso contrário, usar extrairValorMonetario
+            return window.DataManager.extrairValorMonetario(campo.value);
+        };
+
+        // Obter créditos
+        const creditoPis = obterCreditoRobusto('credito-pis');
+        const creditoCofins = obterCreditoRobusto('credito-cofins');
+        const creditoIcms = obterCreditoRobusto('credito-icms');
+        const creditoIpi = obterCreditoRobusto('credito-ipi');
+
+        // Log dos valores obtidos para depuração
+        console.log('IMPORTACAO-CONTROLLER: Valores para cálculo de alíquotas efetivas:', {
+            creditos: { creditoPis, creditoCofins, creditoIcms, creditoIpi },
+            debitos: { debitoPis, debitoCofins, debitoIcms, debitoIpi },
+            faturamento
+        });
+
+        // Calcular alíquotas efetivas considerando os créditos
+        setAliquotaEfetiva('aliquota-efetiva-pis', Math.max(0, debitoPis - creditoPis));
+        setAliquotaEfetiva('aliquota-efetiva-cofins', Math.max(0, debitoCofins - creditoCofins));
+        setAliquotaEfetiva('aliquota-efetiva-icms', Math.max(0, debitoIcms - creditoIcms));
+        setAliquotaEfetiva('aliquota-efetiva-ipi', Math.max(0, debitoIpi - creditoIpi));
+
+        // Alíquota efetiva total - soma dos débitos líquidos dividido pelo faturamento
+        const totalDebitoLiquido = Math.max(0, debitoPis - creditoPis) + 
+                                   Math.max(0, debitoCofins - creditoCofins) + 
+                                   Math.max(0, debitoIcms - creditoIcms) + 
+                                   Math.max(0, debitoIpi - creditoIpi);
+
+        setAliquotaEfetiva('aliquota-efetiva-total', totalDebitoLiquido);
+
+        // Log para verificação final
+        console.log(`Alíquota efetiva total: ${(totalDebitoLiquido / faturamento * 100).toFixed(3)}% (Total débito líquido: ${totalDebitoLiquido})`);
     }
     
     /**
@@ -888,31 +1002,78 @@ const ImportacaoController = (function() {
      * @param {string} campoId - ID do campo a ser preenchido
      * @param {number|string} valor - Valor a ser preenchido
      */
-    // Modificar na função preencherCampoTributario (aproximadamente linha ~640)
+    // Substituir a função preencherCampoTributario
     function preencherCampoTributario(campoId, valor) {
         const elemento = document.getElementById(campoId);
         if (!elemento) return;
 
+        console.log(`=== IMPORTACAO-CONTROLLER: PREENCHENDO CAMPO ${campoId} ===`);
+        console.log(`Valor original recebido: ${valor}`);
+
         try {
+            // Garantir que o valor seja tratado como número
+            let valorNumerico = valor;
+            if (typeof valor === 'string') {
+                valorNumerico = parseFloat(valor.replace(/[^\d,.-]/g, '').replace(',', '.'));
+            }
+
+            // Verificar se o valor é um número válido antes de prosseguir
+            if (isNaN(valorNumerico)) {
+                console.error(`IMPORTACAO-CONTROLLER: Valor inválido para ${campoId}: ${valor}`);
+                valorNumerico = 0;
+            }
+
             // Validar e normalizar valor usando DataManager
-            const valorValidado = window.DataManager.normalizarValor(valor, 'monetario');
+            const valorValidado = window.DataManager.normalizarValor(valorNumerico, 'monetario');
+
+            console.log(`Valor após normalização: ${valorValidado}`);
 
             // Formatar e definir valor
             elemento.value = window.DataManager.formatarMoeda(valorValidado);
 
-            // Preservar valor numérico para cálculos
+            // Preservar valor numérico para cálculos - CRÍTICO para correta recuperação posterior
             if (elemento.dataset) {
                 elemento.dataset.rawValue = valorValidado.toString();
             }
 
-            // MODIFICAÇÃO: Remover readonly para permitir edição
+            // Remover readonly para permitir edição
             elemento.readOnly = false;
 
             // Destacar visualmente que o campo veio do SPED
             elemento.classList.add('sped-data-value');
 
-            // Disparar evento para recálculos
-            elemento.dispatchEvent(new Event('input', { bubbles: true }));
+            // Garantir que o valor seja visível na interface
+            if (elemento.parentElement && elemento.parentElement.style) {
+                elemento.parentElement.style.display = 'flex';
+            }
+
+            // Disparar eventos para recálculos - Sequência crucial para correta atualização
+            elemento.dispatchEvent(new Event('change', { bubbles: true }));
+
+            // Adicionar um pequeno atraso para garantir que o DOM tenha sido atualizado
+            setTimeout(() => {
+                elemento.dispatchEvent(new Event('input', { bubbles: true }));
+
+                // Força recálculo das alíquotas efetivas se estamos preenchendo um campo de débito ou crédito
+                if (campoId.startsWith('debito-') || campoId.startsWith('credito-')) {
+                    const faturamento = obterFaturamentoMensal();
+                    if (faturamento > 0) {
+                        // Obter todos os valores necessários para recalcular alíquotas
+                        const debitoPIS = obterValorCampoRobusto('debito-pis');
+                        const debitoCOFINS = obterValorCampoRobusto('debito-cofins');
+                        const debitoICMS = obterValorCampoRobusto('debito-icms');
+                        const debitoIPI = obterValorCampoRobusto('debito-ipi');
+
+                        // Recalcular alíquotas efetivas
+                        setTimeout(() => {
+                            calcularAliquotasEfetivas(faturamento, debitoPIS, debitoCOFINS, debitoICMS, debitoIPI);
+                        }, 50);
+                    }
+                }
+            }, 10);
+
+            // Log adicional para depuração
+            console.log(`Campo ${campoId} preenchido com valor: ${valorValidado} (${elemento.value})`);
 
         } catch (erro) {
             console.error(`IMPORTACAO-CONTROLLER: Erro ao preencher campo ${campoId}:`, erro);
@@ -1048,11 +1209,29 @@ const ImportacaoController = (function() {
         // Log no console
         console.log(`IMPORTACAO-CONTROLLER [${tipo}]:`, mensagem);
     }
+    
+    function logDiagnostico(mensagem, dados, tipo = 'info') {
+        console.log(`=== IMPORTACAO-CONTROLLER [${tipo.toUpperCase()}]: ${mensagem} ===`);
+        if (dados !== undefined) {
+            console.log(JSON.stringify(dados, null, 2));
+        }
+
+        // Também adiciona ao log visual se disponível
+        if (elements.logArea) {
+            const logItem = document.createElement('p');
+            logItem.className = `log-${tipo}`;
+            logItem.innerHTML = `<span class="log-time">[DIAG]</span> ${mensagem}`;
+
+            elements.logArea.appendChild(logItem);
+            elements.logArea.scrollTop = elements.logArea.scrollHeight;
+        }
+    }
         
     // Interface pública
     return {
         inicializar,
         adicionarLog,
+        logDiagnostico, // Nova função
         obterDadosImportados: () => dadosImportados,
         versao: '3.0.0-simplificado'
     };

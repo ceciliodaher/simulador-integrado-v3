@@ -11,6 +11,7 @@ const SpedProcessor = (function() {
      * @param {Function} callback - Função a ser chamada com os dados processados
      */
     function processarArquivosSped(inputFiscal, inputContribuicoes, callback) {
+        console.log('=== SPED-PROCESSOR: INICIANDO PROCESSAMENTO DE ARQUIVOS ===');
         const arquivosFaltantes = [];
 
         if (!inputFiscal.files || inputFiscal.files.length === 0) {
@@ -74,6 +75,87 @@ const SpedProcessor = (function() {
                         }
                         dadosIntegrados.metadados.fonteDados = 'SPED Fiscal e Contribuições';
                         dadosIntegrados.metadados.timestampImportacao = new Date().toISOString();
+
+                        // MODIFICAÇÃO: Adicionar débitos aos dados integrados
+                        if (dadosIntegrados.parametrosFiscais && dadosIntegrados.parametrosFiscais.composicaoTributaria) {
+                            // Adicionar valores de débito diretamente à estrutura para facilitar acesso
+                            dadosIntegrados.parametrosFiscais.debitos = {
+                                pis: dadosIntegrados.parametrosFiscais.composicaoTributaria.debitos.pis || 0,
+                                cofins: dadosIntegrados.parametrosFiscais.composicaoTributaria.debitos.cofins || 0,
+                                icms: dadosIntegrados.parametrosFiscais.composicaoTributaria.debitos.icms || 0,
+                                ipi: dadosIntegrados.parametrosFiscais.composicaoTributaria.debitos.ipi || 0,
+                                iss: dadosIntegrados.parametrosFiscais.composicaoTributaria.debitos.iss || 0
+                            };
+
+                            // Garantir que os registros originais estejam disponíveis
+                            if (!window.dadosImportadosSped) {
+                                window.dadosImportadosSped = {};
+                            }
+                            window.dadosImportadosSped.registros = {
+                                // Preservar os registros originais do SPED Fiscal
+                                E110: dadosFiscal.registros?.E110 || [],
+                                E520: dadosFiscal.registros?.E520 || [],
+                                // Preservar os registros originais do SPED Contribuições
+                                M200: dadosContribuicoes.registros?.M200 || [],
+                                M600: dadosContribuicoes.registros?.M600 || []
+                            };
+                        }
+
+                        // Antes de chamar o callback com o resultado
+                        console.log('=== SPED-PROCESSOR: DADOS PROCESSADOS ===');
+                        if (dadosIntegrados && dadosIntegrados.parametrosFiscais) {
+                            if (dadosIntegrados.parametrosFiscais.creditos) {
+                                console.log('Créditos diretos:', JSON.stringify(dadosIntegrados.parametrosFiscais.creditos, null, 2));
+                            }
+
+                            // MODIFICAÇÃO: Log de débitos
+                            if (dadosIntegrados.parametrosFiscais.debitos) {
+                                console.log('Débitos diretos:', JSON.stringify(dadosIntegrados.parametrosFiscais.debitos, null, 2));
+                            }
+
+                            if (dadosIntegrados.parametrosFiscais.composicaoTributaria) {
+                                if (dadosIntegrados.parametrosFiscais.composicaoTributaria.creditos) {
+                                    console.log('ComposicaoTributaria.creditos:', 
+                                        JSON.stringify(dadosIntegrados.parametrosFiscais.composicaoTributaria.creditos, null, 2));
+                                }
+
+                                if (dadosIntegrados.parametrosFiscais.composicaoTributaria.debitos) {
+                                    console.log('ComposicaoTributaria.debitos:', 
+                                        JSON.stringify(dadosIntegrados.parametrosFiscais.composicaoTributaria.debitos, null, 2));
+                                }
+                            }
+                        }
+
+                        // MODIFICAÇÃO: Adicionar débitos aos dados integrados
+                        if (dadosIntegrados.parametrosFiscais && dadosIntegrados.parametrosFiscais.composicaoTributaria) {
+                            // Adicionar valores de débito diretamente à estrutura para facilitar acesso
+                            dadosIntegrados.parametrosFiscais.debitos = {
+                                pis: dadosIntegrados.parametrosFiscais.composicaoTributaria.debitos.pis || 0,
+                                cofins: dadosIntegrados.parametrosFiscais.composicaoTributaria.debitos.cofins || 0,
+                                icms: dadosIntegrados.parametrosFiscais.composicaoTributaria.debitos.icms || 0,
+                                ipi: dadosIntegrados.parametrosFiscais.composicaoTributaria.debitos.ipi || 0,
+                                iss: dadosIntegrados.parametrosFiscais.composicaoTributaria.debitos.iss || 0
+                            };
+
+                            // ADIÇÃO: Log específico para valores de IPI
+                            console.log('SPED-PROCESSOR: Verificação de valores IPI:', {
+                                debitoIPI: dadosIntegrados.parametrosFiscais.composicaoTributaria.debitos.ipi,
+                                creditoIPI: dadosIntegrados.parametrosFiscais.composicaoTributaria.creditos.ipi
+                            });
+
+                            // Garantir que os registros originais estejam disponíveis
+                            if (!window.dadosImportadosSped) {
+                                window.dadosImportadosSped = {};
+                            }
+                            window.dadosImportadosSped.registros = {
+                                // Preservar os registros originais do SPED Fiscal
+                                E110: dadosFiscal.registros?.E110 || [],
+                                E520: dadosFiscal.registros?.E520 || [],
+                                // Preservar os registros originais do SPED Contribuições
+                                M200: dadosContribuicoes.registros?.M200 || [],
+                                M600: dadosContribuicoes.registros?.M600 || []
+                            };
+                        }
 
                         // Chamar callback com os dados processados
                         if (typeof callback === 'function') {

@@ -176,6 +176,21 @@ const SpedExtractor = (function() {
         
         console.log(`Processamento concluído: ${linhasProcessadas} linhas, ${registrosEncontrados} registros relevantes.`);
         
+        // Log detalhado dos registros críticos
+        console.log('=== SPED-EXTRACTOR: LOGS DE DIAGNÓSTICO ===');
+        console.log(`Arquivo SPED ${tipoArquivo} processado - Total de registros: ${Object.keys(registros).length}`);
+
+        // Verificar registros críticos para créditos tributários
+        const registrosCriticos = ['M200', 'M600', 'E110', 'E520'];
+        registrosCriticos.forEach(registro => {
+            if (registros[registro] && registros[registro].length > 0) {
+                console.log(`${registro} encontrado: ${registros[registro].length} ocorrências`);
+                console.log(`${registro} primeira ocorrência:`, JSON.stringify(registros[registro][0], null, 2));
+            } else {
+                console.log(`${registro} NÃO encontrado no arquivo`);
+            }
+        });
+        
         return {
             tipoArquivo,
             registros
@@ -543,10 +558,10 @@ const SpedExtractor = (function() {
             const reg0110 = registros['0110'][0];
             const codIncidencia = reg0110.codIncidencia;
 
-            if (codIncidencia === '1') {
+            if (codIncidencia === '2') {
                 dadosCanonicos.parametrosFiscais.regimePisCofins = 'cumulativo';
                 dadosCanonicos.empresa.regime = 'presumido';
-            } else if (codIncidencia === '2') {
+            } else if (codIncidencia === '1') {
                 dadosCanonicos.parametrosFiscais.regimePisCofins = 'nao-cumulativo';
                 dadosCanonicos.empresa.regime = 'real';
             }
@@ -555,22 +570,26 @@ const SpedExtractor = (function() {
         // Inicialmente definir faturamento como nulo para verificação posterior
         let faturamentoEncontrado = null;
 
-        // Modificar na função extrairDadosParaSimulador (aproximadamente linha ~390)
-        // Bloco que trata os registros CONTRIBUICOES
-        if (tipoArquivo === 'CONTRIBUICOES') {
-            // Inicializar composicaoTributaria se não existir
-            if (!dadosCanonicos.parametrosFiscais.composicaoTributaria) {
-                dadosCanonicos.parametrosFiscais.composicaoTributaria = {
-                    debitos: { pis: 0, cofins: 0, icms: 0, ipi: 0, iss: 0 },
-                    creditos: { pis: 0, cofins: 0, icms: 0, ipi: 0, iss: 0 }
-                };
-            }
+        // Inicializar composicaoTributaria se não existir, para ambos os tipos de arquivo
+        if (dadosCanonicos.parametrosFiscais && !dadosCanonicos.parametrosFiscais.composicaoTributaria) {
+            dadosCanonicos.parametrosFiscais.composicaoTributaria = {
+                debitos: { pis: 0, cofins: 0, icms: 0, ipi: 0, iss: 0 },
+                creditos: { pis: 0, cofins: 0, icms: 0, ipi: 0, iss: 0 }
+            };
+        }
 
-            // MODIFICAÇÃO: Calcular débitos PIS/COFINS usando os registros consolidados M200/M600
+        // Modificar na função extrairDadosParaSimulador (aproximadamente linha ~390)
+        // No bloco que trata os registros CONTRIBUICOES
+        if (tipoArquivo === 'CONTRIBUICOES') {
+            // MODIFICAÇÃO: Extrair corretamente os créditos de PIS/COFINS
             if (registros['M200'] && registros['M200'].length > 0) {
                 dadosCanonicos.parametrosFiscais.composicaoTributaria.debitos.pis = 
                     registros['M200'][0].vlTotContRec || 0;
                 dadosCanonicos.parametrosFiscais.composicaoTributaria.creditos.pis = 
+                    registros['M200'][0].vlTotCredDesc || 0;
+
+                // Também atribuir ao campo creditos padrão
+                dadosCanonicos.parametrosFiscais.creditos.pis = 
                     registros['M200'][0].vlTotCredDesc || 0;
             }
 
@@ -578,6 +597,10 @@ const SpedExtractor = (function() {
                 dadosCanonicos.parametrosFiscais.composicaoTributaria.debitos.cofins = 
                     registros['M600'][0].vlTotContRec || 0;
                 dadosCanonicos.parametrosFiscais.composicaoTributaria.creditos.cofins = 
+                    registros['M600'][0].vlTotCredDesc || 0;
+
+                // Também atribuir ao campo creditos padrão
+                dadosCanonicos.parametrosFiscais.creditos.cofins = 
                     registros['M600'][0].vlTotCredDesc || 0;
             }
         }
@@ -603,36 +626,29 @@ const SpedExtractor = (function() {
             dadosCanonicos.empresa.faturamento = faturamentoEncontrado;
         }
 
-        // Processar créditos e débitos fiscais
+        // No bloco que trata os registros FISCAL
         if (tipoArquivo === 'FISCAL') {
-            // Inicializar composicaoTributaria se não existir
-            if (!dadosCanonicos.parametrosFiscais.composicaoTributaria) {
-                dadosCanonicos.parametrosFiscais.composicaoTributaria = {
-                    debitos: { pis: 0, cofins: 0, icms: 0, ipi: 0, iss: 0 },
-                    creditos: { pis: 0, cofins: 0, icms: 0, ipi: 0, iss: 0 }
-                };
-            }
-
-            // Calcular débitos ICMS/IPI
+            // Extrair corretamente os créditos de ICMS/IPI
             if (registros['E110'] && registros['E110'].length > 0) {
                 dadosCanonicos.parametrosFiscais.composicaoTributaria.debitos.icms = 
-                    registros['E110'][0].valorTotalDebitos || 0;
-            }
-
-            if (registros['E210'] && registros['E210'].length > 0) {
-                dadosCanonicos.parametrosFiscais.composicaoTributaria.debitos.ipi = 
-                    registros['E210'].reduce((total, reg) => total + (reg.valorTotalDebitos || 0), 0);
-            }
-
-            // Calcular créditos ICMS/IPI
-            if (registros['E110'] && registros['E110'].length > 0) {
+                    registros['E110'][0].vlTotDebitos || 0;
                 dadosCanonicos.parametrosFiscais.composicaoTributaria.creditos.icms = 
-                    registros['E110'][0].valorTotalCreditos || 0;
+                    registros['E110'][0].vlTotCreditos || 0;
+
+                // Também atribuir ao campo creditos padrão
+                dadosCanonicos.parametrosFiscais.creditos.icms = 
+                    registros['E110'][0].vlTotCreditos || 0;
             }
 
-            if (registros['E210'] && registros['E210'].length > 0) {
+            if (registros['E520'] && registros['E520'].length > 0) {
+                dadosCanonicos.parametrosFiscais.composicaoTributaria.debitos.ipi = 
+                    registros['E520'][0].vlDebIpi || 0;
                 dadosCanonicos.parametrosFiscais.composicaoTributaria.creditos.ipi = 
-                    registros['E210'].reduce((total, reg) => total + (reg.valorTotalCreditos || 0), 0);
+                    registros['E520'][0].vlCredIpi || 0;
+
+                // Também atribuir ao campo creditos padrão
+                dadosCanonicos.parametrosFiscais.creditos.ipi = 
+                    registros['E520'][0].vlCredIpi || 0;
             }
         } else if (tipoArquivo === 'CONTRIBUICOES') {
             // Inicializar composicaoTributaria se não existir
@@ -685,6 +701,18 @@ const SpedExtractor = (function() {
             }
         } catch (erro) {
             console.error('SPED-EXTRACTOR: Erro ao validar dados:', erro);
+            
+            // Log detalhado dos créditos extraídos
+            console.log('=== SPED-EXTRACTOR: CRÉDITOS EXTRAÍDOS ===');
+            if (dadosCanonicos.parametrosFiscais.composicaoTributaria) {
+                console.log('Créditos PIS:', dadosCanonicos.parametrosFiscais.composicaoTributaria.creditos.pis);
+                console.log('Créditos COFINS:', dadosCanonicos.parametrosFiscais.composicaoTributaria.creditos.cofins);
+                console.log('Créditos ICMS:', dadosCanonicos.parametrosFiscais.composicaoTributaria.creditos.icms);
+                console.log('Créditos IPI:', dadosCanonicos.parametrosFiscais.composicaoTributaria.creditos.ipi);
+            } else {
+                console.log('Estrutura composicaoTributaria não encontrada nos dados canônicos');
+            }
+            
             return dadosCanonicos;
         }
     }
@@ -744,11 +772,11 @@ const SpedExtractor = (function() {
             const codIncidencia = reg0110.codIncidencia;
             
             // Determinar regime tributário e regime PIS/COFINS
-            if (codIncidencia === '1') {
+            if (codIncidencia === '2') {
                 dadosIntegrados.parametrosFiscais.regimePisCofins = 'cumulativo';
                 dadosIntegrados.empresa.regime = 'presumido';
                 console.log('SPED-EXTRACTOR: Regime tributário detectado: PRESUMIDO (Cumulativo)');
-            } else if (codIncidencia === '2') {
+            } else if (codIncidencia === '1') {
                 dadosIntegrados.parametrosFiscais.regimePisCofins = 'nao-cumulativo';
                 dadosIntegrados.empresa.regime = 'real';
                 console.log('SPED-EXTRACTOR: Regime tributário detectado: REAL (Não Cumulativo)');
@@ -786,11 +814,16 @@ const SpedExtractor = (function() {
         };
 
         // Preencher campos creditos no formato canônico
+        // Ajuste na função integrarDados
         dadosIntegrados.parametrosFiscais.creditos = {
-            pis: dadosIntegrados.parametrosFiscais.composicaoTributaria.creditos.pis,
-            cofins: dadosIntegrados.parametrosFiscais.composicaoTributaria.creditos.cofins,
-            icms: dadosIntegrados.parametrosFiscais.composicaoTributaria.creditos.icms,
-            ipi: dadosIntegrados.parametrosFiscais.composicaoTributaria.creditos.ipi,
+            pis: dadosContribuicoes?.parametrosFiscais?.creditos?.pis || 
+                 dadosContribuicoes?.parametrosFiscais?.composicaoTributaria?.creditos?.pis || 0,
+            cofins: dadosContribuicoes?.parametrosFiscais?.creditos?.cofins || 
+                    dadosContribuicoes?.parametrosFiscais?.composicaoTributaria?.creditos?.cofins || 0,
+            icms: dadosFiscal?.parametrosFiscais?.creditos?.icms || 
+                  dadosFiscal?.parametrosFiscais?.composicaoTributaria?.creditos?.icms || 0,
+            ipi: dadosFiscal?.parametrosFiscais?.creditos?.ipi || 
+                 dadosFiscal?.parametrosFiscais?.composicaoTributaria?.creditos?.ipi || 0,
             cbs: 0,
             ibs: 0
         };
@@ -808,6 +841,23 @@ const SpedExtractor = (function() {
             }
         } catch (erro) {
             console.error('SPED-EXTRACTOR: Erro ao validar dados integrados:', erro);
+            
+            // Log detalhado dos créditos integrados
+            console.log('=== SPED-EXTRACTOR: CRÉDITOS INTEGRADOS ===');
+            console.log('Créditos PIS (integrados):', dadosIntegrados.parametrosFiscais.creditos.pis);
+            console.log('Créditos COFINS (integrados):', dadosIntegrados.parametrosFiscais.creditos.cofins);
+            console.log('Créditos ICMS (integrados):', dadosIntegrados.parametrosFiscais.creditos.icms);
+            console.log('Créditos IPI (integrados):', dadosIntegrados.parametrosFiscais.creditos.ipi);
+
+            if (dadosIntegrados.parametrosFiscais.composicaoTributaria) {
+                console.log('ComposicaoTributaria.creditos PIS:', dadosIntegrados.parametrosFiscais.composicaoTributaria.creditos.pis);
+                console.log('ComposicaoTributaria.creditos COFINS:', dadosIntegrados.parametrosFiscais.composicaoTributaria.creditos.cofins);
+                console.log('ComposicaoTributaria.creditos ICMS:', dadosIntegrados.parametrosFiscais.composicaoTributaria.creditos.icms);
+                console.log('ComposicaoTributaria.creditos IPI:', dadosIntegrados.parametrosFiscais.composicaoTributaria.creditos.ipi);
+            } else {
+                console.log('Estrutura composicaoTributaria não encontrada nos dados integrados');
+            }
+            
             return dadosIntegrados;
         }
     }
