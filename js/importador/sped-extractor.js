@@ -581,9 +581,9 @@ window.SpedExtractor = (function() {
         if (tipoArquivo === 'CONTRIBUICOES') {
           // Extrair diretamente os valores totais de PIS dos registros M200
           if (registros['M200'] && registros['M200'].length > 0) {
-            // O campo vlTotContRec contém o valor total do PIS a recolher
+            // CORREÇÃO: O campo vlTotContNcPer contém o valor total dos débitos de PIS (campo 02)
             dadosCanonicos.parametrosFiscais.composicaoTributaria.debitos.pis = 
-              registros['M200'][0].vlTotContRec || 0;
+              registros['M200'][0].vlTotContNcPer || 0;
 
             // O campo vlTotCredDesc contém o valor total dos créditos descontados
             dadosCanonicos.parametrosFiscais.composicaoTributaria.creditos.pis = 
@@ -593,7 +593,7 @@ window.SpedExtractor = (function() {
             dadosCanonicos.parametrosFiscais.creditos.pis = 
               registros['M200'][0].vlTotCredDesc || 0;
 
-            console.log('SPED-EXTRACTOR: Valores de PIS extraídos do M200:', {
+            console.log('SPED-EXTRACTOR: Valores de PIS extraídos do M200 (CORRIGIDO):', {
               debito: dadosCanonicos.parametrosFiscais.composicaoTributaria.debitos.pis,
               credito: dadosCanonicos.parametrosFiscais.composicaoTributaria.creditos.pis
             });
@@ -601,9 +601,9 @@ window.SpedExtractor = (function() {
 
           // Extrair diretamente os valores totais de COFINS dos registros M600
           if (registros['M600'] && registros['M600'].length > 0) {
-            // O campo vlTotContRec contém o valor total da COFINS a recolher
+            // CORREÇÃO: O campo vlTotContNcPer contém o valor total dos débitos de COFINS (campo 02)
             dadosCanonicos.parametrosFiscais.composicaoTributaria.debitos.cofins = 
-              registros['M600'][0].vlTotContRec || 0;
+              registros['M600'][0].vlTotContNcPer || 0;
 
             // O campo vlTotCredDesc contém o valor total dos créditos descontados
             dadosCanonicos.parametrosFiscais.composicaoTributaria.creditos.cofins = 
@@ -613,7 +613,7 @@ window.SpedExtractor = (function() {
             dadosCanonicos.parametrosFiscais.creditos.cofins = 
               registros['M600'][0].vlTotCredDesc || 0;
 
-            console.log('SPED-EXTRACTOR: Valores de COFINS extraídos do M600:', {
+            console.log('SPED-EXTRACTOR: Valores de COFINS extraídos do M600 (CORRIGIDO):', {
               debito: dadosCanonicos.parametrosFiscais.composicaoTributaria.debitos.cofins,
               credito: dadosCanonicos.parametrosFiscais.composicaoTributaria.creditos.cofins
             });
