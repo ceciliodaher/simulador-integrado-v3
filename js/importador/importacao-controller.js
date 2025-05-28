@@ -433,6 +433,15 @@ const ImportacaoController = (function() {
                 adicionarLog('Dados do ciclo financeiro preenchidos.');
             }
             
+            // Garantir que campos IVA permaneçam editáveis
+            ['aliquota-cbs', 'aliquota-ibs', 'reducao-especial', 'aliquota-efetiva'].forEach(id => {
+                const campo = document.getElementById(id);
+                if (campo) {
+                    campo.readOnly = false;
+                    campo.disabled = false;
+                }
+            });
+            
             // Modificar a parte final da função preencherCamposSimulador em importacao-controller.js
             // (aproximadamente linha 374, após o preenchimento do ciclo financeiro)
 
@@ -947,8 +956,11 @@ const ImportacaoController = (function() {
                 elemento.dataset.rawValue = valorValidado.toString();
             }
 
-            // Remover readonly para permitir edição
-            elemento.readOnly = false;
+            // Remover readonly para permitir edição, EXCETO para campos IVA
+            const camposIvaEditaveis = ['aliquota-cbs', 'aliquota-ibs', 'reducao-especial', 'aliquota-efetiva'];
+            if (!camposIvaEditaveis.some(campo => campoId.includes(campo))) {
+                elemento.readOnly = false;
+            }
 
             // Destacar visualmente que o campo veio do SPED
             elemento.classList.add('sped-data-value');
