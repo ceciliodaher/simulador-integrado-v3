@@ -1,4 +1,11 @@
-<!DOCTYPE html>
+# Python script to be executed by the worker
+import os
+
+# Define all HTML content directly within the script
+# Make sure to escape any backslashes or quotes within the HTML if necessary,
+# though for these snippets, it should be fine with triple quotes.
+
+original_html_content = """<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
@@ -76,540 +83,546 @@
 				<div class="simulation-inputs">
 					<!-- Painel de entrada -->
 					<div class="panel">
-<div class="group-box">
-													<h3>Dados da Empresa</h3>
-													<div class="form-group">
-														<label for="empresa">Empresa:</label>
-														<input type="text" id="empresa" placeholder="Nome da empresa">						
-														<label for="faturamento">Faturamento Mensal:</label>
-														<input type="text" id="faturamento" value="0" class="money-input">													
-														<label for="margem">Margem Operacional (%):</label>
-														<input type="number" id="margem" value="15" min="0" max="100" step="0.1">
-														<div class="form-group">
-														<label for="tipo-empresa">Tipo de Empresa:</label>
-														<select id="tipo-empresa" name="tipo-empresa">
-															<option value="">Selecione o tipo...</option>
-															<option value="comercio">Comércio</option>
-															<option value="industria">Indústria</option>
-															<option value="servicos">Serviços</option>
-														</select>
-														</div>												
-														<label for="tipo-operacao">Tipo de Operação:</label>
-														<select id="tipo-operacao" onchange="ajustarCamposOperacao()">
-															<option value="">Selecione o tipo de operação...</option>
-															<option value="b2b">B2B (Empresa-Empresa)</option>
-															<option value="b2c">B2C (Empresa-Consumidor)</option>
-															<option value="mista">Mista</option>
-														</select>
-													</div>
-												</div>
+						<!-- Seção "Dados da Empresa" -->
 						<div class="group-box">
-													<h3>Dados Financeiros</h3>
-													<div class="form-row">
-														<div class="form-column">
-															<div class="form-group">
-																<label for="receita-bruta">Receita Bruta Mensal:</label>
-																<input type="text" id="receita-bruta" class="money-input" placeholder="R$ 0,00">
-															</div>
-														</div>
-														<div class="form-column">
-															<div class="form-group">
-																<label for="receita-liquida">Receita Líquida Mensal:</label>
-																<input type="text" id="receita-liquida" class="money-input" placeholder="R$ 0,00">
-															</div>
-														</div>
-													</div>
-													<div class="form-row">
-														<div class="form-column">
-															<div class="form-group">
-																<label for="custo-total">Custo Total Mensal:</label>
-																<input type="text" id="custo-total" class="money-input" placeholder="R$ 0,00">
-															</div>
-														</div>
-														<div class="form-column">
-															<div class="form-group">
-																<label for="despesas-operacionais">Despesas Operacionais:</label>
-																<input type="text" id="despesas-operacionais" class="money-input" placeholder="R$ 0,00">
-															</div>
-														</div>
-													</div>
-													<div class="form-row">
-														<div class="form-column">
-															<div class="form-group">
-																<label for="lucro-operacional">Lucro Operacional:</label>
-																<input type="text" id="lucro-operacional" class="money-input" readonly>
-															</div>
-														</div>
-														<div class="form-column">
-															<div class="form-group">
-																<label for="margem-operacional-calc">Margem Operacional (%):</label>
-																<input type="number" id="margem-operacional-calc" step="0.01" readonly>
-															</div>
-														</div>
-													</div>
-													<div class="form-row">
-														<div class="form-column">
-															<div class="form-group checkbox-group">
-																<input type="checkbox" id="usar-dados-financeiros" onchange="toggleDadosFinanceiros()">
-																<label for="usar-dados-financeiros">Utilizar dados financeiros detalhados na simulação</label>
-															</div>
-														</div>
-													</div>
-												</div>
+							<h3>Dados da Empresa</h3>
+							<div class="form-group">
+								<label for="empresa">Empresa:</label>
+								<input type="text" id="empresa" placeholder="Nome da empresa">						
+								<label for="faturamento">Faturamento Mensal:</label>
+								<input type="text" id="faturamento" value="0" class="money-input">													
+								<label for="margem">Margem Operacional (%):</label>
+								<input type="number" id="margem" value="15" min="0" max="100" step="0.1">
+								<div class="form-group">
+								<label for="tipo-empresa">Tipo de Empresa:</label>
+								<select id="tipo-empresa" name="tipo-empresa">
+									<option value="">Selecione o tipo...</option>
+									<option value="comercio">Comércio</option>
+									<option value="industria">Indústria</option>
+									<option value="servicos">Serviços</option>
+								</select>
+								</div>												
+								<label for="tipo-operacao">Tipo de Operação:</label>
+								<select id="tipo-operacao" onchange="ajustarCamposOperacao()">
+									<option value="">Selecione o tipo de operação...</option>
+									<option value="b2b">B2B (Empresa-Empresa)</option>
+									<option value="b2c">B2C (Empresa-Consumidor)</option>
+									<option value="mista">Mista</option>
+								</select>
+							</div>
+						</div>				
+					
 						<div class="group-box">
-													<h3>Sistema Tributário Atual</h3>
-													<!-- Nova seção de débitos e créditos tributários -->
-													<div class="group-box">
-														<h4>Composição Tributária Detalhada</h4>
-														<div class="form-row">
-															<div class="form-column">
-																<h5>Débitos Tributários (R$ por mês)</h5>
-																<div class="form-group">
-																	<label for="debito-pis">Débito PIS:</label>
-																	<input type="text" id="debito-pis" class="money-input" readonly>
-																</div>
-																<div class="form-group">
-																	<label for="debito-cofins">Débito COFINS:</label>
-																	<input type="text" id="debito-cofins" class="money-input" readonly>
-																</div>
-																<div class="form-group">
-																	<label for="debito-icms">Débito ICMS:</label>
-																	<input type="text" id="debito-icms" class="money-input" readonly>
-																</div>
-																<div class="form-group">
-																	<label for="debito-ipi">Débito IPI:</label>
-																	<input type="text" id="debito-ipi" class="money-input" readonly>
-																</div>
-																<div class="form-group">
-																	<label for="debito-iss">Débito ISS:</label>
-																	<input type="text" id="debito-iss" class="money-input" readonly>
-																</div>
-															</div>
-															<div class="form-column">
-																<h5>Créditos Tributários (R$ por mês)</h5>
-																<div class="form-group">
-																	<label for="credito-pis">Crédito PIS:</label>
-																	<input type="text" id="credito-pis" class="money-input" readonly>
-																</div>
-																<div class="form-group">
-																	<label for="credito-cofins">Crédito COFINS:</label>
-																	<input type="text" id="credito-cofins" class="money-input" readonly>
-																</div>
-																<div class="form-group">
-																	<label for="credito-icms">Crédito ICMS:</label>
-																	<input type="text" id="credito-icms" class="money-input" readonly>
-																</div>
-																<div class="form-group">
-																	<label for="credito-ipi">Crédito IPI:</label>
-																	<input type="text" id="credito-ipi" class="money-input" readonly>
-																</div>
-																<div class="form-group">
-																	<label for="credito-iss">Crédito ISS:</label>
-																	<input type="text" id="credito-iss" class="money-input" value="R$ 0,00" readonly>
-																</div>
-															</div>
-															<div class="form-column">
-																<h5>Alíquotas Efetivas (%)</h5>
-																<div class="form-group">
-																	<label for="aliquota-efetiva-pis">PIS Efetivo:</label>
-																	<input type="number" id="aliquota-efetiva-pis" step="0.01" readonly>
-																</div>
-																<div class="form-group">
-																	<label for="aliquota-efetiva-cofins">COFINS Efetivo:</label>
-																	<input type="number" id="aliquota-efetiva-cofins" step="0.01" readonly>
-																</div>
-																<div class="form-group">
-																	<label for="aliquota-efetiva-icms">ICMS Efetivo:</label>
-																	<input type="number" id="aliquota-efetiva-icms" step="0.01" readonly>
-																</div>
-																<div class="form-group">
-																	<label for="aliquota-efetiva-ipi">IPI Efetivo:</label>
-																	<input type="number" id="aliquota-efetiva-ipi" step="0.01" readonly>
-																</div>
-																<div class="form-group">
-																	<label for="aliquota-efetiva-iss">ISS Efetivo:</label>
-																	<input type="number" id="aliquota-efetiva-iss" step="0.01" readonly>
-																</div>
-															</div>
-														</div>
-														<div class="form-row">
-															<div class="form-column">
-																<div class="form-group">
-																	<label for="total-debitos">Total de Débitos:</label>
-																	<input type="text" id="total-debitos" class="money-input" readonly>
-																</div>
-															</div>
-															<div class="form-column">
-																<div class="form-group">
-																	<label for="total-creditos">Total de Créditos:</label>
-																	<input type="text" id="total-creditos" class="money-input" readonly>
-																</div>
-															</div>
-															<div class="form-column">
-																<div class="form-group">
-																	<label for="aliquota-efetiva-total">Alíquota Efetiva Total (%):</label>
-																	<input type="number" id="aliquota-efetiva-total" step="0.01" readonly>
-																</div>
-															</div>
-														</div>
-													</div>
-													<div class="form-row">
-														<div class="form-column">
-															<div class="form-group">
-																<label for="regime">Regime Tributário:</label>
-																<select id="regime" onchange="ajustarCamposTributarios()">
-																	<option value="">Selecione o regime tributário...</option>
-																	<option value="simples">Simples Nacional</option>
-																	<option value="presumido">Lucro Presumido</option>
-																	<option value="real">Lucro Real</option>
-																</select>
-															</div>														
-						
-														<!-- Campos específicos para Simples Nacional -->
-														<div id="campos-simples" class="campos-regime" style="display: none;">
-															<div class="form-row">
-																<div class="form-column">
-																	<div class="form-group">
-																		<label for="aliquota-simples">Alíquota Simples Nacional (%):</label>
-																		<input type="number" id="aliquota-simples" name="aliquota-simples" value="6.0" min="0" max="30" step="0.01">
-																	</div>
-																</div>
-															</div>
-														</div>
-						
-														<!-- Campos para Lucro Presumido e Real -->
-														<div id="campos-lucro" class="campos-regime" style="display: none;">
-															<!-- PIS/COFINS -->
-															<div class="form-row">
-																<div class="form-column">
-																	<div class="form-group">
-																		<label for="pis-cofins-regime">Regime PIS/COFINS:</label>
-																		<select id="pis-cofins-regime" onchange="ajustarAliquotasPisCofins()">
-																			<option value="cumulativo">Cumulativo</option>
-																			<option value="nao-cumulativo">Não-Cumulativo</option>
-																		</select>
-																	</div>
-																</div>
-															</div>
-						
-															<div id="campos-pis-cofins-creditos" style="display: none;">
-																<div class="form-row">
-																	<div class="form-column">
-																		<div class="form-group">
-																			<label for="pis-aliquota">Alíquota PIS (%):</label>
-																			<input type="number" id="pis-aliquota" value="1.65" min="0" max="10" step="0.01" readonly>
-																		</div>
-																	</div>
-																	<div class="form-column">
-																		<div class="form-group">
-																			<label for="cofins-aliquota">Alíquota COFINS (%):</label>
-																			<input type="number" id="cofins-aliquota" value="7.6" min="0" max="20" step="0.01" readonly>
-																		</div>
-																	</div>
-																</div>
-															</div>
-						
-															<div class="form-row">
-																<div class="form-column">
-																	<div class="form-group">
-																		<label for="pis-cofins-base-calc">Base de Cálculo (% do faturamento):</label>
-																		<input type="number" id="pis-cofins-base-calc" value="50" min="0" max="100" step="0.1">
-																		<small class="text-muted">Percentual de aquisições com direito a crédito</small>
-																	</div>
-																</div>
-																<div class="form-column">
-																	<div class="form-group">
-																		<label for="pis-cofins-perc-credito">Percentual de Aproveitamento (%):</label>
-																		<input type="number" id="pis-cofins-perc-credito" value="100" min="0" max="100" step="0.1">
-																		<small class="text-muted">Percentual efetivamente aproveitado</small>
-																	</div>
-																</div>
-															</div>
-						
-															<div class="form-row">
-																<div class="form-column">
-																	<div class="form-group">
-																		<label for="creditos-pis-cofins-calc">Créditos PIS/COFINS Calculados:</label>
-																		<input type="text" id="creditos-pis-cofins-calc" class="money-input" readonly>
-																		<small class="text-muted">Calculado automaticamente</small>
-																	</div>
-																</div>
-															</div>
-						
-															<!-- ICMS para empresas comerciais/industriais -->
-															<div id="campos-icms" class="campos-operacao">
-																<div class="form-row">
-																	<div class="form-column">
-																		<div class="form-group">
-																			<label for="aliquota-icms">Alíquota ICMS (%):</label>
-																			<input type="number" id="aliquota-icms" value="18.0" min="0" max="30" step="0.01">
-																		</div>
-																	</div>
-																</div>
-						
-																<div class="form-row">
-																	<div class="form-column">
-																		<div class="form-group">
-																			<label for="icms-base-calc">Base de Cálculo (% do faturamento):</label>
-																			<input type="number" id="icms-base-calc" value="60" min="0" max="100" step="0.1">
-																			<small class="text-muted">Percentual de aquisições com ICMS</small>
-																		</div>
-																	</div>
-																	<div class="form-column">
-																		<div class="form-group">
-																			<label for="icms-perc-credito">Percentual de Aproveitamento (%):</label>
-																			<input type="number" id="icms-perc-credito" value="100" min="0" max="100" step="0.1">
-																			<small class="text-muted">Percentual efetivamente aproveitado</small>
-																		</div>
-																	</div>
-																</div>
-						
-																<div class="form-row">
-																	<div class="form-column">
-																		<div class="form-group">
-																			<label for="creditos-icms-calc">Créditos ICMS Calculados:</label>
-																			<input type="text" id="creditos-icms-calc" class="money-input" readonly>
-																			<small class="text-muted">Calculado automaticamente</small>
-																		</div>
-																	</div>
-																</div>
-						
-																<div class="form-row">
-																	<div class="form-column">
-																		<div class="form-group checkbox-group">
-																			<input type="checkbox" id="possui-incentivo-icms" onchange="toggleCamposIncentivoICMS()">
-																			<label for="possui-incentivo-icms">Possui Incentivo Fiscal ICMS</label>
-																		</div>
-																	</div>
-																	<div class="form-column" id="campo-incentivo-icms" style="display: none;">
-																		<div class="form-group">
-																			<label for="incentivo-icms">Redução por Incentivo (%):</label>
-																			<input type="number" id="incentivo-icms" value="0" min="0" max="100" step="0.1">
-																		</div>
-																	</div>
-																</div>
-															</div>
-						
-															<!-- IPI para empresas industriais -->
-															<div id="campos-ipi" class="campos-operacao">
-																<div class="form-row">
-																	<div class="form-column">
-																		<div class="form-group">
-																			<label for="aliquota-ipi">Alíquota IPI (%):</label>
-																			<input type="number" id="aliquota-ipi" value="10.0" min="0" max="100" step="0.01">
-																		</div>
-																	</div>
-																</div>
-						
-																<div class="form-row">
-																	<div class="form-column">
-																		<div class="form-group">
-																			<label for="ipi-base-calc">Base de Cálculo (% do faturamento):</label>
-																			<input type="number" id="ipi-base-calc" value="40" min="0" max="100" step="0.1">
-																			<small class="text-muted">Percentual de aquisições com IPI</small>
-																		</div>
-																	</div>
-																	<div class="form-column">
-																		<div class="form-group">
-																			<label for="ipi-perc-credito">Percentual de Aproveitamento (%):</label>
-																			<input type="number" id="ipi-perc-credito" value="100" min="0" max="100" step="0.1">
-																			<small class="text-muted">Percentual efetivamente aproveitado</small>
-																		</div>
-																	</div>
-																</div>
-						
-																<div class="form-row">
-																	<div class="form-column">
-																		<div class="form-group">
-																			<label for="creditos-ipi-calc">Créditos IPI Calculados:</label>
-																			<input type="text" id="creditos-ipi-calc" class="money-input" readonly>
-																			<small class="text-muted">Calculado automaticamente</small>
-																		</div>
-																	</div>
-																</div>
-															</div>
-						
-															<!-- ISS para empresas de serviços -->
-															<div id="campos-iss" class="campos-operacao" style="display: none;">
-																<div class="form-row">
-																	<div class="form-column">
-																		<div class="form-group">
-																			<label for="aliquota-iss">Alíquota ISS (%):</label>
-																			<input type="number" id="aliquota-iss" value="5.0" min="0" max="10" step="0.01">
-																		</div>
-																	</div>
-																</div>
-															</div>
-														</div>
-														</div>
-													</div>
+							<h3>Sistema Tributário Atual</h3>
+							<!-- Nova seção de débitos e créditos tributários -->
+							<div class="group-box">
+								<h4>Composição Tributária Detalhada</h4>
+								<div class="form-row">
+									<div class="form-column">
+										<h5>Débitos Tributários (R$ por mês)</h5>
+										<div class="form-group">
+											<label for="debito-pis">Débito PIS:</label>
+											<input type="text" id="debito-pis" class="money-input" readonly>
+										</div>
+										<div class="form-group">
+											<label for="debito-cofins">Débito COFINS:</label>
+											<input type="text" id="debito-cofins" class="money-input" readonly>
+										</div>
+										<div class="form-group">
+											<label for="debito-icms">Débito ICMS:</label>
+											<input type="text" id="debito-icms" class="money-input" readonly>
+										</div>
+										<div class="form-group">
+											<label for="debito-ipi">Débito IPI:</label>
+											<input type="text" id="debito-ipi" class="money-input" readonly>
+										</div>
+										<div class="form-group">
+											<label for="debito-iss">Débito ISS:</label>
+											<input type="text" id="debito-iss" class="money-input" readonly>
+										</div>
+									</div>
+									<div class="form-column">
+										<h5>Créditos Tributários (R$ por mês)</h5>
+										<div class="form-group">
+											<label for="credito-pis">Crédito PIS:</label>
+											<input type="text" id="credito-pis" class="money-input" readonly>
+										</div>
+										<div class="form-group">
+											<label for="credito-cofins">Crédito COFINS:</label>
+											<input type="text" id="credito-cofins" class="money-input" readonly>
+										</div>
+										<div class="form-group">
+											<label for="credito-icms">Crédito ICMS:</label>
+											<input type="text" id="credito-icms" class="money-input" readonly>
+										</div>
+										<div class="form-group">
+											<label for="credito-ipi">Crédito IPI:</label>
+											<input type="text" id="credito-ipi" class="money-input" readonly>
+										</div>
+										<div class="form-group">
+											<label for="credito-iss">Crédito ISS:</label>
+											<input type="text" id="credito-iss" class="money-input" value="R$ 0,00" readonly>
+										</div>
+									</div>
+									<div class="form-column">
+										<h5>Alíquotas Efetivas (%)</h5>
+										<div class="form-group">
+											<label for="aliquota-efetiva-pis">PIS Efetivo:</label>
+											<input type="number" id="aliquota-efetiva-pis" step="0.01" readonly>
+										</div>
+										<div class="form-group">
+											<label for="aliquota-efetiva-cofins">COFINS Efetivo:</label>
+											<input type="number" id="aliquota-efetiva-cofins" step="0.01" readonly>
+										</div>
+										<div class="form-group">
+											<label for="aliquota-efetiva-icms">ICMS Efetivo:</label>
+											<input type="number" id="aliquota-efetiva-icms" step="0.01" readonly>
+										</div>
+										<div class="form-group">
+											<label for="aliquota-efetiva-ipi">IPI Efetivo:</label>
+											<input type="number" id="aliquota-efetiva-ipi" step="0.01" readonly>
+										</div>
+										<div class="form-group">
+											<label for="aliquota-efetiva-iss">ISS Efetivo:</label>
+											<input type="number" id="aliquota-efetiva-iss" step="0.01" readonly>
+										</div>
+									</div>
+								</div>
+								<div class="form-row">
+									<div class="form-column">
+										<div class="form-group">
+											<label for="total-debitos">Total de Débitos:</label>
+											<input type="text" id="total-debitos" class="money-input" readonly>
+										</div>
+									</div>
+									<div class="form-column">
+										<div class="form-group">
+											<label for="total-creditos">Total de Créditos:</label>
+											<input type="text" id="total-creditos" class="money-input" readonly>
+										</div>
+									</div>
+									<div class="form-column">
+										<div class="form-group">
+											<label for="aliquota-efetiva-total">Alíquota Efetiva Total (%):</label>
+											<input type="number" id="aliquota-efetiva-total" step="0.01" readonly>
+										</div>
+									</div>
+								</div>
+							</div>
+							<div class="group-box">
+							<h3>Dados Financeiros</h3>
+							<div class="form-row">
+								<div class="form-column">
+									<div class="form-group">
+										<label for="receita-bruta">Receita Bruta Mensal:</label>
+										<input type="text" id="receita-bruta" class="money-input" placeholder="R$ 0,00">
+									</div>
+								</div>
+								<div class="form-column">
+									<div class="form-group">
+										<label for="receita-liquida">Receita Líquida Mensal:</label>
+										<input type="text" id="receita-liquida" class="money-input" placeholder="R$ 0,00">
+									</div>
+								</div>
+							</div>
+							<div class="form-row">
+								<div class="form-column">
+									<div class="form-group">
+										<label for="custo-total">Custo Total Mensal:</label>
+										<input type="text" id="custo-total" class="money-input" placeholder="R$ 0,00">
+									</div>
+								</div>
+								<div class="form-column">
+									<div class="form-group">
+										<label for="despesas-operacionais">Despesas Operacionais:</label>
+										<input type="text" id="despesas-operacionais" class="money-input" placeholder="R$ 0,00">
+									</div>
+								</div>
+							</div>
+							<div class="form-row">
+								<div class="form-column">
+									<div class="form-group">
+										<label for="lucro-operacional">Lucro Operacional:</label>
+										<input type="text" id="lucro-operacional" class="money-input" readonly>
+									</div>
+								</div>
+								<div class="form-column">
+									<div class="form-group">
+										<label for="margem-operacional-calc">Margem Operacional (%):</label>
+										<input type="number" id="margem-operacional-calc" step="0.01" readonly>
+									</div>
+								</div>
+							</div>
+							<div class="form-row">
+								<div class="form-column">
+									<div class="form-group checkbox-group">
+										<input type="checkbox" id="usar-dados-financeiros" onchange="toggleDadosFinanceiros()">
+										<label for="usar-dados-financeiros">Utilizar dados financeiros detalhados na simulação</label>
+									</div>
+								</div>
+							</div>
+						</div>
+							<div class="form-row">
+								<div class="form-column">
+									<div class="form-group">
+										<label for="regime">Regime Tributário:</label>
+										<select id="regime" onchange="ajustarCamposTributarios()">
+											<option value="">Selecione o regime tributário...</option>
+											<option value="simples">Simples Nacional</option>
+											<option value="presumido">Lucro Presumido</option>
+											<option value="real">Lucro Real</option>
+										</select>
+									</div>														
+
+								<!-- Campos específicos para Simples Nacional -->
+								<div id="campos-simples" class="campos-regime" style="display: none;">
+									<div class="form-row">
+										<div class="form-column">
+											<div class="form-group">
+												<label for="aliquota-simples">Alíquota Simples Nacional (%):</label>
+												<input type="number" id="aliquota-simples" name="aliquota-simples" value="6.0" min="0" max="30" step="0.01">
+											</div>
+										</div>
+									</div>
+								</div>
+
+								<!-- Campos para Lucro Presumido e Real -->
+								<div id="campos-lucro" class="campos-regime" style="display: none;">
+									<!-- PIS/COFINS -->
+									<div class="form-row">
+										<div class="form-column">
+											<div class="form-group">
+												<label for="pis-cofins-regime">Regime PIS/COFINS:</label>
+												<select id="pis-cofins-regime" onchange="ajustarAliquotasPisCofins()">
+													<option value="cumulativo">Cumulativo</option>
+													<option value="nao-cumulativo">Não-Cumulativo</option>
+												</select>
+											</div>
+										</div>
+									</div>
+
+									<div id="campos-pis-cofins-creditos" style="display: none;">
+										<div class="form-row">
+											<div class="form-column">
+												<div class="form-group">
+													<label for="pis-aliquota">Alíquota PIS (%):</label>
+													<input type="number" id="pis-aliquota" value="1.65" min="0" max="10" step="0.01" readonly>
 												</div>
+											</div>
+											<div class="form-column">
+												<div class="form-group">
+													<label for="cofins-aliquota">Alíquota COFINS (%):</label>
+													<input type="number" id="cofins-aliquota" value="7.6" min="0" max="20" step="0.01" readonly>
+												</div>
+											</div>
+										</div>
+									</div>
+
+									<div class="form-row">
+										<div class="form-column">
+											<div class="form-group">
+												<label for="pis-cofins-base-calc">Base de Cálculo (% do faturamento):</label>
+												<input type="number" id="pis-cofins-base-calc" value="50" min="0" max="100" step="0.1">
+												<small class="text-muted">Percentual de aquisições com direito a crédito</small>
+											</div>
+										</div>
+										<div class="form-column">
+											<div class="form-group">
+												<label for="pis-cofins-perc-credito">Percentual de Aproveitamento (%):</label>
+												<input type="number" id="pis-cofins-perc-credito" value="100" min="0" max="100" step="0.1">
+												<small class="text-muted">Percentual efetivamente aproveitado</small>
+											</div>
+										</div>
+									</div>
+
+									<div class="form-row">
+										<div class="form-column">
+											<div class="form-group">
+												<label for="creditos-pis-cofins-calc">Créditos PIS/COFINS Calculados:</label>
+												<input type="text" id="creditos-pis-cofins-calc" class="money-input" readonly>
+												<small class="text-muted">Calculado automaticamente</small>
+											</div>
+										</div>
+									</div>
+
+									<!-- ICMS para empresas comerciais/industriais -->
+									<div id="campos-icms" class="campos-operacao">
+										<div class="form-row">
+											<div class="form-column">
+												<div class="form-group">
+													<label for="aliquota-icms">Alíquota ICMS (%):</label>
+													<input type="number" id="aliquota-icms" value="18.0" min="0" max="30" step="0.01">
+												</div>
+											</div>
+										</div>
+
+										<div class="form-row">
+											<div class="form-column">
+												<div class="form-group">
+													<label for="icms-base-calc">Base de Cálculo (% do faturamento):</label>
+													<input type="number" id="icms-base-calc" value="60" min="0" max="100" step="0.1">
+													<small class="text-muted">Percentual de aquisições com ICMS</small>
+												</div>
+											</div>
+											<div class="form-column">
+												<div class="form-group">
+													<label for="icms-perc-credito">Percentual de Aproveitamento (%):</label>
+													<input type="number" id="icms-perc-credito" value="100" min="0" max="100" step="0.1">
+													<small class="text-muted">Percentual efetivamente aproveitado</small>
+												</div>
+											</div>
+										</div>
+
+										<div class="form-row">
+											<div class="form-column">
+												<div class="form-group">
+													<label for="creditos-icms-calc">Créditos ICMS Calculados:</label>
+													<input type="text" id="creditos-icms-calc" class="money-input" readonly>
+													<small class="text-muted">Calculado automaticamente</small>
+												</div>
+											</div>
+										</div>
+
+										<div class="form-row">
+											<div class="form-column">
+												<div class="form-group checkbox-group">
+													<input type="checkbox" id="possui-incentivo-icms" onchange="toggleCamposIncentivoICMS()">
+													<label for="possui-incentivo-icms">Possui Incentivo Fiscal ICMS</label>
+												</div>
+											</div>
+											<div class="form-column" id="campo-incentivo-icms" style="display: none;">
+												<div class="form-group">
+													<label for="incentivo-icms">Redução por Incentivo (%):</label>
+													<input type="number" id="incentivo-icms" value="0" min="0" max="100" step="0.1">
+												</div>
+											</div>
+										</div>
+									</div>
+
+									<!-- IPI para empresas industriais -->
+									<div id="campos-ipi" class="campos-operacao">
+										<div class="form-row">
+											<div class="form-column">
+												<div class="form-group">
+													<label for="aliquota-ipi">Alíquota IPI (%):</label>
+													<input type="number" id="aliquota-ipi" value="10.0" min="0" max="100" step="0.01">
+												</div>
+											</div>
+										</div>
+
+										<div class="form-row">
+											<div class="form-column">
+												<div class="form-group">
+													<label for="ipi-base-calc">Base de Cálculo (% do faturamento):</label>
+													<input type="number" id="ipi-base-calc" value="40" min="0" max="100" step="0.1">
+													<small class="text-muted">Percentual de aquisições com IPI</small>
+												</div>
+											</div>
+											<div class="form-column">
+												<div class="form-group">
+													<label for="ipi-perc-credito">Percentual de Aproveitamento (%):</label>
+													<input type="number" id="ipi-perc-credito" value="100" min="0" max="100" step="0.1">
+													<small class="text-muted">Percentual efetivamente aproveitado</small>
+												</div>
+											</div>
+										</div>
+
+										<div class="form-row">
+											<div class="form-column">
+												<div class="form-group">
+													<label for="creditos-ipi-calc">Créditos IPI Calculados:</label>
+													<input type="text" id="creditos-ipi-calc" class="money-input" readonly>
+													<small class="text-muted">Calculado automaticamente</small>
+												</div>
+											</div>
+										</div>
+									</div>
+
+									<!-- ISS para empresas de serviços -->
+									<div id="campos-iss" class="campos-operacao" style="display: none;">
+										<div class="form-row">
+											<div class="form-column">
+												<div class="form-group">
+													<label for="aliquota-iss">Alíquota ISS (%):</label>
+													<input type="number" id="aliquota-iss" value="5.0" min="0" max="10" step="0.01">
+												</div>
+											</div>
+										</div>
+									</div>
+								</div>
+								</div>
+							</div>
+						</div>
+
 						<div class="group-box">
-													<h3>Ciclo Financeiro</h3>
-													<div class="form-row">
-														<div class="form-column">
-															<div class="form-group">
-																<label for="pmr">Prazo Médio de Recebimento (dias):</label>
-																<input type="number" id="pmr" value="30" min="0" step="1">
-															</div>
-														</div>
-														<div class="form-column">
-															<div class="form-group">
-																<label for="pmp">Prazo Médio de Pagamento (dias):</label>
-																<input type="number" id="pmp" value="30" min="0" step="1">
-															</div>
-														</div>
-													</div>
-													<div class="form-row">
-														<div class="form-column">
-															<div class="form-group">
-																<label for="pme">Prazo Médio de Estoque (dias):</label>
-																<input type="number" id="pme" value="30" min="0" step="1">
-															</div>
-														</div>
-														<div class="form-column">
-															<div class="form-group">
-																<label for="ciclo-financeiro">Ciclo Financeiro (dias):</label>
-																<input type="number" id="ciclo-financeiro" value="30" readonly>
-															</div>
-														</div>
-														<!-- Elemento modificado -->
-														<div class="form-column">
-															<div class="form-group checkbox-group">
-																<input type="checkbox" id="considerar-split" name="considerar-split" checked>
-																<label for="considerar-split">Considerar Split Payment no cálculo</label>
-																<span class="tooltip">
-																	<i class="info-icon">i</i>
-																	<span class="tooltip-text">Se desabilitado, o simulador calculará o impacto da reforma tributária sem o mecanismo de Split Payment, considerando apenas a substituição dos impostos atuais pelo IVA Dual.</span>
-																</span>
-															</div>
-														</div>
-													</div>
-						
-													<!-- Campos opcionais para exibir a NCG (inicialmente ocultos) -->
-													<div id="campos-ncg" style="display: none;" class="form-row">
-														<div class="form-column">
-															<div class="form-group">
-																<label for="ncg-atual">NCG Atual:</label>
-																<input type="text" id="ncg-atual" readonly>
-															</div>
-														</div>
-														<div class="form-column">
-															<div class="form-group">
-																<label for="ncg-ajustada">NCG com Split Payment:</label>
-																<input type="text" id="ncg-ajustada" readonly>
-															</div>
-														</div>
-														<div class="form-column">
-															<div class="form-group">
-																<label for="diferenca-ncg">Impacto no Capital de Giro:</label>
-																<input type="text" id="diferenca-ncg" readonly class="impact-field">
-															</div>
-														</div>
-													</div>
-													<div class="form-row">
-														<div class="form-column">
-															<div class="form-group">
-																<label for="perc-vista">Percentual de Vendas à Vista (%):</label>
-																<input type="number" id="perc-vista" value="30" min="0" max="100" step="1">
-															</div>
-														</div>
-														<div class="form-column">
-															<div class="form-group">
-																<label for="perc-prazo">Percentual de Vendas a Prazo (%):</label>
-																<input type="text" id="perc-prazo" value="70%" readonly>
-															</div>
-														</div>
-													</div>
-												</div>
+							<h3>Sistema IVA Dual e Split Payment</h3>
+							<div class="form-row">
+								<div class="form-column">
+									<div class="form-group">
+										<label for="setor">Setor de Atividade:</label>
+										<select id="setor" class="form-control">
+											<option value="">Selecione uma atividade...</option>
+											<!-- Opções preenchidas via JS -->
+										</select>
+									</div>
+									<div class="form-group">
+										<label for="aliquota-cbs">Alíquota CBS (%):</label>
+										<input type="number" id="aliquota-cbs" min="0" max="100" step="0.1" readonly>
+									</div>
+									<div class="form-group">
+										<label for="aliquota-ibs">Alíquota IBS (%):</label>
+										<input type="number" id="aliquota-ibs" min="0" max="100" step="0.1" readonly>
+									</div>
+									<div class="form-group">
+										<label for="reducao">Redução Especial (%):</label>
+										<input type="number" id="reducao" min="0" max="100" step="0.1" readonly>
+									</div>
+									<div class="form-group">
+										<label for="aliquota">Alíquota Efetiva (%):</label>
+										<input type="number" id="aliquota" min="0" max="100" step="0.1" readonly>
+									</div>
+									<div class="form-group">
+										<label for="categoria-iva">Categoria Tributária:</label>
+										<select id="categoria-iva" disabled>
+											<option value="standard">Padrão</option>
+											<option value="reduced">Reduzida</option>
+											<option value="exempt">Isenta</option>
+										</select>
+									</div>
+								</div>
+							</div>
+						</div>								
+
+						<div class="form-row">
+							<div class="form-column">
+								<div class="form-group">
+									<label for="compensacao">Compensação de Créditos:</label>
+									<select id="compensacao">
+										<option value="automatica">Automática (Tempo Real)</option>
+										<option value="mensal">Mensal</option>
+										<option value="trimestral">Trimestral</option>
+									</select>
+								</div>
+							</div>
+						</div>		
+
 						<div class="group-box">
-													<h3>Sistema IVA Dual e Split Payment</h3>
-													<div class="form-row">
-														<div class="form-column">
-															<div class="form-group">
-																<label for="setor">Setor de Atividade:</label>
-																<select id="setor" class="form-control">
-																	<option value="">Selecione uma atividade...</option>
-																	<!-- Opções preenchidas via JS -->
-																</select>
-															</div>
-															<div class="form-group">
-																<label for="aliquota-cbs">Alíquota CBS (%):</label>
-																<input type="number" id="aliquota-cbs" min="0" max="100" step="0.1" readonly>
-															</div>
-															<div class="form-group">
-																<label for="aliquota-ibs">Alíquota IBS (%):</label>
-																<input type="number" id="aliquota-ibs" min="0" max="100" step="0.1" readonly>
-															</div>
-															<div class="form-group">
-																<label for="reducao">Redução Especial (%):</label>
-																<input type="number" id="reducao" min="0" max="100" step="0.1" readonly>
-															</div>
-															<div class="form-group">
-																<label for="aliquota">Alíquota Efetiva (%):</label>
-																<input type="number" id="aliquota" min="0" max="100" step="0.1" readonly>
-															</div>
-															<div class="form-group">
-																<label for="categoria-iva">Categoria Tributária:</label>
-																<select id="categoria-iva" disabled>
-																	<option value="standard">Padrão</option>
-																	<option value="reduced">Reduzida</option>
-																	<option value="exempt">Isenta</option>
-																</select>
-															</div>
-														</div>
-													</div>
-												</div>								
-						
-												<div class="form-row">
-													<div class="form-column">
-														<div class="form-group">
-															<label for="compensacao">Compensação de Créditos:</label>
-															<select id="compensacao">
-																<option value="automatica">Automática (Tempo Real)</option>
-																<option value="mensal">Mensal</option>
-																<option value="trimestral">Trimestral</option>
-															</select>
-														</div>
-													</div>
-												</div>
+							<h3>Ciclo Financeiro</h3>
+							<div class="form-row">
+								<div class="form-column">
+									<div class="form-group">
+										<label for="pmr">Prazo Médio de Recebimento (dias):</label>
+										<input type="number" id="pmr" value="30" min="0" step="1">
+									</div>
+								</div>
+								<div class="form-column">
+									<div class="form-group">
+										<label for="pmp">Prazo Médio de Pagamento (dias):</label>
+										<input type="number" id="pmp" value="30" min="0" step="1">
+									</div>
+								</div>
+							</div>
+							<div class="form-row">
+								<div class="form-column">
+									<div class="form-group">
+										<label for="pme">Prazo Médio de Estoque (dias):</label>
+										<input type="number" id="pme" value="30" min="0" step="1">
+									</div>
+								</div>
+								<div class="form-column">
+									<div class="form-group">
+										<label for="ciclo-financeiro">Ciclo Financeiro (dias):</label>
+										<input type="number" id="ciclo-financeiro" value="30" readonly>
+									</div>
+								</div>
+								<!-- Elemento modificado -->
+								<div class="form-column">
+									<div class="form-group checkbox-group">
+										<input type="checkbox" id="considerar-split" name="considerar-split" checked>
+										<label for="considerar-split">Considerar Split Payment no cálculo</label>
+										<span class="tooltip">
+											<i class="info-icon">i</i>
+											<span class="tooltip-text">Se desabilitado, o simulador calculará o impacto da reforma tributária sem o mecanismo de Split Payment, considerando apenas a substituição dos impostos atuais pelo IVA Dual.</span>
+										</span>
+									</div>
+								</div>
+							</div>
+
+							<!-- Campos opcionais para exibir a NCG (inicialmente ocultos) -->
+							<div id="campos-ncg" style="display: none;" class="form-row">
+								<div class="form-column">
+									<div class="form-group">
+										<label for="ncg-atual">NCG Atual:</label>
+										<input type="text" id="ncg-atual" readonly>
+									</div>
+								</div>
+								<div class="form-column">
+									<div class="form-group">
+										<label for="ncg-ajustada">NCG com Split Payment:</label>
+										<input type="text" id="ncg-ajustada" readonly>
+									</div>
+								</div>
+								<div class="form-column">
+									<div class="form-group">
+										<label for="diferenca-ncg">Impacto no Capital de Giro:</label>
+										<input type="text" id="diferenca-ncg" readonly class="impact-field">
+									</div>
+								</div>
+							</div>
+							<div class="form-row">
+								<div class="form-column">
+									<div class="form-group">
+										<label for="perc-vista">Percentual de Vendas à Vista (%):</label>
+										<input type="number" id="perc-vista" value="30" min="0" max="100" step="1">
+									</div>
+								</div>
+								<div class="form-column">
+									<div class="form-group">
+										<label for="perc-prazo">Percentual de Vendas a Prazo (%):</label>
+										<input type="text" id="perc-prazo" value="70%" readonly>
+									</div>
+								</div>
+							</div>
+						</div>
+
 						<div class="group-box">
-													<h3>Parâmetros da Simulação</h3>
-													<div class="form-row">
-														<div class="form-column">
-															<div class="form-group">
-																<label for="data-inicial">Data Inicial:</label>
-																<input type="date" id="data-inicial" value="2026-01-01">
-															</div>
-														</div>
-														<div class="form-column">
-															<div class="form-group">
-																<label for="data-final">Data Final:</label>
-																<input type="date" id="data-final" value="2033-12-31">
-															</div>
-														</div>
-													</div>
-													<div class="form-row">
-														<div class="form-column">
-															<div class="form-group">
-																<label for="cenario">Cenário de Crescimento:</label>
-																<select id="cenario">
-																	<option value="">Selecione um cenário...</option>
-																	<option value="conservador">Conservador (2% a.a.)</option>
-																	<option value="moderado">Moderado (5% a.a.)</option>
-																	<option value="otimista">Otimista (8% a.a.)</option>
-																	<option value="personalizado">Personalizado</option>
-																</select>
-															</div>
-														</div>
-														<div class="form-column">
-															<div class="form-group" id="cenario-personalizado" style="display: none;">
-																<label for="taxa-crescimento">Taxa de Crescimento (% a.a.):</label>
-																<input type="number" id="taxa-crescimento" value="5" min="0" max="100" step="0.1">
-															</div>
-														</div>
-													</div>
-												</div>
+							<h3>Parâmetros da Simulação</h3>
+							<div class="form-row">
+								<div class="form-column">
+									<div class="form-group">
+										<label for="data-inicial">Data Inicial:</label>
+										<input type="date" id="data-inicial" value="2026-01-01">
+									</div>
+								</div>
+								<div class="form-column">
+									<div class="form-group">
+										<label for="data-final">Data Final:</label>
+										<input type="date" id="data-final" value="2033-12-31">
+									</div>
+								</div>
+							</div>
+							<div class="form-row">
+								<div class="form-column">
+									<div class="form-group">
+										<label for="cenario">Cenário de Crescimento:</label>
+										<select id="cenario">
+											<option value="">Selecione um cenário...</option>
+											<option value="conservador">Conservador (2% a.a.)</option>
+											<option value="moderado">Moderado (5% a.a.)</option>
+											<option value="otimista">Otimista (8% a.a.)</option>
+											<option value="personalizado">Personalizado</option>
+										</select>
+									</div>
+								</div>
+								<div class="form-column">
+									<div class="form-group" id="cenario-personalizado" style="display: none;">
+										<label for="taxa-crescimento">Taxa de Crescimento (% a.a.):</label>
+										<input type="number" id="taxa-crescimento" value="5" min="0" max="100" step="0.1">
+									</div>
+								</div>
+							</div>
+						</div>
+
 						<!-- Para estas duas linhas (adicionando um container para os botões) -->
 						<div class="button-group" style="display: flex; gap: 10px; margin-top: 20px;">
 							<button id="btn-simular" style="flex: 3; padding: 15px; font-size: 16px;">Simular Impacto no Fluxo de Caixa</button>
@@ -2327,3 +2340,619 @@
 
 </body>
 </html>
+"""
+
+panel_html_1 = """<div class="group-box">
+							<h3>Dados da Empresa</h3>
+							<div class="form-group">
+								<label for="empresa">Empresa:</label>
+								<input type="text" id="empresa" placeholder="Nome da empresa">						
+								<label for="faturamento">Faturamento Mensal:</label>
+								<input type="text" id="faturamento" value="0" class="money-input">													
+								<label for="margem">Margem Operacional (%):</label>
+								<input type="number" id="margem" value="15" min="0" max="100" step="0.1">
+								<div class="form-group">
+								<label for="tipo-empresa">Tipo de Empresa:</label>
+								<select id="tipo-empresa" name="tipo-empresa">
+									<option value="">Selecione o tipo...</option>
+									<option value="comercio">Comércio</option>
+									<option value="industria">Indústria</option>
+									<option value="servicos">Serviços</option>
+								</select>
+								</div>												
+								<label for="tipo-operacao">Tipo de Operação:</label>
+								<select id="tipo-operacao" onchange="ajustarCamposOperacao()">
+									<option value="">Selecione o tipo de operação...</option>
+									<option value="b2b">B2B (Empresa-Empresa)</option>
+									<option value="b2c">B2C (Empresa-Consumidor)</option>
+									<option value="mista">Mista</option>
+								</select>
+							</div>
+						</div>"""
+
+panel_html_2 = """<div class="group-box">
+							<h3>Dados Financeiros</h3>
+							<div class="form-row">
+								<div class="form-column">
+									<div class="form-group">
+										<label for="receita-bruta">Receita Bruta Mensal:</label>
+										<input type="text" id="receita-bruta" class="money-input" placeholder="R$ 0,00">
+									</div>
+								</div>
+								<div class="form-column">
+									<div class="form-group">
+										<label for="receita-liquida">Receita Líquida Mensal:</label>
+										<input type="text" id="receita-liquida" class="money-input" placeholder="R$ 0,00">
+									</div>
+								</div>
+							</div>
+							<div class="form-row">
+								<div class="form-column">
+									<div class="form-group">
+										<label for="custo-total">Custo Total Mensal:</label>
+										<input type="text" id="custo-total" class="money-input" placeholder="R$ 0,00">
+									</div>
+								</div>
+								<div class="form-column">
+									<div class="form-group">
+										<label for="despesas-operacionais">Despesas Operacionais:</label>
+										<input type="text" id="despesas-operacionais" class="money-input" placeholder="R$ 0,00">
+									</div>
+								</div>
+							</div>
+							<div class="form-row">
+								<div class="form-column">
+									<div class="form-group">
+										<label for="lucro-operacional">Lucro Operacional:</label>
+										<input type="text" id="lucro-operacional" class="money-input" readonly>
+									</div>
+								</div>
+								<div class="form-column">
+									<div class="form-group">
+										<label for="margem-operacional-calc">Margem Operacional (%):</label>
+										<input type="number" id="margem-operacional-calc" step="0.01" readonly>
+									</div>
+								</div>
+							</div>
+							<div class="form-row">
+								<div class="form-column">
+									<div class="form-group checkbox-group">
+										<input type="checkbox" id="usar-dados-financeiros" onchange="toggleDadosFinanceiros()">
+										<label for="usar-dados-financeiros">Utilizar dados financeiros detalhados na simulação</label>
+									</div>
+								</div>
+							</div>
+						</div>"""
+
+panel_html_3 = """<div class="group-box">
+							<h3>Sistema Tributário Atual</h3>
+							<!-- Nova seção de débitos e créditos tributários -->
+							<div class="group-box">
+								<h4>Composição Tributária Detalhada</h4>
+								<div class="form-row">
+									<div class="form-column">
+										<h5>Débitos Tributários (R$ por mês)</h5>
+										<div class="form-group">
+											<label for="debito-pis">Débito PIS:</label>
+											<input type="text" id="debito-pis" class="money-input" readonly>
+										</div>
+										<div class="form-group">
+											<label for="debito-cofins">Débito COFINS:</label>
+											<input type="text" id="debito-cofins" class="money-input" readonly>
+										</div>
+										<div class="form-group">
+											<label for="debito-icms">Débito ICMS:</label>
+											<input type="text" id="debito-icms" class="money-input" readonly>
+										</div>
+										<div class="form-group">
+											<label for="debito-ipi">Débito IPI:</label>
+											<input type="text" id="debito-ipi" class="money-input" readonly>
+										</div>
+										<div class="form-group">
+											<label for="debito-iss">Débito ISS:</label>
+											<input type="text" id="debito-iss" class="money-input" readonly>
+										</div>
+									</div>
+									<div class="form-column">
+										<h5>Créditos Tributários (R$ por mês)</h5>
+										<div class="form-group">
+											<label for="credito-pis">Crédito PIS:</label>
+											<input type="text" id="credito-pis" class="money-input" readonly>
+										</div>
+										<div class="form-group">
+											<label for="credito-cofins">Crédito COFINS:</label>
+											<input type="text" id="credito-cofins" class="money-input" readonly>
+										</div>
+										<div class="form-group">
+											<label for="credito-icms">Crédito ICMS:</label>
+											<input type="text" id="credito-icms" class="money-input" readonly>
+										</div>
+										<div class="form-group">
+											<label for="credito-ipi">Crédito IPI:</label>
+											<input type="text" id="credito-ipi" class="money-input" readonly>
+										</div>
+										<div class="form-group">
+											<label for="credito-iss">Crédito ISS:</label>
+											<input type="text" id="credito-iss" class="money-input" value="R$ 0,00" readonly>
+										</div>
+									</div>
+									<div class="form-column">
+										<h5>Alíquotas Efetivas (%)</h5>
+										<div class="form-group">
+											<label for="aliquota-efetiva-pis">PIS Efetivo:</label>
+											<input type="number" id="aliquota-efetiva-pis" step="0.01" readonly>
+										</div>
+										<div class="form-group">
+											<label for="aliquota-efetiva-cofins">COFINS Efetivo:</label>
+											<input type="number" id="aliquota-efetiva-cofins" step="0.01" readonly>
+										</div>
+										<div class="form-group">
+											<label for="aliquota-efetiva-icms">ICMS Efetivo:</label>
+											<input type="number" id="aliquota-efetiva-icms" step="0.01" readonly>
+										</div>
+										<div class="form-group">
+											<label for="aliquota-efetiva-ipi">IPI Efetivo:</label>
+											<input type="number" id="aliquota-efetiva-ipi" step="0.01" readonly>
+										</div>
+										<div class="form-group">
+											<label for="aliquota-efetiva-iss">ISS Efetivo:</label>
+											<input type="number" id="aliquota-efetiva-iss" step="0.01" readonly>
+										</div>
+									</div>
+								</div>
+								<div class="form-row">
+									<div class="form-column">
+										<div class="form-group">
+											<label for="total-debitos">Total de Débitos:</label>
+											<input type="text" id="total-debitos" class="money-input" readonly>
+										</div>
+									</div>
+									<div class="form-column">
+										<div class="form-group">
+											<label for="total-creditos">Total de Créditos:</label>
+											<input type="text" id="total-creditos" class="money-input" readonly>
+										</div>
+									</div>
+									<div class="form-column">
+										<div class="form-group">
+											<label for="aliquota-efetiva-total">Alíquota Efetiva Total (%):</label>
+											<input type="number" id="aliquota-efetiva-total" step="0.01" readonly>
+										</div>
+									</div>
+								</div>
+							</div>
+							<div class="form-row">
+								<div class="form-column">
+									<div class="form-group">
+										<label for="regime">Regime Tributário:</label>
+										<select id="regime" onchange="ajustarCamposTributarios()">
+											<option value="">Selecione o regime tributário...</option>
+											<option value="simples">Simples Nacional</option>
+											<option value="presumido">Lucro Presumido</option>
+											<option value="real">Lucro Real</option>
+										</select>
+									</div>														
+
+								<!-- Campos específicos para Simples Nacional -->
+								<div id="campos-simples" class="campos-regime" style="display: none;">
+									<div class="form-row">
+										<div class="form-column">
+											<div class="form-group">
+												<label for="aliquota-simples">Alíquota Simples Nacional (%):</label>
+												<input type="number" id="aliquota-simples" name="aliquota-simples" value="6.0" min="0" max="30" step="0.01">
+											</div>
+										</div>
+									</div>
+								</div>
+
+								<!-- Campos para Lucro Presumido e Real -->
+								<div id="campos-lucro" class="campos-regime" style="display: none;">
+									<!-- PIS/COFINS -->
+									<div class="form-row">
+										<div class="form-column">
+											<div class="form-group">
+												<label for="pis-cofins-regime">Regime PIS/COFINS:</label>
+												<select id="pis-cofins-regime" onchange="ajustarAliquotasPisCofins()">
+													<option value="cumulativo">Cumulativo</option>
+													<option value="nao-cumulativo">Não-Cumulativo</option>
+												</select>
+											</div>
+										</div>
+									</div>
+
+									<div id="campos-pis-cofins-creditos" style="display: none;">
+										<div class="form-row">
+											<div class="form-column">
+												<div class="form-group">
+													<label for="pis-aliquota">Alíquota PIS (%):</label>
+													<input type="number" id="pis-aliquota" value="1.65" min="0" max="10" step="0.01" readonly>
+												</div>
+											</div>
+											<div class="form-column">
+												<div class="form-group">
+													<label for="cofins-aliquota">Alíquota COFINS (%):</label>
+													<input type="number" id="cofins-aliquota" value="7.6" min="0" max="20" step="0.01" readonly>
+												</div>
+											</div>
+										</div>
+									</div>
+
+									<div class="form-row">
+										<div class="form-column">
+											<div class="form-group">
+												<label for="pis-cofins-base-calc">Base de Cálculo (% do faturamento):</label>
+												<input type="number" id="pis-cofins-base-calc" value="50" min="0" max="100" step="0.1">
+												<small class="text-muted">Percentual de aquisições com direito a crédito</small>
+											</div>
+										</div>
+										<div class="form-column">
+											<div class="form-group">
+												<label for="pis-cofins-perc-credito">Percentual de Aproveitamento (%):</label>
+												<input type="number" id="pis-cofins-perc-credito" value="100" min="0" max="100" step="0.1">
+												<small class="text-muted">Percentual efetivamente aproveitado</small>
+											</div>
+										</div>
+									</div>
+
+									<div class="form-row">
+										<div class="form-column">
+											<div class="form-group">
+												<label for="creditos-pis-cofins-calc">Créditos PIS/COFINS Calculados:</label>
+												<input type="text" id="creditos-pis-cofins-calc" class="money-input" readonly>
+												<small class="text-muted">Calculado automaticamente</small>
+											</div>
+										</div>
+									</div>
+
+									<!-- ICMS para empresas comerciais/industriais -->
+									<div id="campos-icms" class="campos-operacao">
+										<div class="form-row">
+											<div class="form-column">
+												<div class="form-group">
+													<label for="aliquota-icms">Alíquota ICMS (%):</label>
+													<input type="number" id="aliquota-icms" value="18.0" min="0" max="30" step="0.01">
+												</div>
+											</div>
+										</div>
+
+										<div class="form-row">
+											<div class="form-column">
+												<div class="form-group">
+													<label for="icms-base-calc">Base de Cálculo (% do faturamento):</label>
+													<input type="number" id="icms-base-calc" value="60" min="0" max="100" step="0.1">
+													<small class="text-muted">Percentual de aquisições com ICMS</small>
+												</div>
+											</div>
+											<div class="form-column">
+												<div class="form-group">
+													<label for="icms-perc-credito">Percentual de Aproveitamento (%):</label>
+													<input type="number" id="icms-perc-credito" value="100" min="0" max="100" step="0.1">
+													<small class="text-muted">Percentual efetivamente aproveitado</small>
+												</div>
+											</div>
+										</div>
+
+										<div class="form-row">
+											<div class="form-column">
+												<div class="form-group">
+													<label for="creditos-icms-calc">Créditos ICMS Calculados:</label>
+													<input type="text" id="creditos-icms-calc" class="money-input" readonly>
+													<small class="text-muted">Calculado automaticamente</small>
+												</div>
+											</div>
+										</div>
+
+										<div class="form-row">
+											<div class="form-column">
+												<div class="form-group checkbox-group">
+													<input type="checkbox" id="possui-incentivo-icms" onchange="toggleCamposIncentivoICMS()">
+													<label for="possui-incentivo-icms">Possui Incentivo Fiscal ICMS</label>
+												</div>
+											</div>
+											<div class="form-column" id="campo-incentivo-icms" style="display: none;">
+												<div class="form-group">
+													<label for="incentivo-icms">Redução por Incentivo (%):</label>
+													<input type="number" id="incentivo-icms" value="0" min="0" max="100" step="0.1">
+												</div>
+											</div>
+										</div>
+									</div>
+
+									<!-- IPI para empresas industriais -->
+									<div id="campos-ipi" class="campos-operacao">
+										<div class="form-row">
+											<div class="form-column">
+												<div class="form-group">
+													<label for="aliquota-ipi">Alíquota IPI (%):</label>
+													<input type="number" id="aliquota-ipi" value="10.0" min="0" max="100" step="0.01">
+												</div>
+											</div>
+										</div>
+
+										<div class="form-row">
+											<div class="form-column">
+												<div class="form-group">
+													<label for="ipi-base-calc">Base de Cálculo (% do faturamento):</label>
+													<input type="number" id="ipi-base-calc" value="40" min="0" max="100" step="0.1">
+													<small class="text-muted">Percentual de aquisições com IPI</small>
+												</div>
+											</div>
+											<div class="form-column">
+												<div class="form-group">
+													<label for="ipi-perc-credito">Percentual de Aproveitamento (%):</label>
+													<input type="number" id="ipi-perc-credito" value="100" min="0" max="100" step="0.1">
+													<small class="text-muted">Percentual efetivamente aproveitado</small>
+												</div>
+											</div>
+										</div>
+
+										<div class="form-row">
+											<div class="form-column">
+												<div class="form-group">
+													<label for="creditos-ipi-calc">Créditos IPI Calculados:</label>
+													<input type="text" id="creditos-ipi-calc" class="money-input" readonly>
+													<small class="text-muted">Calculado automaticamente</small>
+												</div>
+											</div>
+										</div>
+									</div>
+
+									<!-- ISS para empresas de serviços -->
+									<div id="campos-iss" class="campos-operacao" style="display: none;">
+										<div class="form-row">
+											<div class="form-column">
+												<div class="form-group">
+													<label for="aliquota-iss">Alíquota ISS (%):</label>
+													<input type="number" id="aliquota-iss" value="5.0" min="0" max="10" step="0.01">
+												</div>
+											</div>
+										</div>
+									</div>
+								</div>
+								</div>
+							</div>
+						</div>"""
+
+panel_html_4 = """<div class="group-box">
+							<h3>Ciclo Financeiro</h3>
+							<div class="form-row">
+								<div class="form-column">
+									<div class="form-group">
+										<label for="pmr">Prazo Médio de Recebimento (dias):</label>
+										<input type="number" id="pmr" value="30" min="0" step="1">
+									</div>
+								</div>
+								<div class="form-column">
+									<div class="form-group">
+										<label for="pmp">Prazo Médio de Pagamento (dias):</label>
+										<input type="number" id="pmp" value="30" min="0" step="1">
+									</div>
+								</div>
+							</div>
+							<div class="form-row">
+								<div class="form-column">
+									<div class="form-group">
+										<label for="pme">Prazo Médio de Estoque (dias):</label>
+										<input type="number" id="pme" value="30" min="0" step="1">
+									</div>
+								</div>
+								<div class="form-column">
+									<div class="form-group">
+										<label for="ciclo-financeiro">Ciclo Financeiro (dias):</label>
+										<input type="number" id="ciclo-financeiro" value="30" readonly>
+									</div>
+								</div>
+								<!-- Elemento modificado -->
+								<div class="form-column">
+									<div class="form-group checkbox-group">
+										<input type="checkbox" id="considerar-split" name="considerar-split" checked>
+										<label for="considerar-split">Considerar Split Payment no cálculo</label>
+										<span class="tooltip">
+											<i class="info-icon">i</i>
+											<span class="tooltip-text">Se desabilitado, o simulador calculará o impacto da reforma tributária sem o mecanismo de Split Payment, considerando apenas a substituição dos impostos atuais pelo IVA Dual.</span>
+										</span>
+									</div>
+								</div>
+							</div>
+
+							<!-- Campos opcionais para exibir a NCG (inicialmente ocultos) -->
+							<div id="campos-ncg" style="display: none;" class="form-row">
+								<div class="form-column">
+									<div class="form-group">
+										<label for="ncg-atual">NCG Atual:</label>
+										<input type="text" id="ncg-atual" readonly>
+									</div>
+								</div>
+								<div class="form-column">
+									<div class="form-group">
+										<label for="ncg-ajustada">NCG com Split Payment:</label>
+										<input type="text" id="ncg-ajustada" readonly>
+									</div>
+								</div>
+								<div class="form-column">
+									<div class="form-group">
+										<label for="diferenca-ncg">Impacto no Capital de Giro:</label>
+										<input type="text" id="diferenca-ncg" readonly class="impact-field">
+									</div>
+								</div>
+							</div>
+							<div class="form-row">
+								<div class="form-column">
+									<div class="form-group">
+										<label for="perc-vista">Percentual de Vendas à Vista (%):</label>
+										<input type="number" id="perc-vista" value="30" min="0" max="100" step="1">
+									</div>
+								</div>
+								<div class="form-column">
+									<div class="form-group">
+										<label for="perc-prazo">Percentual de Vendas a Prazo (%):</label>
+										<input type="text" id="perc-prazo" value="70%" readonly>
+									</div>
+								</div>
+							</div>
+						</div>"""
+
+panel_html_5 = """<div class="group-box">
+							<h3>Sistema IVA Dual e Split Payment</h3>
+							<div class="form-row">
+								<div class="form-column">
+									<div class="form-group">
+										<label for="setor">Setor de Atividade:</label>
+										<select id="setor" class="form-control">
+											<option value="">Selecione uma atividade...</option>
+											<!-- Opções preenchidas via JS -->
+										</select>
+									</div>
+									<div class="form-group">
+										<label for="aliquota-cbs">Alíquota CBS (%):</label>
+										<input type="number" id="aliquota-cbs" min="0" max="100" step="0.1" readonly>
+									</div>
+									<div class="form-group">
+										<label for="aliquota-ibs">Alíquota IBS (%):</label>
+										<input type="number" id="aliquota-ibs" min="0" max="100" step="0.1" readonly>
+									</div>
+									<div class="form-group">
+										<label for="reducao">Redução Especial (%):</label>
+										<input type="number" id="reducao" min="0" max="100" step="0.1" readonly>
+									</div>
+									<div class="form-group">
+										<label for="aliquota">Alíquota Efetiva (%):</label>
+										<input type="number" id="aliquota" min="0" max="100" step="0.1" readonly>
+									</div>
+									<div class="form-group">
+										<label for="categoria-iva">Categoria Tributária:</label>
+										<select id="categoria-iva" disabled>
+											<option value="standard">Padrão</option>
+											<option value="reduced">Reduzida</option>
+											<option value="exempt">Isenta</option>
+										</select>
+									</div>
+								</div>
+							</div>
+						</div>								
+
+						<div class="form-row">
+							<div class="form-column">
+								<div class="form-group">
+									<label for="compensacao">Compensação de Créditos:</label>
+									<select id="compensacao">
+										<option value="automatica">Automática (Tempo Real)</option>
+										<option value="mensal">Mensal</option>
+										<option value="trimestral">Trimestral</option>
+									</select>
+								</div>
+							</div>
+						</div>"""
+
+panel_html_6 = """<div class="group-box">
+							<h3>Parâmetros da Simulação</h3>
+							<div class="form-row">
+								<div class="form-column">
+									<div class="form-group">
+										<label for="data-inicial">Data Inicial:</label>
+										<input type="date" id="data-inicial" value="2026-01-01">
+									</div>
+								</div>
+								<div class="form-column">
+									<div class="form-group">
+										<label for="data-final">Data Final:</label>
+										<input type="date" id="data-final" value="2033-12-31">
+									</div>
+								</div>
+							</div>
+							<div class="form-row">
+								<div class="form-column">
+									<div class="form-group">
+										<label for="cenario">Cenário de Crescimento:</label>
+										<select id="cenario">
+											<option value="">Selecione um cenário...</option>
+											<option value="conservador">Conservador (2% a.a.)</option>
+											<option value="moderado">Moderado (5% a.a.)</option>
+											<option value="otimista">Otimista (8% a.a.)</option>
+											<option value="personalizado">Personalizado</option>
+										</select>
+									</div>
+								</div>
+								<div class="form-column">
+									<div class="form-group" id="cenario-personalizado" style="display: none;">
+										<label for="taxa-crescimento">Taxa de Crescimento (% a.a.):</label>
+										<input type="number" id="taxa-crescimento" value="5" min="0" max="100" step="0.1">
+									</div>
+								</div>
+							</div>
+						</div>"""
+
+# Concatenate panels in the new order
+new_panel_order_html = (
+    panel_html_1 + "\n" +
+    panel_html_2 + "\n" +
+    panel_html_3 + "\n" +
+    panel_html_4 + "\n" +
+    panel_html_5 + "\n" +
+    panel_html_6
+)
+
+# Define markers for replacement
+start_of_replacement_marker_outer = '<!-- Coluna Esquerda - Formulários de Entrada -->'
+start_of_panel_div_marker = '<div class="panel">' # This is the div that *contains* all group-boxes
+button_group_marker = '<!-- Para estas duas linhas (adicionando um container para os botões) -->'
+
+# Find the beginning of the main <div class="panel"> that holds the group-boxes
+start_outer_index = original_html_content.find(start_of_replacement_marker_outer)
+if start_outer_index == -1:
+    raise ValueError("Outer start marker not found.")
+
+start_panel_div_index = original_html_content.find(start_of_panel_div_marker, start_outer_index)
+if start_panel_div_index == -1:
+    raise ValueError("Main panel div marker not found.")
+
+# The actual start for replacement is after the <div class="panel"> tag and its subsequent newline
+start_actual_replacement_index = original_html_content.find('\n', start_panel_div_index) + 1
+
+# The end of replacement is just before the button group marker
+end_actual_replacement_index = original_html_content.find(button_group_marker, start_actual_replacement_index)
+if end_actual_replacement_index == -1:
+    raise ValueError("Button group marker not found after panels.")
+
+# Extract indentation from the line where the first original panel started
+# This requires finding the first original group-box within the identified panel section
+first_original_group_box_start = original_html_content.find('<div class="group-box">', start_actual_replacement_index)
+if first_original_group_box_start == -1 or first_original_group_box_start >= end_actual_replacement_index:
+    # If not found, or found outside the expected range, use a default or error
+    print("Warning: Could not reliably determine original indentation for panels. Using default.")
+    indentation = "						" # Default indentation
+else:
+    line_start_for_indent = original_html_content.rfind('\n', start_actual_replacement_index, first_original_group_box_start) + 1
+    indentation = original_html_content[line_start_for_indent:first_original_group_box_start]
+    if indentation.strip() != "": # Should be only whitespace
+        print(f"Warning: Detected non-whitespace in indentation string: '{indentation}'. Using default.")
+        indentation = "						"
+
+
+# Indent the new block of panels
+indented_new_panel_block = "\n".join([f"{indentation}{line}" for line in new_panel_order_html.splitlines()])
+# Ensure the block itself doesn't have leading/trailing newlines that would create empty lines
+indented_new_panel_block = indented_new_panel_block.strip() 
+
+
+# Construct the new HTML
+content_before_panels = original_html_content[:start_actual_replacement_index]
+content_after_panels = original_html_content[end_actual_replacement_index:]
+
+final_html = content_before_panels + indented_new_panel_block + "\n" + indentation + content_after_panels
+
+# Basic sanity check for length
+if not (0.9 * len(original_html_content) < len(final_html) < 1.1 * len(original_html_content)):
+    # Adjusted tolerance slightly, as pure concatenation might slightly change length due to newlines
+    print(f"Error: HTML length changed drastically. Original: {len(original_html_content)}, New: {len(final_html)}")
+    raise ValueError("Drastic change in HTML length after manipulation.")
+
+# Overwrite the file
+file_path = "split-payment-simulator.html"
+try:
+    with open(file_path, "w", encoding="utf-8") as f:
+        f.write(final_html)
+    print(f"File '{file_path}' overwritten successfully with reordered panels.")
+except Exception as e:
+    print(f"Error writing to file '{file_path}': {e}")
+    raise
