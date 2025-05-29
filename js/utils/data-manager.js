@@ -38,6 +38,13 @@ window.DataManager = (function() {
                 ipi: 0,               
                 cbs: 0,               
                 ibs: 0                
+            },
+            debitos: {                // Valores monetários (R$)
+                pis: 0,
+                cofins: 0,
+                icms: 0,
+                ipi: 0,
+                iss: 0
             }
         },
         parametrosSimulacao: {
@@ -134,6 +141,37 @@ window.DataManager = (function() {
      * @returns {Object} - Dados na estrutura plana para cálculos
      */
     function converterParaEstruturaPlana(dadosAninhados) {
+        console.log('=== DATAMANAGER: INÍCIO DA CONVERSÃO PARA ESTRUTURA PLANA ===');
+        console.log('Tipo da estrutura de entrada:', detectarTipoEstrutura(dadosAninhados));
+
+        // Verificar estruturas de créditos na entrada
+        if (dadosAninhados.parametrosFiscais) {
+            console.log('parametrosFiscais encontrado na estrutura de entrada');
+
+            if (dadosAninhados.parametrosFiscais.creditos) {
+                console.log('parametrosFiscais.creditos encontrado:', 
+                    JSON.stringify(dadosAninhados.parametrosFiscais.creditos, null, 2));
+            }
+
+            if (dadosAninhados.parametrosFiscais.composicaoTributaria && 
+                dadosAninhados.parametrosFiscais.composicaoTributaria.creditos) {
+                console.log('parametrosFiscais.composicaoTributaria.creditos encontrado:', 
+                    JSON.stringify(dadosAninhados.parametrosFiscais.composicaoTributaria.creditos, null, 2));
+            }
+
+            // MODIFICAÇÃO: Verificar também as estruturas de débitos
+            if (dadosAninhados.parametrosFiscais.debitos) {
+                console.log('parametrosFiscais.debitos encontrado:', 
+                    JSON.stringify(dadosAninhados.parametrosFiscais.debitos, null, 2));
+            }
+
+            if (dadosAninhados.parametrosFiscais.composicaoTributaria && 
+                dadosAninhados.parametrosFiscais.composicaoTributaria.debitos) {
+                console.log('parametrosFiscais.composicaoTributaria.debitos encontrado:', 
+                    JSON.stringify(dadosAninhados.parametrosFiscais.composicaoTributaria.debitos, null, 2));
+            }
+        }
+
         // Verificar se já é uma estrutura plana
         if (dadosAninhados.empresa === undefined) {
             return JSON.parse(JSON.stringify(dadosAninhados)); // Cópia defensiva de estrutura já plana
@@ -150,7 +188,7 @@ window.DataManager = (function() {
             plano.setor = dadosAninhados.empresa.setor || '';
             plano.tipoEmpresa = dadosAninhados.empresa.tipoEmpresa || '';
             plano.regime = dadosAninhados.empresa.regime || '';
-            plano.nomeEmpresa = dadosAninhados.empresa.nome || ''; // Added line
+            plano.nomeEmpresa = dadosAninhados.empresa.nome || '';
         }
 
         // Ciclo Financeiro
@@ -168,13 +206,21 @@ window.DataManager = (function() {
             plano.tipoOperacao = dadosAninhados.parametrosFiscais.tipoOperacao || '';
             plano.regimePisCofins = dadosAninhados.parametrosFiscais.regimePisCofins || '';
 
-            // MODIFICAÇÃO AQUI: Verificar tanto parametrosFiscais.creditos quanto parametrosFiscais.composicaoTributaria.creditos
+            // No método converterParaEstruturaPlana, na seção que trata os parâmetros fiscais
+            // MODIFICAÇÃO: Processar tanto créditos quanto débitos
             let creditosPIS = 0;
             let creditosCOFINS = 0;
             let creditosICMS = 0;
             let creditosIPI = 0;
             let creditosCBS = 0;
             let creditosIBS = 0;
+
+            // NOVA SEÇÃO: Débitos tributários
+            let debitoPIS = 0;
+            let debitoCOFINS = 0;
+            let debitoICMS = 0;
+            let debitoIPI = 0;
+            let debitoISS = 0;
 
             // Verificar créditos na estrutura padrão
             if (dadosAninhados.parametrosFiscais.creditos) {
@@ -186,7 +232,16 @@ window.DataManager = (function() {
                 creditosIBS = dadosAninhados.parametrosFiscais.creditos.ibs || 0;
             }
 
-            // Verificar também na estrutura SPED
+            // MODIFICAÇÃO: Verificar débitos na estrutura padrão
+            if (dadosAninhados.parametrosFiscais.debitos) {
+                debitoPIS = dadosAninhados.parametrosFiscais.debitos.pis || 0;
+                debitoCOFINS = dadosAninhados.parametrosFiscais.debitos.cofins || 0;
+                debitoICMS = dadosAninhados.parametrosFiscais.debitos.icms || 0;
+                debitoIPI = dadosAninhados.parametrosFiscais.debitos.ipi || 0;
+                debitoISS = dadosAninhados.parametrosFiscais.debitos.iss || 0;
+            }
+
+            // Verificar também na estrutura SPED para créditos
             if (dadosAninhados.parametrosFiscais.composicaoTributaria && 
                 dadosAninhados.parametrosFiscais.composicaoTributaria.creditos) {
                 const creditosSPED = dadosAninhados.parametrosFiscais.composicaoTributaria.creditos;
@@ -200,7 +255,23 @@ window.DataManager = (function() {
                 if (creditosSPED.ibs && creditosSPED.ibs > 0) creditosIBS = creditosSPED.ibs;
             }
 
-            // Atribuir os valores finais
+            // MODIFICAÇÃO: Verificar estrutura SPED para débitos
+            if (dadosAninhados.parametrosFiscais.composicaoTributaria && 
+                dadosAninhados.parametrosFiscais.composicaoTributaria.debitos) {
+                const debitosSPED = dadosAninhados.parametrosFiscais.composicaoTributaria.debitos;
+
+                // Usar os valores do SPED para débitos
+                if (debitosSPED.pis !== undefined) debitoPIS = debitosSPED.pis;
+                if (debitosSPED.cofins !== undefined) debitoCOFINS = debitosSPED.cofins;
+                if (debitosSPED.icms !== undefined) debitoICMS = debitosSPED.icms;
+                if (debitosSPED.ipi !== undefined) debitoIPI = debitosSPED.ipi;
+                if (debitosSPED.iss !== undefined) debitoISS = debitosSPED.iss;
+
+                // ADIÇÃO: Log para verificar os valores específicos de IPI
+                console.log('DATA-MANAGER: Valor de débito IPI encontrado em SPED:', debitosSPED.ipi);
+            }
+
+            // Atribuir valores de créditos à estrutura plana
             plano.creditosPIS = creditosPIS;
             plano.creditosCOFINS = creditosCOFINS;
             plano.creditosICMS = creditosICMS;
@@ -208,24 +279,39 @@ window.DataManager = (function() {
             plano.creditosCBS = creditosCBS;
             plano.creditosIBS = creditosIBS;
 
+            // MODIFICAÇÃO: Atribuir valores de débitos à estrutura plana
+            plano.debitoPIS = debitoPIS;
+            plano.debitoCOFINS = debitoCOFINS;
+            plano.debitoICMS = debitoICMS;
+            plano.debitoIPI = debitoIPI;
+            plano.debitoISS = debitoISS;
+
             // Campo total de créditos para compatibilidade
             plano.creditos = creditosPIS + creditosCOFINS + creditosICMS + 
-                              creditosIPI + creditosCBS + creditosIBS;
+                             creditosIPI + creditosCBS + creditosIBS;
+
+            // MODIFICAÇÃO: Campo total de débitos para compatibilidade
+            plano.debitos = debitoPIS + debitoCOFINS + debitoICMS + 
+                            debitoIPI + debitoISS;
 
             // Log para diagnóstico detalhado
-            console.log('DATA-MANAGER: Créditos convertidos para estrutura plana:', {
-                origem: {
-                    padrão: dadosAninhados.parametrosFiscais.creditos || {},
-                    sped: dadosAninhados.parametrosFiscais.composicaoTributaria?.creditos || {}
-                },
-                processado: {
-                    creditosPIS: plano.creditosPIS,
-                    creditosCOFINS: plano.creditosCOFINS,
-                    creditosICMS: plano.creditosICMS,
-                    creditosIPI: plano.creditosIPI,
-                    creditosCBS: plano.creditosCBS,
-                    creditosIBS: plano.creditosIBS,
+            console.log('DATA-MANAGER: Valores convertidos para estrutura plana:', {
+                creditos: {
+                    pis: plano.creditosPIS,
+                    cofins: plano.creditosCOFINS,
+                    icms: plano.creditosICMS,
+                    ipi: plano.creditosIPI,
+                    cbs: plano.creditosCBS,
+                    ibs: plano.creditosIBS,
                     total: plano.creditos
+                },
+                debitos: {
+                    pis: plano.debitoPIS,
+                    cofins: plano.debitoCOFINS,
+                    icms: plano.debitoICMS,
+                    ipi: plano.debitoIPI,
+                    iss: plano.debitoISS,
+                    total: plano.debitos
                 }
             });
         }
@@ -276,12 +362,27 @@ window.DataManager = (function() {
         plano.cumulativeRegime = plano.regimePisCofins === 'cumulativo';
 
         // Adicionar flag indicando que os dados vêm do SPED se aplicável
-        if (dadosAninhados.parametrosFiscais?.composicaoTributaria) {
+        if (dadosAninhados.parametrosFiscais?.composicaoTributaria || dadosAninhados.dadosSpedImportados) {
             plano.dadosSpedImportados = true;
         }
 
         // Registrar conversão para depuração se o modo de debug estiver ativo
         logTransformacao(dadosAninhados, plano, 'Aninhada → Plana');
+
+        // Verificar estrutura de créditos e débitos na saída
+        console.log('=== DATAMANAGER: RESULTADO DA CONVERSÃO PARA ESTRUTURA PLANA ===');
+        console.log('creditosPIS:', plano.creditosPIS);
+        console.log('creditosCOFINS:', plano.creditosCOFINS);
+        console.log('creditosICMS:', plano.creditosICMS);
+        console.log('creditosIPI:', plano.creditosIPI);
+        console.log('total de créditos:', plano.creditos);
+
+        // MODIFICAÇÃO: Log adicional para débitos
+        console.log('debitoPIS:', plano.debitoPIS);
+        console.log('debitoCOFINS:', plano.debitoCOFINS);
+        console.log('debitoICMS:', plano.debitoICMS);
+        console.log('debitoIPI:', plano.debitoIPI);
+        console.log('total de débitos:', plano.debitos);
 
         return plano;
     }
@@ -335,6 +436,18 @@ window.DataManager = (function() {
                      (dadosPlanos.credito_ipi !== undefined ? dadosPlanos.credito_ipi : 0),
                 cbs: dadosPlanos.creditosCBS !== undefined ? dadosPlanos.creditosCBS : 0,
                 ibs: dadosPlanos.creditosIBS !== undefined ? dadosPlanos.creditosIBS : 0
+            },
+            // MODIFICAÇÃO: Adicionar estrutura de débitos
+            debitos: {
+                pis: dadosPlanos.debitoPIS !== undefined ? dadosPlanos.debitoPIS : 
+                     (dadosPlanos.debito_pis !== undefined ? dadosPlanos.debito_pis : 0),
+                cofins: dadosPlanos.debitoCOFINS !== undefined ? dadosPlanos.debitoCOFINS : 
+                        (dadosPlanos.debito_cofins !== undefined ? dadosPlanos.debito_cofins : 0),
+                icms: dadosPlanos.debitoICMS !== undefined ? dadosPlanos.debitoICMS : 
+                      (dadosPlanos.debito_icms !== undefined ? dadosPlanos.debito_icms : 0),
+                ipi: dadosPlanos.debitoIPI !== undefined ? dadosPlanos.debitoIPI : 
+                     (dadosPlanos.debito_ipi !== undefined ? dadosPlanos.debito_ipi : 0),
+                iss: dadosPlanos.debitoISS !== undefined ? dadosPlanos.debitoISS : 0
             }
         };
 
@@ -342,11 +455,11 @@ window.DataManager = (function() {
         if (dadosPlanos.dadosSpedImportados) {
             aninhado.parametrosFiscais.composicaoTributaria = {
                 debitos: {
-                    pis: 0,
-                    cofins: 0,
-                    icms: 0,
-                    ipi: 0,
-                    iss: 0
+                    pis: aninhado.parametrosFiscais.debitos.pis,
+                    cofins: aninhado.parametrosFiscais.debitos.cofins,
+                    icms: aninhado.parametrosFiscais.debitos.icms,
+                    ipi: aninhado.parametrosFiscais.debitos.ipi,
+                    iss: aninhado.parametrosFiscais.debitos.iss
                 },
                 creditos: {
                     pis: aninhado.parametrosFiscais.creditos.pis,
@@ -359,16 +472,21 @@ window.DataManager = (function() {
         }
 
         // Log para diagnóstico
-        console.log('DATA-MANAGER: Créditos convertidos para estrutura aninhada:', {
+        console.log('DATA-MANAGER: Créditos e débitos convertidos para estrutura aninhada:', {
             origem: {
                 creditosPIS: dadosPlanos.creditosPIS,
                 creditosCOFINS: dadosPlanos.creditosCOFINS,
                 creditosICMS: dadosPlanos.creditosICMS,
-                creditosIPI: dadosPlanos.creditosIPI
+                creditosIPI: dadosPlanos.creditosIPI,
+                debitoPIS: dadosPlanos.debitoPIS,
+                debitoCOFINS: dadosPlanos.debitoCOFINS,
+                debitoICMS: dadosPlanos.debitoICMS,
+                debitoIPI: dadosPlanos.debitoIPI
             },
             destino: {
-                padrao: aninhado.parametrosFiscais.creditos,
-                sped: aninhado.parametrosFiscais.composicaoTributaria?.creditos
+                creditos: aninhado.parametrosFiscais.creditos,
+                debitos: aninhado.parametrosFiscais.debitos,
+                composicao: aninhado.parametrosFiscais.composicaoTributaria
             }
         });
 
@@ -383,6 +501,23 @@ window.DataManager = (function() {
      * @returns {Object} - Dados validados e normalizados
      */
     function validarENormalizar(dados) {
+        console.log('=== DATAMANAGER: INÍCIO DA VALIDAÇÃO E NORMALIZAÇÃO ===');
+        console.log('Tipo da estrutura de entrada:', detectarTipoEstrutura(dados));
+
+        // Verificar estruturas de créditos na entrada
+        if (dados.parametrosFiscais) {
+            if (dados.parametrosFiscais.creditos) {
+                console.log('parametrosFiscais.creditos encontrado:', 
+                    JSON.stringify(dados.parametrosFiscais.creditos, null, 2));
+            }
+
+            if (dados.parametrosFiscais.composicaoTributaria && 
+                dados.parametrosFiscais.composicaoTributaria.creditos) {
+                console.log('parametrosFiscais.composicaoTributaria.creditos encontrado:', 
+                    JSON.stringify(dados.parametrosFiscais.composicaoTributaria.creditos, null, 2));
+            }
+        }
+        
         // Fazer uma cópia defensiva
         const resultado = JSON.parse(JSON.stringify(dados || {}));
         
@@ -641,9 +776,22 @@ window.DataManager = (function() {
             });
         }
         
+        // Verificar estrutura de créditos na saída
+        console.log('=== DATAMANAGER: RESULTADO DA VALIDAÇÃO E NORMALIZAÇÃO ===');
+        if (resultado.parametrosFiscais && resultado.parametrosFiscais.creditos) {
+            console.log('parametrosFiscais.creditos após validação:', 
+                JSON.stringify(resultado.parametrosFiscais.creditos, null, 2));
+        }
+
+        if (resultado.parametrosFiscais && resultado.parametrosFiscais.composicaoTributaria && 
+            resultado.parametrosFiscais.composicaoTributaria.creditos) {
+            console.log('parametrosFiscais.composicaoTributaria.creditos após validação:', 
+                JSON.stringify(resultado.parametrosFiscais.composicaoTributaria.creditos, null, 2));
+        }
+        
         return resultado;
-    }
-    
+    }  
+        
     /**
      * Obtém dados do DOM e retorna na estrutura aninhada padronizada
      * @returns {Object} - Dados na estrutura aninhada
@@ -839,6 +987,21 @@ window.DataManager = (function() {
         
         // Validar e normalizar os dados obtidos
         return validarENormalizar(dados);
+    }
+    
+    // ADICIONAR função para preservar dados SPED
+    function preservarDadosSped(dados) {
+        if (!dados.dadosSpedImportados) return dados;
+
+        // Criar estrutura preservada
+        const dadosPreservados = JSON.parse(JSON.stringify(dados));
+
+        // Adicionar metadados de preservação
+        dadosPreservados.metadados = dadosPreservados.metadados || {};
+        dadosPreservados.metadados.preservacaoAtiva = true;
+        dadosPreservados.metadados.timestampPreservacao = new Date().toISOString();
+
+        return dadosPreservados;
     }
     
     /**
@@ -1122,6 +1285,37 @@ window.DataManager = (function() {
     }
     
     /**
+     * Utilitário para inspeção profunda de estrutura de dados
+     * @param {Object} dados - Objeto a ser inspecionado
+     * @param {string} caminho - Caminho atual na navegação recursiva
+     * @param {number} nivel - Nível atual de profundidade
+     */
+    function inspecionarEstruturaDebitoCredito(dados, caminho = '', nivel = 0) {
+        // Limitar a profundidade para evitar loops infinitos
+        if (nivel > 5) return;
+
+        if (typeof dados !== 'object' || dados === null) {
+            // Se não for um objeto ou for null, imprimir o valor
+            console.log(`${caminho}: ${dados}`);
+            return;
+        }
+
+        // Para objetos, inspecionar recursivamente
+        Object.keys(dados).forEach(chave => {
+            const novoCaminho = caminho ? `${caminho}.${chave}` : chave;
+
+            // Especial atenção para propriedades relacionadas a débitos e créditos
+            if (chave.includes('debito') || chave.includes('credito') || 
+                chave.includes('Debito') || chave.includes('Credito')) {
+                console.log(`%c${novoCaminho}: ${JSON.stringify(dados[chave])}`, 'color: blue; font-weight: bold');
+            } else {
+                // Recursão para propriedades aninhadas
+                inspecionarEstruturaDebitoCredito(dados[chave], novoCaminho, nivel + 1);
+            }
+        });
+    }
+    
+    /**
      * Valida dados específicos de uma seção
      * @param {string} secao - Nome da seção a ser validada
      * @param {Object} dados - Dados da seção
@@ -1201,7 +1395,9 @@ window.DataManager = (function() {
         formatarPercentual,
         normalizarValor,
         extrairValorPercentual,
-        logTransformacao
+        logTransformacao,
+        inspecionarEstruturaDebitoCredito,
+        preservarDadosSped
     };
 })();
 

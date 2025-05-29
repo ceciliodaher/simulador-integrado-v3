@@ -1276,3 +1276,8 @@ button:hover {
     border-radius: 4px;
     font-size: 14px;
 }
+
+.sped-data-value {
+    background-color: #f0f8ff; /* Azul claro */
+    border-left: 3px solid #4682b4; /* Borda azul */
+}

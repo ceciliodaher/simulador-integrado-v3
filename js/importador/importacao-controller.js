@@ -20,6 +20,22 @@ const ImportacaoController = (function() {
         // Adicionar event listeners
         adicionarEventListeners();
         
+        // Adicionar listeners para sincronização de regimes
+        const campoRegime = document.getElementById('regime');
+        const campoPisCofinsRegime = document.getElementById('pis-cofins-regime');
+
+        if (campoRegime) {
+            campoRegime.addEventListener('change', function() {
+                sincronizarRegimes('regime', this.value);
+            });
+        }
+
+        if (campoPisCofinsRegime) {
+            campoPisCofinsRegime.addEventListener('change', function() {
+                sincronizarRegimes('pis-cofins-regime', this.value);
+            });
+        }
+        
         console.log('IMPORTACAO-CONTROLLER: Inicialização concluída');
         return true;
     }
@@ -40,7 +56,9 @@ const ImportacaoController = (function() {
             'formatarMoeda', 
             'extrairValorMonetario', 
             'converterParaEstruturaPlana',
-            'normalizarValor'
+            'normalizarValor',
+            'obterEstruturaAninhadaPadrao', // Adicionado: essencial para o processo SPED
+            'validarENormalizar'            // Adicionado: essencial para validação
         ];
 
         const metodosFaltantes = metodosEssenciais.filter(
@@ -56,6 +74,13 @@ const ImportacaoController = (function() {
                 `Erro: O DataManager não possui os métodos: ${metodosFaltantes.join(', ')}`, 
                 'error'
             );
+
+            // Verificar especificamente a ausência da função obterEstruturaAninhadaPadrao
+            if (metodosFaltantes.includes('obterEstruturaAninhadaPadrao')) {
+                console.warn('IMPORTACAO-CONTROLLER: Função obterEstruturaAninhadaPadrao não encontrada. Isso afetará a importação SPED.');
+                adicionarLog('Aviso: Função de estrutura canônica não disponível. Utilizando alternativa.', 'warning');
+            }
+
             return false;
         }
 
@@ -112,12 +137,16 @@ const ImportacaoController = (function() {
     function iniciarImportacao() {
         console.log('IMPORTACAO-CONTROLLER: Iniciando processo de importação');
 
+        // Ativar flag global para impedir modificações durante importação
+        window.processandoSPED = true;
+
         // Limpar dados anteriores
         dadosImportados = null;
 
         // Verificar arquivos selecionados
         if (!verificarArquivosSelecionados()) {
             adicionarLog('Selecione pelo menos um arquivo SPED para importação.');
+            window.processandoSPED = false;
             return;
         }
 
@@ -134,6 +163,27 @@ const ImportacaoController = (function() {
             elements.spedFiscal, 
             elements.spedContribuicoes, 
             function(resultado) {
+                // INSERIR AQUI - INÍCIO DO BLOCO DE LOGS
+                console.log('=== IMPORTACAO-CONTROLLER: DADOS RECEBIDOS DO SPED PROCESSOR ===');
+
+                // Verificar estrutura de créditos nos dados recebidos
+                if (resultado.dados && resultado.dados.parametrosFiscais) {
+                    if (resultado.dados.parametrosFiscais.creditos) {
+                        console.log('Créditos diretos:', JSON.stringify(resultado.dados.parametrosFiscais.creditos, null, 2));
+                    } else {
+                        console.log('Estrutura parametrosFiscais.creditos não encontrada');
+                    }
+
+                    if (resultado.dados.parametrosFiscais.composicaoTributaria && 
+                        resultado.dados.parametrosFiscais.composicaoTributaria.creditos) {
+                        console.log('ComposicaoTributaria.creditos:', 
+                            JSON.stringify(resultado.dados.parametrosFiscais.composicaoTributaria.creditos, null, 2));
+                    } else {
+                        console.log('Estrutura composicaoTributaria.creditos não encontrada');
+                    }
+                } else {
+                    console.log('Estrutura parametrosFiscais não encontrada nos dados recebidos');
+                }
                 if (resultado.sucesso) {
                     // Validar e normalizar dados importados usando DataManager
                     try {
@@ -168,6 +218,9 @@ const ImportacaoController = (function() {
                 }
             }
         );
+        
+        // Desativar flag de processamento SPED após conclusão
+        window.processandoSPED = false;
     }
     
     /**
@@ -224,6 +277,9 @@ const ImportacaoController = (function() {
      * Processa os arquivos SPED usando SpedProcessor
      */
     function processarArquivosSped() {
+        // INSERIR AQUI - INÍCIO DO BLOCO DE LOGS
+        console.log('=== IMPORTACAO-CONTROLLER: INICIANDO PROCESSAMENTO DE ARQUIVOS SPED ===');
+        // FIM DO BLOCO DE LOGS
         // Verificar dependências necessárias
         const dependenciasDisponiveis = verificarDependencias();
 
@@ -233,10 +289,12 @@ const ImportacaoController = (function() {
             return;
         }
 
-        // Verificar especificamente o DataManager
-        if (!verificarDataManager()) {
-            finalizarImportacao(false, 'DataManager não está disponível ou não está completo');
-            return;
+        // Verificar especificamente o DataManager - com aviso em vez de bloqueio
+        const dataManagerDisponivel = verificarDataManager();
+        if (!dataManagerDisponivel) {
+            console.warn('IMPORTACAO-CONTROLLER: DataManager não está completamente disponível. Continuando com funcionalidade limitada.');
+            adicionarLog('Aviso: DataManager não está completamente disponível. Funcionalidade pode ser limitada.', 'warning');
+            // Continuamos com o processamento, em vez de abortar
         }
 
         // Processar os arquivos usando SpedProcessor
@@ -244,10 +302,39 @@ const ImportacaoController = (function() {
             elements.spedFiscal, 
             elements.spedContribuicoes, 
             function(resultado) {
+                // INSERIR AQUI - INÍCIO DO BLOCO DE LOGS
+                console.log('=== IMPORTACAO-CONTROLLER: RESULTADO DO PROCESSAMENTO SPED ===');
+                console.log('Resultado sucesso:', resultado.sucesso);
+                if (resultado.dados) {
+                    console.log('Dados retornados - estrutura:', window.DataManager.detectarTipoEstrutura(resultado.dados));
+
+                    // Verificar créditos nos dados retornados
+                    if (resultado.dados.parametrosFiscais) {
+                        if (resultado.dados.parametrosFiscais.creditos) {
+                            console.log('Créditos:', JSON.stringify(resultado.dados.parametrosFiscais.creditos, null, 2));
+                        }
+                        if (resultado.dados.parametrosFiscais.composicaoTributaria && 
+                            resultado.dados.parametrosFiscais.composicaoTributaria.creditos) {
+                            console.log('ComposicaoTributaria.creditos:', 
+                                JSON.stringify(resultado.dados.parametrosFiscais.composicaoTributaria.creditos, null, 2));
+                        }
+                    }
+                }
                 if (resultado.sucesso) {
-                    // Validar e normalizar dados importados usando DataManager
+                    // Validar e normalizar dados importados - com verificação robusta
                     try {
-                        const dadosValidados = window.DataManager.validarENormalizar(resultado.dados);
+                        let dadosValidados;
+
+                        if (dataManagerDisponivel && typeof window.DataManager.validarENormalizar === 'function') {
+                            // Usar DataManager para validação se disponível
+                            dadosValidados = window.DataManager.validarENormalizar(resultado.dados);
+                        } else {
+                            // Usar dados sem validação se DataManager não estiver disponível
+                            console.warn('IMPORTACAO-CONTROLLER: Função validarENormalizar não disponível. Usando dados sem validação.');
+                            adicionarLog('Aviso: Usando dados sem validação completa.', 'warning');
+                            dadosValidados = resultado.dados;
+                        }
+
                         dadosImportados = dadosValidados;
 
                         // Preencher campos do simulador
@@ -255,8 +342,16 @@ const ImportacaoController = (function() {
 
                         adicionarLog('Importação concluída com sucesso!');
                         adicionarLog(`Dados da empresa: ${dadosImportados.empresa?.nome || 'N/A'}`);
-                        // Usar DataManager.formatarMoeda em vez de formatarMoeda
-                        adicionarLog(`Faturamento: ${window.DataManager.formatarMoeda(dadosImportados.empresa?.faturamento || 0)}`);
+
+                        // Formatar valor monetário com verificação robusta
+                        let faturamentoFormatado;
+                        if (dataManagerDisponivel && typeof window.DataManager.formatarMoeda === 'function') {
+                            faturamentoFormatado = window.DataManager.formatarMoeda(dadosImportados.empresa?.faturamento || 0);
+                        } else {
+                            // Formatação simples se DataManager não estiver disponível
+                            faturamentoFormatado = `R$ ${(dadosImportados.empresa?.faturamento || 0).toFixed(2)}`;
+                        }
+                        adicionarLog(`Faturamento: ${faturamentoFormatado}`);
 
                         finalizarImportacao(true);
                     } catch (erro) {
@@ -284,17 +379,41 @@ const ImportacaoController = (function() {
                 throw new Error('Dados inválidos para preenchimento do simulador');
             }
 
-            // Verificar se dados estão na estrutura aninhada
-            const estruturaTipo = window.DataManager.detectarTipoEstrutura(dados);
-            if (estruturaTipo !== "aninhada") {
-                throw new Error('Dados não estão na estrutura aninhada canônica');
+            // Verificar se o DataManager está disponível para operações críticas
+            const dataManagerCompleto = verificarDataManager();
+
+            // Verificar se dados estão na estrutura aninhada - com verificação robusta
+            let estruturaTipo;
+            if (dataManagerCompleto && typeof window.DataManager.detectarTipoEstrutura === 'function') {
+                estruturaTipo = window.DataManager.detectarTipoEstrutura(dados);
+                if (estruturaTipo !== "aninhada") {
+                    console.warn('IMPORTACAO-CONTROLLER: Dados não estão na estrutura aninhada canônica. Tentando processar mesmo assim.');
+                    adicionarLog('Aviso: Formato de dados não ideal. Tentando processar mesmo assim.', 'warning');
+                }
+            } else {
+                console.warn('IMPORTACAO-CONTROLLER: Função detectarTipoEstrutura não disponível. Assumindo estrutura aninhada.');
+                // Verificação simplificada de estrutura aninhada
+                estruturaTipo = dados.empresa !== undefined ? "aninhada" : "desconhecida";
             }
 
-            // Validar e normalizar os dados antes de preencher
-            const dadosValidados = window.DataManager.validarENormalizar(dados);
+            // Validar e normalizar os dados - com verificação robusta
+            let dadosValidados;
+            if (dataManagerCompleto && typeof window.DataManager.validarENormalizar === 'function') {
+                dadosValidados = window.DataManager.validarENormalizar(dados);
+            } else {
+                console.warn('IMPORTACAO-CONTROLLER: Função validarENormalizar não disponível. Usando dados sem validação.');
+                dadosValidados = dados;
+            }
 
-            // Converter para estrutura plana para facilitar o acesso aos campos
-            const dadosPlanos = window.DataManager.converterParaEstruturaPlana(dadosValidados);
+            // Converter para estrutura plana ou usar diretamente - com verificação robusta
+            let dadosPlanos;
+            if (dataManagerCompleto && typeof window.DataManager.converterParaEstruturaPlana === 'function') {
+                dadosPlanos = window.DataManager.converterParaEstruturaPlana(dadosValidados);
+            } else {
+                console.warn('IMPORTACAO-CONTROLLER: Função converterParaEstruturaPlana não disponível. Adaptando manualmente.');
+                // Adaptação simplificada - extrair campos principais para estrutura plana
+                dadosPlanos = adaptarParaEstruturaPlanaSimplesmente(dadosValidados);
+            }
 
             // Preencher dados da empresa
             if (elements.importEmpresa?.checked !== false) {
@@ -313,6 +432,53 @@ const ImportacaoController = (function() {
                 preencherCicloFinanceiro(dadosPlanos);
                 adicionarLog('Dados do ciclo financeiro preenchidos.');
             }
+            
+            // Garantir que campos IVA permaneçam editáveis
+            ['aliquota-cbs', 'aliquota-ibs', 'reducao-especial', 'aliquota-efetiva'].forEach(id => {
+                const campo = document.getElementById(id);
+                if (campo) {
+                    campo.readOnly = false;
+                    campo.disabled = false;
+                }
+            });
+            
+            // Modificar a parte final da função preencherCamposSimulador em importacao-controller.js
+            // (aproximadamente linha 374, após o preenchimento do ciclo financeiro)
+
+            // Navegar para a aba de simulação
+            setTimeout(() => {
+                const abaPrincipal = document.querySelector('.tab-button[data-tab="simulacao"]');
+                if (abaPrincipal) {
+                    abaPrincipal.click();
+                }
+
+                // ADICIONADO: Disparar evento mais específico para notificar módulos sobre a conclusão da importação
+                // com detalhes sobre os valores importados
+                const eventoImportacao = new CustomEvent('spedImportacaoConcluida', { 
+                    detail: { 
+                        dadosImportados: dadosImportados,
+                        origemDados: 'sped',
+                        timestamp: new Date().toISOString(),
+                        valores: {
+                            debitoIPI: dadosImportados.parametrosFiscais?.debitos?.ipi || 0,
+                            creditoIPI: dadosImportados.parametrosFiscais?.creditos?.ipi || 0,
+                            debitoPIS: dadosImportados.parametrosFiscais?.debitos?.pis || 0,
+                            creditoPIS: dadosImportados.parametrosFiscais?.creditos?.pis || 0,
+                            debitoCOFINS: dadosImportados.parametrosFiscais?.debitos?.cofins || 0,
+                            creditoCOFINS: dadosImportados.parametrosFiscais?.creditos?.cofins || 0,
+                            debitoICMS: dadosImportados.parametrosFiscais?.debitos?.icms || 0,
+                            creditoICMS: dadosImportados.parametrosFiscais?.creditos?.icms || 0
+                        }
+                    },
+                    bubbles: true
+                });
+                document.dispatchEvent(eventoImportacao);
+
+                // Recalcular créditos tributários explicitamente após navegação
+                if (typeof window.calcularCreditosTributarios === 'function') {
+                    setTimeout(window.calcularCreditosTributarios, 300);
+                }
+            }, 500);
 
             // Navegar para a aba de simulação
             setTimeout(() => {
@@ -329,96 +495,426 @@ const ImportacaoController = (function() {
     }
     
     /**
+     * Adapta dados de estrutura aninhada para uma versão simplificada da estrutura plana
+     * Usado como fallback quando DataManager.converterParaEstruturaPlana não está disponível
+     * @param {Object} dadosAninhados - Dados na estrutura aninhada
+     * @returns {Object} - Versão simplificada da estrutura plana
+     */
+    function adaptarParaEstruturaPlanaSimplesmente(dadosAninhados) {
+        // Se já estiver em formato plano, retornar cópia
+        if (dadosAninhados.empresa === undefined) {
+            return Object.assign({}, dadosAninhados);
+        }
+
+        // Criar objeto plano básico
+        const plano = {};
+
+        // Copiar dados da empresa
+        if (dadosAninhados.empresa) {
+            plano.nomeEmpresa = dadosAninhados.empresa.nome || '';
+            plano.cnpj = dadosAninhados.empresa.cnpj || '';
+            plano.faturamento = dadosAninhados.empresa.faturamento || 0;
+            plano.margem = dadosAninhados.empresa.margem || 0;
+            plano.setor = dadosAninhados.empresa.setor || '';
+            plano.tipoEmpresa = dadosAninhados.empresa.tipoEmpresa || '';
+            plano.regime = dadosAninhados.empresa.regime || '';
+        }
+
+        // Copiar ciclo financeiro
+        if (dadosAninhados.cicloFinanceiro) {
+            plano.pmr = dadosAninhados.cicloFinanceiro.pmr || 30;
+            plano.pmp = dadosAninhados.cicloFinanceiro.pmp || 30;
+            plano.pme = dadosAninhados.cicloFinanceiro.pme || 30;
+            plano.percVista = dadosAninhados.cicloFinanceiro.percVista || 0.3;
+            plano.percPrazo = dadosAninhados.cicloFinanceiro.percPrazo || 0.7;
+        }
+
+        // Copiar parâmetros fiscais
+        if (dadosAninhados.parametrosFiscais) {
+            plano.aliquota = dadosAninhados.parametrosFiscais.aliquota || 0.265;
+            plano.tipoOperacao = dadosAninhados.parametrosFiscais.tipoOperacao || '';
+            plano.regimePisCofins = dadosAninhados.parametrosFiscais.regimePisCofins || '';
+
+            // Copiar créditos tributários
+            if (dadosAninhados.parametrosFiscais.creditos) {
+                plano.creditosPIS = dadosAninhados.parametrosFiscais.creditos.pis || 0;
+                plano.creditosCOFINS = dadosAninhados.parametrosFiscais.creditos.cofins || 0;
+                plano.creditosICMS = dadosAninhados.parametrosFiscais.creditos.icms || 0;
+                plano.creditosIPI = dadosAninhados.parametrosFiscais.creditos.ipi || 0;
+            }
+
+            // Para compatibilidade com código existente
+            if (dadosAninhados.parametrosFiscais.composicaoTributaria && 
+                dadosAninhados.parametrosFiscais.composicaoTributaria.creditos) {
+                const creditosSPED = dadosAninhados.parametrosFiscais.composicaoTributaria.creditos;
+
+                // Usar os valores do SPED se forem maiores que zero e não tivermos valores dos créditos padrão
+                if (creditosSPED.pis > 0 && !plano.creditosPIS) plano.creditosPIS = creditosSPED.pis;
+                if (creditosSPED.cofins > 0 && !plano.creditosCOFINS) plano.creditosCOFINS = creditosSPED.cofins;
+                if (creditosSPED.icms > 0 && !plano.creditosICMS) plano.creditosICMS = creditosSPED.icms;
+                if (creditosSPED.ipi > 0 && !plano.creditosIPI) plano.creditosIPI = creditosSPED.ipi;
+            }
+        }
+
+        // Adicionar flags derivadas para compatibilidade
+        plano.serviceCompany = plano.tipoEmpresa === 'servicos';
+        plano.cumulativeRegime = plano.regimePisCofins === 'cumulativo';
+        plano.dadosSpedImportados = true;
+
+        console.log('IMPORTACAO-CONTROLLER: Dados adaptados manualmente para estrutura plana:', plano);
+        return plano;
+    }
+    
+    /**
      * Preenche os dados da empresa no formulário
      * @param {Object} dadosPlanos - Dados na estrutura plana
      */
     function preencherDadosEmpresa(dadosPlanos) {
-        // Verificar tipo da estrutura de dados
-        if (window.DataManager.detectarTipoEstrutura(dadosPlanos) === "aninhada") {
-            throw new Error('Dados não estão na estrutura plana esperada');
-        }
+        // Indicar que estamos processando dados SPED para evitar sincronizações
+        window.processandoSPED = true;
 
-        // Nome da empresa
-        const campoEmpresa = document.getElementById('empresa');
-        if (campoEmpresa && dadosPlanos.nomeEmpresa) {
-            campoEmpresa.value = dadosPlanos.nomeEmpresa;
-            campoEmpresa.dispatchEvent(new Event('input', { bubbles: true }));
-        }
-
-        // Faturamento - usar DataManager para validação e formatação
-        const campoFaturamento = document.getElementById('faturamento');
-        if (campoFaturamento && dadosPlanos.faturamento !== undefined) {
-            // Usar DataManager para extrair e formatar o valor monetário
-            const valorValidado = window.DataManager.normalizarValor(dadosPlanos.faturamento, 'monetario');
-            campoFaturamento.value = window.DataManager.formatarMoeda(valorValidado);
-
-            // Preservar valor numérico para cálculos
-            if (campoFaturamento.dataset) {
-                campoFaturamento.dataset.rawValue = valorValidado.toString();
+        try {
+            // Verificar tipo da estrutura de dados
+            if (window.DataManager.detectarTipoEstrutura(dadosPlanos) === "aninhada") {
+                throw new Error('Dados não estão na estrutura plana esperada');
             }
-            campoFaturamento.dispatchEvent(new Event('input', { bubbles: true }));
-        }
 
-        // Regime tributário
+            // Nome da empresa
+            const campoEmpresa = document.getElementById('empresa');
+            if (campoEmpresa && dadosPlanos.nomeEmpresa) {
+                campoEmpresa.value = dadosPlanos.nomeEmpresa;
+                campoEmpresa.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+
+            // Faturamento - usar DataManager para validação e formatação
+            const campoFaturamento = document.getElementById('faturamento');
+            if (campoFaturamento && dadosPlanos.faturamento !== undefined) {
+                // Usar DataManager para extrair e formatar o valor monetário
+                const valorValidado = window.DataManager.normalizarValor(dadosPlanos.faturamento, 'monetario');
+                campoFaturamento.value = window.DataManager.formatarMoeda(valorValidado);
+                // Preservar valor numérico para cálculos
+                if (campoFaturamento.dataset) {
+                    campoFaturamento.dataset.rawValue = valorValidado.toString();
+                }
+                campoFaturamento.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+
+            // REGIME TRIBUTÁRIO - DEFINIDO PELO IMPORTADOR
+            definirRegimeTributarioSPED(dadosPlanos);
+
+            // TIPO DE EMPRESA - DEFINIDO PELO IMPORTADOR
+            definirTipoEmpresaSPED(dadosPlanos);
+
+            // Disparar apenas um evento de importação completa
+            document.dispatchEvent(new CustomEvent('spedImportacaoConcluida', { 
+                detail: { 
+                    dadosImportados: dadosPlanos,
+                    origemDados: 'sped'
+                }
+            }));
+        } finally {
+            // Desativar flag de processamento após uma pausa
+            setTimeout(() => {
+                window.processandoSPED = false;
+            }, 500);
+        }
+    }
+
+    /**
+     * Define o regime tributário a partir dos dados SPED - Única fonte autorizada
+     * @param {Object} dadosPlanos - Dados na estrutura plana
+     */
+    function definirRegimeTributarioSPED(dadosPlanos) {
         const campoRegime = document.getElementById('regime');
-        if (campoRegime && dadosPlanos.regime) {
-            // Normalizar o regime usando DataManager
-            const regimeNormalizado = window.DataManager.normalizarValor(
-                dadosPlanos.regime.toLowerCase(), 
-                'texto'
-            );
+        const campoPisCofinsRegime = document.getElementById('pis-cofins-regime');
 
-            if (['simples', 'presumido', 'real'].includes(regimeNormalizado)) {
-                campoRegime.value = regimeNormalizado;
-                campoRegime.dispatchEvent(new Event('change', { bubbles: true }));
+        if (!campoRegime || !campoPisCofinsRegime) return;
+
+        // Remover todos os event listeners existentes para evitar loops
+        const novoRegime = campoRegime.cloneNode(true);
+        const novoPisCofinsRegime = campoPisCofinsRegime.cloneNode(true);
+
+        campoRegime.parentNode.replaceChild(novoRegime, campoRegime);
+        campoPisCofinsRegime.parentNode.replaceChild(novoPisCofinsRegime, campoPisCofinsRegime);
+
+        let regimeDefinido = false;
+
+        // PRIORIDADE 1: Usar dados do registro 0110 se disponíveis
+        const registrosSped = window.dadosImportadosSped?.registros || {};
+
+        if (registrosSped['0110'] && registrosSped['0110'].length > 0) {
+            const registro0110 = registrosSped['0110'][0];
+            const codIncidencia = registro0110.codIncidencia;
+
+            if (codIncidencia === '2') {
+                novoRegime.value = 'presumido';
+                novoPisCofinsRegime.value = 'cumulativo';
+                adicionarLog(`Regime tributário definido via SPED 0110: LUCRO PRESUMIDO (Cumulativo)`, 'success');
+                regimeDefinido = true;
+            } else if (codIncidencia === '1') {
+                novoRegime.value = 'real';
+                novoPisCofinsRegime.value = 'nao-cumulativo';
+                adicionarLog(`Regime tributário definido via SPED 0110: LUCRO REAL (Não Cumulativo)`, 'success');
+                regimeDefinido = true;
             }
         }
+
+        // FALLBACK: Usar campo regime dos dados planos
+        if (!regimeDefinido && dadosPlanos.regime) {
+            const regimeNormalizado = dadosPlanos.regime.toLowerCase();
+            if (['simples', 'presumido', 'real'].includes(regimeNormalizado)) {
+                novoRegime.value = regimeNormalizado;
+
+                // Definir regime PIS/COFINS de acordo com o regime tributário
+                if (regimeNormalizado === 'presumido') {
+                    novoPisCofinsRegime.value = 'cumulativo';
+                } else if (regimeNormalizado === 'real') {
+                    novoPisCofinsRegime.value = 'nao-cumulativo';
+                }
+
+                adicionarLog(`Regime tributário definido via dados planos: ${regimeNormalizado.toUpperCase()}`, 'info');
+            }
+        }
+
+        // Notificar sistema da mudança do regime
+        if (typeof window.atualizarInterfaceTributaria === 'function') {
+            window.atualizarInterfaceTributaria(novoRegime.value, novoPisCofinsRegime.value);
+        }
+
+        // Reconectar apenas os event listeners necessários
+        novoRegime.addEventListener('change', function() {
+            adicionarLog(`Campo regime alterado para: ${this.value}`, 'info');
+            // Não chama sincronizarRegimes - a sincronização ocorre apenas no evento disparado pelo usuário
+        });
+
+        novoPisCofinsRegime.addEventListener('change', function() {
+            adicionarLog(`Campo regime PIS/COFINS alterado para: ${this.value}`, 'info');
+            // Não chama sincronizarRegimes - a sincronização ocorre apenas no evento disparado pelo usuário
+        });
+    }
+
+    /**
+     * Define o tipo de empresa a partir dos dados SPED - Única fonte autorizada
+     * @param {Object} dadosPlanos - Dados na estrutura plana
+     */
+    function definirTipoEmpresaSPED(dadosPlanos) {
+        const campoTipoEmpresa = document.getElementById('tipo-empresa');
+        if (!campoTipoEmpresa) return;
+
+        // Remover todos os event listeners existentes para evitar loops
+        const novoTipoEmpresa = campoTipoEmpresa.cloneNode(true);
+        campoTipoEmpresa.parentNode.replaceChild(novoTipoEmpresa, campoTipoEmpresa);
+
+        let tipoDefinido = false;
+
+        // PRIORIDADE 1: Usar dados do registro 0000 (SPED Contribuições)
+        const registrosSped = window.dadosImportadosSped?.registros || {};
+
+        if (registrosSped['0000'] && registrosSped['0000'].length > 0) {
+            const registro0000 = registrosSped['0000'][0];
+            const indTipoAtiv = registro0000.indTipoAtiv;
+
+            // Campo 14 do registro 0000 - INDATIV: 
+            // 0 - Industrial ou equiparado a industrial
+            // 1 - Prestador de serviços
+            // 2 - Atividade de comércio
+            // 3 - Pessoas jurídicas referidas nos §§ 6º, 8º e 9º do art. 3º da Lei nº 9.718/98
+            // 9 - Outros
+
+            let tipoEmpresa = '';
+            switch(indTipoAtiv) {
+                case '0':
+                    tipoEmpresa = 'industria';
+                    break;
+                case '1':
+                    tipoEmpresa = 'servicos';
+                    break;
+                case '2':
+                    tipoEmpresa = 'comercio';
+                    break;
+                default:
+                    // Para outros tipos, tentar inferir pelo CNAE ou registros
+                    if (registrosSped['E520'] && registrosSped['E520'].length > 0) {
+                        // Se tem apuração de IPI, provavelmente é indústria
+                        tipoEmpresa = 'industria';
+                    } else if (registrosSped['E110'] && registrosSped['E110'].length > 0) {
+                        // Se tem ICMS e não tem IPI, provavelmente é comércio
+                        tipoEmpresa = 'comercio';
+                    } else {
+                        // Sem ICMS e IPI, provavelmente é serviços
+                        tipoEmpresa = 'servicos';
+                    }
+            }
+
+            if (tipoEmpresa) {
+                novoTipoEmpresa.value = tipoEmpresa;
+                adicionarLog(`Tipo de empresa definido via SPED 0000: ${tipoEmpresa.toUpperCase()} (INDATIV: ${indTipoAtiv})`, 'success');
+                tipoDefinido = true;
+            }
+        }
+
+        // FALLBACK: Usar campo tipoEmpresa dos dados planos
+        if (!tipoDefinido && dadosPlanos.tipoEmpresa) {
+            const tipoNormalizado = dadosPlanos.tipoEmpresa.toLowerCase();
+            if (['comercio', 'industria', 'servicos'].includes(tipoNormalizado)) {
+                novoTipoEmpresa.value = tipoNormalizado;
+                adicionarLog(`Tipo de empresa definido via dados planos: ${tipoNormalizado.toUpperCase()}`, 'info');
+            }
+        }
+
+        // Adicionar event listener necessário
+        novoTipoEmpresa.addEventListener('change', function() {
+            adicionarLog(`Tipo de empresa alterado para: ${this.value}`, 'info');
+        });
     }
     
     /**
      * Preenche os parâmetros fiscais no formulário
      * @param {Object} dadosPlanos - Dados na estrutura plana
      */
+    // Substituir a função preencherParametrosFiscais:
+    // SUBSTITUIR preencherParametrosFiscais - Preservar valores SPED
     function preencherParametrosFiscais(dadosPlanos) {
-        // Verificar tipo da estrutura de dados
-        if (window.DataManager.detectarTipoEstrutura(dadosPlanos) === "aninhada") {
-            throw new Error('Dados não estão na estrutura plana esperada');
+        console.log('IMPORTACAO-CONTROLLER: Preenchendo com valores SPED preservados');
+
+        // Verificar se são dados SPED
+        if (!dadosPlanos.dadosSpedImportados) {
+            return; // Não preencher se não for SPED
         }
 
-        // Verifica se temos dados de composição tributária SPED
-        const temDadosSPED = dadosPlanos.dadosSpedImportados === true;
+        // Preencher diretamente sem recálculos
+        const impostos = ['pis', 'cofins', 'icms', 'ipi', 'iss'];
 
-        // Preencher débitos
-        preencherCampoTributario('debito-pis', dadosPlanos.debitoPis || 0);
-        preencherCampoTributario('debito-cofins', dadosPlanos.debitoCofins || 0);
-        preencherCampoTributario('debito-icms', dadosPlanos.debitoIcms || 0);
-        preencherCampoTributario('debito-ipi', dadosPlanos.debitoIpi || 0);
-        preencherCampoTributario('debito-iss', dadosPlanos.debitoIss || 0);
+        impostos.forEach(imposto => {
+            const debito = dadosPlanos[`debito${imposto.toUpperCase()}`] || 0;
+            const credito = dadosPlanos[`creditos${imposto.toUpperCase()}`] || 0;
 
-        // Preencher créditos
-        preencherCampoTributario('credito-pis', dadosPlanos.creditosPIS || dadosPlanos.creditoPis || 0);
-        preencherCampoTributario('credito-cofins', dadosPlanos.creditosCOFINS || dadosPlanos.creditoCofins || 0);
-        preencherCampoTributario('credito-icms', dadosPlanos.creditosICMS || dadosPlanos.creditoIcms || 0);
-        preencherCampoTributario('credito-ipi', dadosPlanos.creditosIPI || dadosPlanos.creditoIpi || 0);
-        preencherCampoTributario('credito-iss', dadosPlanos.creditoIss || 0);
-
-        // Se há dados SPED, adicionar classe para identificar campos
-        if (temDadosSPED) {
-            document.querySelectorAll('.campo-tributario').forEach(campo => {
-                campo.classList.add('sped-data');
-            });
-            adicionarLog('Dados tributários do SPED aplicados ao formulário.', 'success');
-        }
-
-        // Regime PIS/COFINS
-        const campoPisCofinsRegime = document.getElementById('pis-cofins-regime');
-        if (campoPisCofinsRegime && dadosPlanos.regimePisCofins) {
-            const regimeFormatado = dadosPlanos.regimePisCofins.replace(' ', '-');
-            if (['cumulativo', 'nao-cumulativo'].includes(regimeFormatado)) {
-                campoPisCofinsRegime.value = regimeFormatado;
-                campoPisCofinsRegime.dispatchEvent(new Event('change', { bubbles: true }));
+            if (debito > 0) {
+                preencherCampoTributario(`debito-${imposto}`, debito);
+                // NOVO: Flag para indicar origem SPED
+                document.getElementById(`debito-${imposto}`).dataset.origemSped = 'true';
             }
+
+            if (credito > 0) {
+                preencherCampoTributario(`credito-${imposto}`, credito);
+                document.getElementById(`credito-${imposto}`).dataset.origemSped = 'true';
+            }
+        });
+
+        // Calcular apenas alíquotas efetivas, não os valores
+        calcularAliquotasEfetivas(dadosPlanos.faturamento, dadosPlanos);
+    }
+        
+    /**
+     * Sincroniza os campos de regime tributário e regime PIS/COFINS
+     * mantendo a consistência entre eles
+     * @param {string} origem - Campo que originou a alteração ('regime' ou 'pis-cofins-regime')
+     * @param {string} valor - Valor selecionado
+     */
+    function sincronizarRegimes(origem, valor) {
+        const campoRegime = document.getElementById('regime');
+        const campoPisCofinsRegime = document.getElementById('pis-cofins-regime');
+
+        if (!campoRegime || !campoPisCofinsRegime) return;
+
+        // Verificar se estamos em processo de importação SPED
+        if (window.processandoSPED) {
+            // Durante a importação SPED, não fazemos sincronização automática
+            // Os valores serão definidos diretamente pelo ImportacaoController
+            adicionarLog('Sincronização de regimes ignorada durante processamento SPED', 'info');
+            return;
         }
+
+        // Desabilitar temporariamente os eventos para evitar loop
+        const bloqueioEvento = true;
+
+        try {
+            // Aplicar as regras de sincronização
+            if (origem === 'regime') {
+                // Regime tributário alterado, ajustar PIS/COFINS
+                if (valor === 'presumido') {
+                    campoPisCofinsRegime.value = 'cumulativo';
+                } else if (valor === 'real') {
+                    campoPisCofinsRegime.value = 'nao-cumulativo';
+                }
+                // Simples mantém o valor atual
+            } else if (origem === 'pis-cofins-regime') {
+                // Regime PIS/COFINS alterado, ajustar regime tributário
+                if (valor === 'cumulativo' && campoRegime.value !== 'simples') {
+                    campoRegime.value = 'presumido';
+                } else if (valor === 'nao-cumulativo') {
+                    campoRegime.value = 'real';
+                }
+            }
+
+            adicionarLog(`Regimes sincronizados: ${campoRegime.value.toUpperCase()} - PIS/COFINS ${campoPisCofinsRegime.value.toUpperCase()}`, 'info');
+
+            // Notificar o sistema que houve uma mudança controlada
+            if (typeof window.notificarMudancaRegime === 'function') {
+                window.notificarMudancaRegime({
+                    regime: campoRegime.value,
+                    pisCofinsRegime: campoPisCofinsRegime.value,
+                    origem: 'importacao-controller'
+                });
+            }
+        } finally {
+            // Garantir que eventos são reativados
+            window.setTimeout(() => {
+                window.processandoSPED = false;
+            }, 200);
+        }
+    }
+
+    // Adicionar nova função para calcular alíquotas efetivas
+    // Modificar a função calcularAliquotasEfetivas
+    function calcularAliquotasEfetivas(faturamento, debitoPis, debitoCofins, debitoIcms, debitoIpi) {
+      if (!faturamento || faturamento <= 0) return;
+
+      const setAliquotaEfetiva = (id, valor) => {
+        const campo = document.getElementById(id);
+        if (campo) {
+          // CORREÇÃO: Calcular alíquota em percentual e adicionar o símbolo de percentual
+          const aliquotaPercentual = (valor / faturamento) * 100;
+          // Formatar com 3 casas decimais e adicionar o símbolo de percentual
+          campo.value = aliquotaPercentual.toFixed(3) + '%';
+
+          // ADIÇÃO: Salvar o valor numérico para possíveis cálculos futuros
+          if (campo.dataset) {
+            campo.dataset.rawValue = aliquotaPercentual.toString();
+          }
+
+          // ADIÇÃO: Log para depuração
+          console.log(`Alíquota efetiva para ${id}: ${aliquotaPercentual.toFixed(3)}% (Valor: ${valor}, Faturamento: ${faturamento})`);
+        }
+      };
+
+      // Calcular e definir alíquotas efetivas para cada tributo
+      // CORREÇÃO: Usar o débito líquido (débito - crédito) para cada tributo
+      const creditoPis = document.getElementById('credito-pis') ? 
+        window.DataManager.extrairValorMonetario(document.getElementById('credito-pis').value) : 0;
+      const creditoCofins = document.getElementById('credito-cofins') ? 
+        window.DataManager.extrairValorMonetario(document.getElementById('credito-cofins').value) : 0;
+      const creditoIcms = document.getElementById('credito-icms') ? 
+        window.DataManager.extrairValorMonetario(document.getElementById('credito-icms').value) : 0;
+      const creditoIpi = document.getElementById('credito-ipi') ? 
+        window.DataManager.extrairValorMonetario(document.getElementById('credito-ipi').value) : 0;
+
+      // Calcular alíquotas efetivas considerando os créditos
+      setAliquotaEfetiva('aliquota-efetiva-pis', Math.max(0, debitoPis - creditoPis));
+      setAliquotaEfetiva('aliquota-efetiva-cofins', Math.max(0, debitoCofins - creditoCofins));
+      setAliquotaEfetiva('aliquota-efetiva-icms', Math.max(0, debitoIcms - creditoIcms));
+      setAliquotaEfetiva('aliquota-efetiva-ipi', Math.max(0, debitoIpi - creditoIpi));
+
+      // Alíquota efetiva total - soma dos débitos líquidos dividido pelo faturamento
+      const totalDebitoLiquido = Math.max(0, debitoPis - creditoPis) + 
+                                Math.max(0, debitoCofins - creditoCofins) + 
+                                Math.max(0, debitoIcms - creditoIcms) + 
+                                Math.max(0, debitoIpi - creditoIpi);
+
+      setAliquotaEfetiva('aliquota-efetiva-total', totalDebitoLiquido);
+
+      // ADIÇÃO: Log para verificação final
+      console.log(`Alíquota efetiva total: ${(totalDebitoLiquido / faturamento * 100).toFixed(3)}% (Total débito líquido: ${totalDebitoLiquido})`);
     }
     
     /**
@@ -426,13 +922,31 @@ const ImportacaoController = (function() {
      * @param {string} campoId - ID do campo a ser preenchido
      * @param {number|string} valor - Valor a ser preenchido
      */
+    // Modificar na função preencherCampoTributario:
     function preencherCampoTributario(campoId, valor) {
         const elemento = document.getElementById(campoId);
         if (!elemento) return;
 
+        console.log(`=== IMPORTACAO-CONTROLLER: PREENCHENDO CAMPO ${campoId} ===`);
+        console.log(`Valor original recebido: ${valor}`);
+
         try {
+            // MODIFICAÇÃO: Garantir que o valor seja tratado como número
+            let valorNumerico = valor;
+            if (typeof valor === 'string') {
+                valorNumerico = parseFloat(valor.replace(/[^\d,.-]/g, '').replace(',', '.'));
+            }
+
+            // CORREÇÃO: Verificar se o valor é um número válido antes de prosseguir
+            if (isNaN(valorNumerico)) {
+                console.error(`IMPORTACAO-CONTROLLER: Valor inválido para ${campoId}: ${valor}`);
+                valorNumerico = 0;
+            }
+
             // Validar e normalizar valor usando DataManager
-            const valorValidado = window.DataManager.normalizarValor(valor, 'monetario');
+            const valorValidado = window.DataManager.normalizarValor(valorNumerico, 'monetario');
+
+            console.log(`Valor após normalização: ${valorValidado}`);
 
             // Formatar e definir valor
             elemento.value = window.DataManager.formatarMoeda(valorValidado);
@@ -442,8 +956,25 @@ const ImportacaoController = (function() {
                 elemento.dataset.rawValue = valorValidado.toString();
             }
 
+            // Remover readonly para permitir edição, EXCETO para campos IVA
+            const camposIvaEditaveis = ['aliquota-cbs', 'aliquota-ibs', 'reducao-especial', 'aliquota-efetiva'];
+            if (!camposIvaEditaveis.some(campo => campoId.includes(campo))) {
+                elemento.readOnly = false;
+            }
+
+            // Destacar visualmente que o campo veio do SPED
+            elemento.classList.add('sped-data-value');
+
+            // ADIÇÃO: Garantir que o valor seja visível na interface
+            if (elemento.parentElement && elemento.parentElement.style) {
+                elemento.parentElement.style.display = 'flex';
+            }
+
             // Disparar evento para recálculos
             elemento.dispatchEvent(new Event('input', { bubbles: true }));
+
+            // Log adicional para depuração
+            console.log(`Campo ${campoId} preenchido com valor: ${valorValidado} (${elemento.value})`);
 
         } catch (erro) {
             console.error(`IMPORTACAO-CONTROLLER: Erro ao preencher campo ${campoId}:`, erro);
@@ -453,6 +984,38 @@ const ImportacaoController = (function() {
                 elemento.dataset.rawValue = '0';
             }
         }
+    }
+    
+    /**
+     * Obtém o valor do faturamento mensal do formulário
+     * @returns {number} - Valor do faturamento
+     */
+    function obterFaturamentoMensal() {
+        const campoFaturamento = document.getElementById('faturamento');
+        if (!campoFaturamento) {
+            console.warn('IMPORTACAO-CONTROLLER: Campo faturamento não encontrado');
+            return 0;
+        }
+
+        // Verificar dataset.rawValue primeiro
+        if (campoFaturamento.dataset && campoFaturamento.dataset.rawValue) {
+            const valor = parseFloat(campoFaturamento.dataset.rawValue);
+            return isNaN(valor) ? 0 : valor;
+        }
+
+        // Extrair do valor formatado
+        const valorTexto = campoFaturamento.value;
+        if (!valorTexto) return 0;
+
+        // Usar DataManager se disponível
+        if (window.DataManager && typeof window.DataManager.extrairValorMonetario === 'function') {
+            return window.DataManager.extrairValorMonetario(valorTexto);
+        }
+
+        // Fallback manual
+        const valorLimpo = valorTexto.replace(/[^\d,.-]/g, '').replace(',', '.');
+        const valor = parseFloat(valorLimpo);
+        return isNaN(valor) ? 0 : valor;
     }
     
     /**
@@ -579,11 +1142,29 @@ const ImportacaoController = (function() {
         // Log no console
         console.log(`IMPORTACAO-CONTROLLER [${tipo}]:`, mensagem);
     }
+    
+    function logDiagnostico(mensagem, dados, tipo = 'info') {
+        console.log(`=== IMPORTACAO-CONTROLLER [${tipo.toUpperCase()}]: ${mensagem} ===`);
+        if (dados !== undefined) {
+            console.log(JSON.stringify(dados, null, 2));
+        }
+
+        // Também adiciona ao log visual se disponível
+        if (elements.logArea) {
+            const logItem = document.createElement('p');
+            logItem.className = `log-${tipo}`;
+            logItem.innerHTML = `<span class="log-time">[DIAG]</span> ${mensagem}`;
+
+            elements.logArea.appendChild(logItem);
+            elements.logArea.scrollTop = elements.logArea.scrollHeight;
+        }
+    }
         
     // Interface pública
     return {
         inicializar,
         adicionarLog,
+        logDiagnostico, // Nova função
         obterDadosImportados: () => dadosImportados,
         versao: '3.0.0-simplificado'
     };

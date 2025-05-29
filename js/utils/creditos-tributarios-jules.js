@@ -3,7 +3,6 @@
  * Responsável por calcular os créditos de impostos com base nos dados do formulário
  * VERSÃO CORRIGIDA - Janeiro 2025
  */
-
 // ADICIONAR no início do arquivo - Verificação de dados SPED
 function verificarOrigemSped(campoId) {
     const elemento = document.getElementById(campoId);
@@ -14,6 +13,7 @@ function verificarOrigemSped(campoId) {
  * Função principal para calcular créditos tributários
  * Esta função é chamada quando há mudanças nos campos do formulário
  */
+// MODIFICAR calcularCreditosTributarios
 function calcularCreditosTributarios() {
     console.log('CREDITOS-TRIBUTARIOS: Verificando origem dos dados');
     
@@ -178,6 +178,58 @@ function calcularCreditosLucroPresumidoReal(faturamento, tipoEmpresa) {
  * Calcula débitos e créditos de PIS/COFINS
  */
 function calcularPisCofins(faturamento) {
+    // Prioritize SPED data if available
+    if (window.dadosImportadosSped && window.dadosImportadosSped.dadosSpedImportados === true) {
+        const debitosSped = window.dadosImportadosSped.parametrosFiscais?.debitos;
+        const creditosSped = window.dadosImportadosSped.parametrosFiscais?.creditos;
+
+        const debitoPISSped = debitosSped?.pis;
+        const creditoPISSped = creditosSped?.pis;
+        const debitoCOFINSSped = debitosSped?.cofins;
+        const creditoCOFINSSped = creditosSped?.cofins;
+
+        let spedDataUsed = false;
+
+        if (typeof debitoPISSped === 'number' && !isNaN(debitoPISSped)) {
+            preencherCampoValor('debito-pis', debitoPISSped);
+            const debitoPisElem = document.getElementById('debito-pis');
+            console.log('DEBUG: debito-pis value after preencherCampoValor:', debitoPisElem ? debitoPisElem.value : 'not found');
+            console.log('DEBUG: debito-pis dataset.rawValue after preencherCampoValor:', debitoPisElem ? debitoPisElem.dataset.rawValue : 'not found');
+            spedDataUsed = true;
+        }
+        if (typeof creditoPISSped === 'number' && !isNaN(creditoPISSped)) {
+            preencherCampoValor('credito-pis', creditoPISSped);
+            const creditoPisElem = document.getElementById('credito-pis');
+            console.log('DEBUG: credito-pis value after preencherCampoValor:', creditoPisElem ? creditoPisElem.value : 'not found');
+            console.log('DEBUG: credito-pis dataset.rawValue after preencherCampoValor:', creditoPisElem ? creditoPisElem.dataset.rawValue : 'not found');
+            spedDataUsed = true;
+        }
+        if (typeof debitoCOFINSSped === 'number' && !isNaN(debitoCOFINSSped)) {
+            preencherCampoValor('debito-cofins', debitoCOFINSSped);
+            const debitoCofinsElem = document.getElementById('debito-cofins');
+            console.log('DEBUG: debito-cofins value after preencherCampoValor:', debitoCofinsElem ? debitoCofinsElem.value : 'not found');
+            console.log('DEBUG: debito-cofins dataset.rawValue after preencherCampoValor:', debitoCofinsElem ? debitoCofinsElem.dataset.rawValue : 'not found');
+            spedDataUsed = true;
+        }
+        if (typeof creditoCOFINSSped === 'number' && !isNaN(creditoCOFINSSped)) {
+            preencherCampoValor('credito-cofins', creditoCOFINSSped);
+            const creditoCofinsElem = document.getElementById('credito-cofins');
+            console.log('DEBUG: credito-cofins value after preencherCampoValor:', creditoCofinsElem ? creditoCofinsElem.value : 'not found');
+            console.log('DEBUG: credito-cofins dataset.rawValue after preencherCampoValor:', creditoCofinsElem ? creditoCofinsElem.dataset.rawValue : 'not found');
+            spedDataUsed = true;
+        }
+
+        if (spedDataUsed) {
+            // Update summary field for PIS/COFINS credits from SPED
+            const totalCreditosSped = (typeof creditoPISSped === 'number' && !isNaN(creditoPISSped) ? creditoPISSped : 0) +
+                                      (typeof creditoCOFINSSped === 'number' && !isNaN(creditoCOFINSSped) ? creditoCOFINSSped : 0);
+            preencherCampoValor('creditos-pis-cofins-calc', totalCreditosSped);
+            
+            console.log('CREDITOS-TRIBUTARIOS: PIS/COFINS preenchidos com dados SPED.');
+            return; // Return early as SPED data is prioritized
+        }
+    }
+
     const regimePisCofins = document.getElementById('pis-cofins-regime')?.value || 'cumulativo';
     
     let aliquotaPIS, aliquotaCOFINS;
@@ -226,6 +278,33 @@ function calcularPisCofins(faturamento) {
  * Calcula débitos e créditos de ICMS
  */
 function calcularICMS(faturamento) {
+    // Prioritize SPED data if available
+    if (window.dadosImportadosSped && window.dadosImportadosSped.dadosSpedImportados === true) {
+        const debitosSped = window.dadosImportadosSped.parametrosFiscais?.debitos;
+        const creditosSped = window.dadosImportadosSped.parametrosFiscais?.creditos;
+
+        const debitoICMSSped = debitosSped?.icms;
+        const creditoICMSSped = creditosSped?.icms;
+
+        let spedDataUsed = false;
+
+        if (typeof debitoICMSSped === 'number' && !isNaN(debitoICMSSped)) {
+            preencherCampoValor('debito-icms', debitoICMSSped);
+            spedDataUsed = true;
+        }
+        if (typeof creditoICMSSped === 'number' && !isNaN(creditoICMSSped)) {
+            preencherCampoValor('credito-icms', creditoICMSSped);
+            // Update summary field for ICMS credits from SPED
+            preencherCampoValor('creditos-icms-calc', creditoICMSSped);
+            spedDataUsed = true;
+        }
+
+        if (spedDataUsed) {
+            console.log('CREDITOS-TRIBUTARIOS: ICMS preenchido com dados SPED.');
+            return; // Return early as SPED data is prioritized
+        }
+    }
+
     const aliquotaICMS = parseFloat(document.getElementById('aliquota-icms')?.value || '0') / 100;
     const baseCalculoCreditos = parseFloat(document.getElementById('icms-base-calc')?.value || '0') / 100;
     const percentualAproveitamento = parseFloat(document.getElementById('icms-perc-credito')?.value || '0') / 100;
@@ -262,6 +341,59 @@ function calcularICMS(faturamento) {
  * Calcula débitos e créditos de IPI
  */
 function calcularIPI(faturamento) {
+    console.log('DEBUG_IPI: calcularIPI_ENTRY - Faturamento:', faturamento);
+    if (typeof window.dadosImportadosSped !== 'undefined' && window.dadosImportadosSped !== null) { // Added null check
+        console.log('DEBUG_IPI: window.dadosImportadosSped IS defined.');
+        console.log('DEBUG_IPI: window.dadosImportadosSped.dadosSpedImportados is:', window.dadosImportadosSped.dadosSpedImportados);
+        if (window.dadosImportadosSped.parametrosFiscais && window.dadosImportadosSped.parametrosFiscais.debitos) {
+            console.log('DEBUG_IPI: SPED Debit IPI from window.dadosImportadosSped:', window.dadosImportadosSped.parametrosFiscais.debitos.ipi);
+        } else {
+            console.log('DEBUG_IPI: window.dadosImportadosSped.parametrosFiscais.debitos (or .debitos.ipi) is not defined.');
+        }
+        if (window.dadosImportadosSped.parametrosFiscais && window.dadosImportadosSped.parametrosFiscais.creditos) {
+            console.log('DEBUG_IPI: SPED Credit IPI from window.dadosImportadosSped:', window.dadosImportadosSped.parametrosFiscais.creditos.ipi);
+        } else {
+            console.log('DEBUG_IPI: window.dadosImportadosSped.parametrosFiscais.creditos (or .creditos.ipi) is not defined.');
+        }
+    } else {
+        console.log('DEBUG_IPI: window.dadosImportadosSped IS UNDEFINED or NULL at calcularIPI_ENTRY.');
+    }
+    // Prioritize SPED data if available and already set in UI by ImportacaoController
+    console.log('DEBUG_IPI: PRE-CHECK - typeof window.dadosImportadosSped:', typeof window.dadosImportadosSped);
+    if (typeof window.dadosImportadosSped !== 'undefined' && window.dadosImportadosSped !== null) { // Added null check
+        console.log('DEBUG_IPI: PRE-CHECK - window.dadosImportadosSped exists. Checking .dadosSpedImportados property...');
+        console.log('DEBUG_IPI: PRE-CHECK - window.dadosImportadosSped.dadosSpedImportados is:', window.dadosImportadosSped.dadosSpedImportados);
+    } else {
+        console.log('DEBUG_IPI: PRE-CHECK - window.dadosImportadosSped is UNDEFINED or NULL.');
+    }
+    if (window.dadosImportadosSped && window.dadosImportadosSped.dadosSpedImportados === true) {
+        const spedDebitoIPI = obterValorCampoRobusto('debito-ipi');
+        const spedCreditoIPI = obterValorCampoRobusto('credito-ipi');
+        
+        console.log('DEBUG: Values for IPI obtained by obterValorCampoRobusto in calcularIPI - Debit:', spedDebitoIPI, 'Credit:', spedCreditoIPI);
+
+        if (typeof spedDebitoIPI === 'number' && typeof spedCreditoIPI === 'number' && spedDebitoIPI >= 0 && spedCreditoIPI >= 0) {
+            // Values were likely already set by ImportacaoController (in dataset.rawValue).
+            // This call ensures the visible input.value is also correctly formatted and events are triggered.
+            preencherCampoValor('debito-ipi', spedDebitoIPI);
+            const debitoIpiElem = document.getElementById('debito-ipi');
+            console.log('DEBUG: debito-ipi value after preencherCampoValor in calcularIPI:', debitoIpiElem ? debitoIpiElem.value : 'not found');
+            console.log('DEBUG: debito-ipi dataset.rawValue after preencherCampoValor in calcularIPI:', debitoIpiElem ? debitoIpiElem.dataset.rawValue : 'not found');
+
+            preencherCampoValor('credito-ipi', spedCreditoIPI);
+            const creditoIpiElem = document.getElementById('credito-ipi');
+            console.log('DEBUG: credito-ipi value after preencherCampoValor in calcularIPI:', creditoIpiElem ? creditoIpiElem.value : 'not found');
+            console.log('DEBUG: credito-ipi dataset.rawValue after preencherCampoValor in calcularIPI:', creditoIpiElem ? creditoIpiElem.dataset.rawValue : 'not found');
+            
+            preencherCampoValor('creditos-ipi-calc', spedCreditoIPI); // Update the calculated display field for IPI credits
+
+            console.log('CREDITOS-TRIBUTARIOS: IPI fields updated/affirmed using SPED data from UI elements (obterValorCampoRobusto).');
+            return; // Return early as SPED data from UI elements was used
+        } else {
+            console.log('DEBUG: SPED IPI values from UI (obterValorCampoRobusto) were not valid numbers (Debit: ' + spedDebitoIPI + ', Credit: ' + spedCreditoIPI + '). Proceeding with UI calculation for IPI.');
+        }
+    }
+
     const aliquotaIPI = parseFloat(document.getElementById('aliquota-ipi')?.value || '0') / 100;
     const baseCalculoCreditos = parseFloat(document.getElementById('ipi-base-calc')?.value || '0') / 100;
     const percentualAproveitamento = parseFloat(document.getElementById('ipi-perc-credito')?.value || '0') / 100;
@@ -464,25 +596,50 @@ function extrairValorMonetario(valor) {
  * Versão mais robusta para obter valor numérico de um campo
  * Esta nova função resolve problemas de inconsistência na obtenção de valores
  */
+// Substituir a função obterValorCampoRobusto
 function obterValorCampoRobusto(campoId) {
-  const elemento = document.getElementById(campoId);
-  if (!elemento) return 0;
-  
-  // MODIFICAÇÃO: Primeiro verificar se há um dataset.rawValue
-  if (elemento.dataset && elemento.dataset.rawValue !== undefined) {
-    const valor = parseFloat(elemento.dataset.rawValue);
-    return isNaN(valor) ? 0 : valor;
-  }
-  
-  // Se não tiver dataset.rawValue, extrair do valor exibido
-  const valorTexto = elemento.value;
-  if (!valorTexto) return 0;
-  
-  // Limpar formatação monetária
-  const valorLimpo = valorTexto.replace(/[^\d,.-]/g, '').replace(',', '.');
-  const valor = parseFloat(valorLimpo);
-  
-  return isNaN(valor) ? 0 : valor;
+    const elemento = document.getElementById(campoId);
+    if (!elemento) {
+        console.warn(`CREDITOS-TRIBUTARIOS: Elemento ${campoId} não encontrado`);
+        return 0;
+    }
+
+    // PRIORIDADE 1: Verificar dataset.rawValue (mais confiável)
+    if (elemento.dataset && elemento.dataset.rawValue !== undefined && elemento.dataset.rawValue !== '') {
+        const valor = parseFloat(elemento.dataset.rawValue);
+        const resultado = isNaN(valor) ? 0 : valor;
+        console.log(`CREDITOS-TRIBUTARIOS: Valor obtido de ${campoId} via dataset.rawValue: ${resultado}`);
+        return resultado;
+    }
+
+    // PRIORIDADE 2: Extrair do valor exibido
+    const valorTexto = elemento.value;
+    if (!valorTexto || valorTexto.trim() === '') {
+        console.log(`CREDITOS-TRIBUTARIOS: Campo ${campoId} vazio, retornando 0`);
+        return 0;
+    }
+
+    // Limpar formatação monetária de forma mais robusta
+    let valorLimpo = valorTexto;
+    
+    // Remover símbolos de moeda e espaços
+    valorLimpo = valorLimpo.replace(/[R$\s]/g, '');
+    
+    // Tratar formatação brasileira (ponto como separador de milhares, vírgula como decimal)
+    if (valorLimpo.includes(',') && valorLimpo.includes('.')) {
+        // Formato: 1.234.567,89 -> remover pontos e trocar vírgula por ponto
+        valorLimpo = valorLimpo.replace(/\./g, '').replace(',', '.');
+    } else if (valorLimpo.includes(',') && !valorLimpo.includes('.')) {
+        // Formato: 1234,89 -> trocar vírgula por ponto
+        valorLimpo = valorLimpo.replace(',', '.');
+    }
+    // Se só tem ponto, assumir que é decimal americano
+    
+    const valor = parseFloat(valorLimpo);
+    const resultado = isNaN(valor) ? 0 : valor;
+    
+    console.log(`CREDITOS-TRIBUTARIOS: Valor extraído de ${campoId}: ${resultado} (original: "${valorTexto}", limpo: "${valorLimpo}")`);
+    return resultado;
 }
 
 /**
